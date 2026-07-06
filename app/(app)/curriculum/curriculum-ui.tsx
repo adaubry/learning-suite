@@ -22,6 +22,13 @@ type Subject = {
   methodologieTitres: string | null;
 };
 
+type Chapter = {
+  id: string;
+  titre: string;
+  version: number;
+  statut: "actif" | "archive";
+};
+
 export function AddSubjectForm() {
   const [state, action, pending] = useActionState(createSubjectAction, undefined);
 
@@ -50,7 +57,7 @@ export function AddSubjectForm() {
   );
 }
 
-export function SubjectCard({ subject }: { subject: Subject }) {
+export function SubjectCard({ subject, chapters }: { subject: Subject; chapters: Chapter[] }) {
   const [state, action, pending] = useActionState(updateSubjectAction, undefined);
 
   return (
@@ -94,8 +101,20 @@ export function SubjectCard({ subject }: { subject: Subject }) {
         </div>
       </form>
 
-      <div className="flex items-center justify-between border-t pt-3">
-        <p className="text-sm text-muted-foreground">Aucun chapitre pour l&apos;instant.</p>
+      <div className="flex flex-col gap-2 border-t pt-3">
+        {chapters.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Aucun chapitre pour l&apos;instant.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {chapters.map((c) => (
+              <li key={c.id} className="flex items-center gap-2 text-sm">
+                <span>{c.titre}</span>
+                <Badge variant="secondary">v{c.version}</Badge>
+                {c.statut === "archive" && <Badge variant="outline">archivé</Badge>}
+              </li>
+            ))}
+          </ul>
+        )}
         <form action={subject.statut === "active" ? archiveSubjectAction : unarchiveSubjectAction}>
           <input type="hidden" name="subjectId" value={subject.id} />
           <Button type="submit" variant="outline" size="sm">

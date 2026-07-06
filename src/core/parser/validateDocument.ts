@@ -64,3 +64,9 @@ export function validateDocument(parsed: ParsedChapter, markdown: string): Anoma
     ...markdownMalForme(markdown),
   ];
 }
+
+// Clé stable d'une anomalie (positions uniques par parse) : sert d'identifiant
+// d'acquittement partagé entre le client (U5 AnomalyPanel) et le serveur (S1.import).
+export function anomalyKey(anomaly: Anomaly): string {
+  return `${anomaly.type}-${anomaly.start}-${anomaly.end}`;
+}

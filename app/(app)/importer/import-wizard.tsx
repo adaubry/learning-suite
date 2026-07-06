@@ -1,0 +1,227 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { MarkdownViewer } from "@/components/markdown-viewer";
+import { AnomalyPanel } from "@/components/anomaly-panel";
+import type { Anomaly } from "@/core/parser/types";
+import { anomalyKey } from "@/core/parser/validateDocument";
+import { analyzeChapterAction, importChapterAction } from "./actions";
+
+// U23 ImportWizard (FUNCTIONS §6.2) — étapes É1.0–É1.2 de USER_FLOW P1.
+// Étape dans searchParams (TECH_MAPPING §4.3, reprise gratuite par URL) ;
+// destination/import/markdown persistés en sessionStorage (natif) pour
+// survivre à un rechargement en cours de route.
+
+type Step = "destination" | "import" | "rapport";
+
+const STORAGE_KEY = "import-wizard-state";
+
+function loadStorage() {
+  if (typeof window === "undefined") return null;
+  try {
+    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null") as {
+      subjectId: string;
+      titre: string;
+      markdown: string;
+    } | null;
+  } catch {
+    return null;
+  }
+}
+
+export function ImportWizard({ subjects }: { subjects: { id: string; nom: string }[] }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const step = (searchParams.get("step") as Step) || "destination";
+
+  const stored = loadStorage();
+  const [subjectId, setSubjectId] = useState(stored?.subjectId ?? subjects[0]?.id ?? "");
+  const [titre, setTitre] = useState(stored?.titre ?? "");
+  const [markdown, setMarkdown] = useState(stored?.markdown ?? "");
+  const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
+
+  const [analyzeState, analyzeAction, analyzing] = useActionState(analyzeChapterAction, undefined);
+  const [importState, importAction, importing] = useActionState(importChapterAction, undefined);
+
+  const anomalies: Anomaly[] = analyzeState?.success ? analyzeState.anomalies : [];
+
+  useEffect(() => {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ subjectId, titre, markdown }));
+  }, [subjectId, titre, markdown]);
+
+  // ponytail: un rechargement en pleine étape "rapport" perd l'analyse
+  // (useActionState non persisté) même si le markdown a survécu (sessionStorage) ;
+  // plutôt qu'un mécanisme de reprise automatique, on renvoie vers l'étape
+  // "import" où le markdown est déjà pré-rempli — un clic sur [Analyser] suffit.
+  useEffect(() => {
+    if (step === "rapport" && !analyzeState) {
+      router.replace("/importer?step=import");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  function goToStep(next: Step) {
+    router.replace(`/importer?step=${next}`);
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    void file.text().then(setMarkdown);
+  }
+
+  const allAcknowledged = anomalies.every((a) => acknowledged.has(anomalyKey(a)));
+
+  return (
+    <div className="flex flex-col gap-6">
+      {step === "destination" && (
+        <div className="flex flex-col gap-4 rounded border p-4">
+          <h2 className="text-sm font-semibold">1. Destination</h2>
+          {subjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Crée d&apos;abord une matière depuis le Curriculum.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="subjectId">Matière</Label>
+                <select
+                  id="subjectId"
+                  value={subjectId}
+                  onChange={(e) => setSubjectId(e.target.value)}
+                  className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                >
+                  {subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nom}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="titre">Titre du chapitre</Label>
+                <Input
+                  id="titre"
+                  value={titre}
+                  onChange={(e) => setTitre(e.target.value)}
+                  placeholder="Introduction au droit des obligations"
+                />
+              </div>
+              <Button
+                type="button"
+                disabled={!subjectId || !titre.trim()}
+                onClick={() => goToStep("import")}
+                className="self-start"
+              >
+                Continuer
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {step === "import" && (
+        <form
+          action={(formData) => {
+            analyzeAction(formData);
+            goToStep("rapport");
+          }}
+          className="flex flex-col gap-4 rounded border p-4"
+        >
+          <h2 className="text-sm font-semibold">2. Import du Markdown</h2>
+          <p className="text-sm text-muted-foreground">
+            Google Docs → Fichier → Télécharger → Markdown (.md). Upload du fichier ou collage
+            direct.
+          </p>
+          <Input type="file" accept=".md,text/markdown" onChange={handleFileUpload} />
+          <Textarea
+            name="markdown"
+            rows={12}
+            value={markdown}
+            onChange={(e) => setMarkdown(e.target.value)}
+            placeholder="Colle ici le contenu Markdown exporté depuis Google Docs…"
+          />
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="outline" onClick={() => goToStep("destination")}>
+              Retour
+            </Button>
+            <Button type="submit" disabled={analyzing || !markdown.trim()}>
+              {analyzing ? "Analyse…" : "Analyser"}
+            </Button>
+          </div>
+          {analyzeState?.error && <p className="text-sm text-destructive">{analyzeState.error}</p>}
+        </form>
+      )}
+
+      {step === "rapport" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold">3. Rapport de validation</h2>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled
+              title="Éditeur WYSIWYG (U4/Tiptap) — Phase 8, pas encore construit : recolle un markdown corrigé à l'étape précédente."
+            >
+              Corriger le texte
+            </Button>
+          </div>
+          {!analyzeState?.success ? (
+            <p className="text-sm text-muted-foreground">Analyse en cours…</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="max-h-[32rem] overflow-y-auto rounded border p-4">
+                  <MarkdownViewer markdown={markdown} />
+                </div>
+                <div className="max-h-[32rem] overflow-y-auto">
+                  <AnomalyPanel
+                    anomalies={anomalies}
+                    acknowledged={acknowledged}
+                    onAcknowledge={(key) =>
+                      setAcknowledged((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      })
+                    }
+                    onAcknowledgeAll={() =>
+                      setAcknowledged(new Set(anomalies.map(anomalyKey)))
+                    }
+                  />
+                </div>
+              </div>
+
+              <form action={importAction} className="flex items-center gap-3 border-t pt-4">
+                <input type="hidden" name="subjectId" value={subjectId} />
+                <input type="hidden" name="titre" value={titre} />
+                <input type="hidden" name="markdown" value={markdown} />
+                <input
+                  type="hidden"
+                  name="acknowledgedAnomalyKeys"
+                  value={JSON.stringify(Array.from(acknowledged))}
+                />
+                <Button type="button" variant="outline" onClick={() => goToStep("import")}>
+                  Retour
+                </Button>
+                <Button type="submit" disabled={!allAcknowledged || importing}>
+                  {importing ? "Import…" : "Valider l'import"}
+                </Button>
+                {importState?.error && (
+                  <p className="text-sm text-destructive">{importState.error}</p>
+                )}
+              </form>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
