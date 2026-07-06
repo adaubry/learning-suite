@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import * as account from "@/services/account";
 import {
   subjectInputSchema,
@@ -13,15 +13,6 @@ import {
 
 // Un adaptateur mince par point d'entrée S9 (FUNCTIONS §4) — réutilisé par
 // l'onboarding (app/(onboarding)/) et le curriculum (app/(app)/curriculum/).
-
-async function requireUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  return user.id;
-}
 
 export async function createSubjectAction(_prevState: unknown, formData: FormData) {
   const parsed = subjectInputSchema.safeParse({

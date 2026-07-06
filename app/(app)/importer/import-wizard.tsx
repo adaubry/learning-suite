@@ -13,36 +13,18 @@ import { anomalyKey } from "@/core/parser/validateDocument";
 import { analyzeChapterAction, importChapterAction } from "./actions";
 
 // U23 ImportWizard (FUNCTIONS §6.2) — étapes É1.0–É1.2 de USER_FLOW P1.
-// Étape dans searchParams (TECH_MAPPING §4.3, reprise gratuite par URL) ;
-// destination/import/markdown persistés en sessionStorage (natif) pour
-// survivre à un rechargement en cours de route.
+// Étape dans searchParams (TECH_MAPPING §4.3, reprise gratuite par URL).
 
 type Step = "destination" | "import" | "rapport";
-
-const STORAGE_KEY = "import-wizard-state";
-
-function loadStorage() {
-  if (typeof window === "undefined") return null;
-  try {
-    return JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? "null") as {
-      subjectId: string;
-      titre: string;
-      markdown: string;
-    } | null;
-  } catch {
-    return null;
-  }
-}
 
 export function ImportWizard({ subjects }: { subjects: { id: string; nom: string }[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const step = (searchParams.get("step") as Step) || "destination";
 
-  const stored = loadStorage();
-  const [subjectId, setSubjectId] = useState(stored?.subjectId ?? subjects[0]?.id ?? "");
-  const [titre, setTitre] = useState(stored?.titre ?? "");
-  const [markdown, setMarkdown] = useState(stored?.markdown ?? "");
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
+  const [titre, setTitre] = useState("");
+  const [markdown, setMarkdown] = useState("");
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
 
   const [analyzeState, analyzeAction, analyzing] = useActionState(analyzeChapterAction, undefined);
@@ -50,14 +32,10 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
 
   const anomalies: Anomaly[] = analyzeState?.success ? analyzeState.anomalies : [];
 
-  useEffect(() => {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ subjectId, titre, markdown }));
-  }, [subjectId, titre, markdown]);
-
-  // ponytail: un rechargement en pleine étape "rapport" perd l'analyse
-  // (useActionState non persisté) même si le markdown a survécu (sessionStorage) ;
-  // plutôt qu'un mécanisme de reprise automatique, on renvoie vers l'étape
-  // "import" où le markdown est déjà pré-rempli — un clic sur [Analyser] suffit.
+  // ponytail: un rechargement en pleine étape "rapport" perd le markdown et
+  // l'analyse (état en mémoire, pas de persistance au-delà de l'étape en URL
+  // — TECH_MAPPING §4.3) ; on renvoie vers "import" plutôt que d'afficher un
+  // rapport vide.
   useEffect(() => {
     if (step === "rapport" && !analyzeState) {
       router.replace("/importer?step=import");

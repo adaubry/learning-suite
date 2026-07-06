@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
@@ -6,9 +7,9 @@ import { chapter, subject } from "@/db/schema";
 import { hasCompletedOnboarding } from "@/services/account";
 import { Button } from "@/components/ui/button";
 
-// P2 Accueil = Planificateur (ARCHITECTURE §3) — hors scope de ce bloc.
-// Tant que P1 (import) n'existe pas, aucun Chapter ne peut exister : l'état
-// vide global (USER_FLOW P0) est donc le seul état possible ici.
+// P2 Accueil = Planificateur (ARCHITECTURE §3) — hors scope, Phase 6. En
+// attendant, état vide global (USER_FLOW P0) tant qu'aucun Chapter n'existe,
+// sinon message d'attente (P1/import existe depuis le bloc 2.2).
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -40,10 +41,9 @@ export default async function HomePage() {
         <li>2. Trier ses sections par importance</li>
         <li>3. Étudier — blurting puis Feynman</li>
       </ol>
-      <Button disabled>Importer un chapitre</Button>
-      <p className="text-xs text-muted-foreground">
-        L&apos;import de chapitre (P1) arrive dans un prochain bloc.
-      </p>
+      <Button nativeButton={false} render={<Link href="/importer" />}>
+        Importer un chapitre
+      </Button>
     </div>
   );
 }

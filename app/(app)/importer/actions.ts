@@ -2,20 +2,11 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import * as chapter from "@/services/chapter";
 import { chapterAnalyzeInputSchema, chapterImportInputSchema } from "@/services/chapter.schemas";
 
 // Adaptateurs minces S1.import (FUNCTIONS §4) — U23 ImportWizard, étapes É1.1/É1.2.
-
-async function requireUserId() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-  return user.id;
-}
 
 export async function analyzeChapterAction(_prevState: unknown, formData: FormData) {
   const parsed = chapterAnalyzeInputSchema.safeParse({ markdown: formData.get("markdown") });
