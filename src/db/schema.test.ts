@@ -4,9 +4,10 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-// ponytail: un seul test d'intégration contre le Postgres local (supabase start),
-// couvre les deux contraintes DB qui portent des invariants FUNCTIONS §7 —
+// ponytail: tests d'intégration contre le Postgres local (supabase start) —
 // pas une suite exhaustive par table, juste le garde-fou que le schéma tient.
+// Les canaris (invariants FUNCTIONS §7 qui doivent rester verts en
+// permanence) sont dans schema.canary.test.ts.
 
 const client = postgres(process.env.DATABASE_URL!);
 const db = drizzle(client, { schema });
@@ -47,7 +48,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.delete(schema.studyCycle).where(eq(schema.studyCycle.sectionId, sectionId));
   await db.delete(schema.correctionGuide).where(eq(schema.correctionGuide.sectionId, sectionId));
   await db.delete(schema.section).where(eq(schema.section.id, sectionId));
   await db.delete(schema.chapter).where(eq(schema.chapter.id, chapterId));
@@ -85,22 +85,6 @@ describe("contraintes DB (FUNCTIONS §7)", () => {
         chapterVersion: 1,
         contenu: {},
         statut: "a_valider",
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("interdit un second StudyCycle ouvert pour le même utilisateur", async () => {
-    await db.insert(schema.studyCycle).values({
-      userId,
-      sectionId,
-      type: "etude",
-    });
-
-    await expect(
-      db.insert(schema.studyCycle).values({
-        userId,
-        sectionId,
-        type: "etude",
       }),
     ).rejects.toThrow();
   });

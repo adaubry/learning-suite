@@ -8,6 +8,13 @@
       "when": 1783347425076,
       "tag": "0000_nervous_meltdown",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783350972284,
+      "tag": "0001_study_cycle_requires_valid_guide",
+      "breakpoints": true
     }
   ]
 }
