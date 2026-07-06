@@ -35,13 +35,14 @@ Si la récitation est corrigée par l'humain : la refaire. On ne code pas sur un
 
 ## 3. Commandes du projet
 
-| Commande                           | Rôle                                                      |
-| ---------------------------------- | --------------------------------------------------------- |
-| `npm run dev`                      | serveur de développement                                  |
-| `npm run check`                    | typecheck + lint + tests — le verdict d'un bloc           |
-| `npm run test:canary`              | canaris seuls — vert en permanence                        |
-| `npm run evals`                    | jeu d'or des prompts — après toute modification de prompt |
-| `npm run db:migrate` / `db:studio` | migrations Drizzle / inspection                           |
+| Commande                           | Rôle                                                                                           |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `npm run dev`                      | serveur de développement                                                                       |
+| `npm run check`                    | typecheck + lint + tests — le verdict d'un bloc                                                |
+| `npm run test:canary`              | canaris déterministes Vitest + Playwright (suffixe `.canary.`, LLM mocké) — vert en permanence |
+| `npm run check:full`               | check + suite Playwright complète — fin de bloc                                                |
+| `npm run evals`                    | jeu d'or des prompts — après toute modification de prompt                                      |
+| `npm run db:migrate` / `db:studio` | migrations Drizzle / inspection                                                                |
 
 ## 4. Carte du dépôt
 
@@ -50,6 +51,7 @@ src/docs/      FORMAT, ARCHITECTURE, USER_FLOW, FUNCTIONS, TECH_MAPPING, PLAN,
                DECISIONS.md, PROMPTS_CHANGELOG.md   ← sources de vérité
 prompts/       *.vN.md — versionnés, jamais inline
 evals/         jeu d'or + canaris LLM (données réelles de l'utilisateur)
+e2e/           specs Playwright — *.spec.ts ordinaires, *.canary.spec.ts sentinelles
 app/(app)/     écrans avec navigation
 app/(focus)/   écrans sanctuarisés (blurting, feynman, révision) — pas de nav
 src/core/      cœurs purs P1–P10 — tests exhaustifs
