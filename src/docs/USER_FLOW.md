@@ -33,7 +33,7 @@ flowchart TB
 
 ### É0.1 Création de compte
 
-Écran Supabase Auth (email + mot de passe ou magic link). → É0.2.
+Écran Supabase Auth (magic link). → É0.2.
 
 ### É0.2 Configuration initiale (4 étapes, skippables sauf la première)
 

@@ -8,7 +8,7 @@
 
 ## 0. Doctrine de délégation
 
-1. **Natif d'abord** : App Router, Server Actions, layouts, Suspense/streaming, `error.tsx`/`loading.tsx`, `after()`, cache/revalidation, middleware ; React 19 (`useActionState`, `useOptimistic`, `useFormStatus`) ; TypeScript (unions discriminées pour les machines à états) ; plateforme web (`crypto.subtle`, `Intl`, `MediaRecorder`, `speechSynthesis`, Web Speech API, **drag & drop HTML5**).
+1. **Natif d'abord** : App Router, Server Actions, layouts, Suspense/streaming, `error.tsx`/`loading.tsx`, `after()`, cache/revalidation, proxy (`proxy.ts`, anciennement `middleware.ts`) ; React 19 (`useActionState`, `useOptimistic`, `useFormStatus`) ; TypeScript (unions discriminées pour les machines à états) ; plateforme web (`crypto.subtle`, `Intl`, `MediaRecorder`, `speechSynthesis`, Web Speech API, **drag & drop HTML5**).
 2. **Librairies spécialisées retenues** :
    - **Markdown** : `unified/remark` (AST `mdast` avec positions) — voir §0bis pour le choix face à MDX ;
    - **WYSIWYG façon Google Docs** : `Tiptap` (base ProseMirror) + sérialisation Markdown ;
@@ -54,7 +54,7 @@ MDX résout un autre problème. C'est un **compilateur de contenu en composants 
 | Brique         | 1. Natif                                                                                        | 2. Librairie                                                                                | 3. Reste maison                                   |
 | -------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | Server Actions | **natives** + `useActionState`/`useFormStatus` ; `revalidatePath`/`revalidateTag`               | schémas `zod` partagés client/serveur                                                       | Rien (adaptateurs minces)                         |
-| Auth           | **middleware natif** (protection des routes)                                                    | Supabase Auth                                                                               | —                                                 |
+| Auth           | **proxy natif** (`proxy.ts`, protection des routes)                                              | Supabase Auth                                                                               | —                                                 |
 | S1–S9          | transactions Drizzle ; `after()` pour les effets non bloquants (audit, déclenchement paresseux) | Drizzle                                                                                     | **Toute la logique de domaine — c'est le projet** |
 | Tâches de fond | **Route Handlers natifs** frappés par un cron                                                   | **Vercel Cron** ou `pg_cron` (Next.js n'a pas de scheduler interne — limite native assumée) | Logique des tâches                                |
 

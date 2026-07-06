@@ -54,11 +54,16 @@ e2e/           tout ce qui touche aux tests e2e/ia, un seul dossier :
                  *.spec.ts / *.canary.spec.ts  — specs Playwright (navigateur)
                  evals/                        — jeu d'or + canaris LLM (vraie API)
                  test-results/, playwright-report/ — artefacts générés, ignorés
+proxy.ts       protection des routes (ex-middleware.ts, Next 16) — redirige vers
+               /login si pas de session, sauf /login et /auth/callback
+app/(auth)/    login (magic link) + server actions signIn/signOut
+app/auth/callback/  échange le code magic link contre une session
 app/(app)/     écrans avec navigation
 app/(focus)/   écrans sanctuarisés (blurting, feynman, révision) — pas de nav
 src/core/      cœurs purs P1–P10 — tests exhaustifs
 src/services/  domaine S1–S9 — propriétaires des invariants (FUNCTIONS §7)
+src/lib/supabase/  clients Supabase (browser/server) + helper de proxy
+src/db/        Drizzle : schéma + migrations (supabase/ = stack local, `supabase start`)
 src/llm/       L0 unique point d'accès OpenRouter + ContextBuilders + schemas
-src/db/        Drizzle
 src/components/ U1–U24 — shadcn uniquement
 ```

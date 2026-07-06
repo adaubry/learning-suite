@@ -2,6 +2,13 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+Prérequis : Docker doit tourner. Démarrer le stack Supabase local avant `npm run dev` ou les tests :
+
+```bash
+npx supabase start   # première fois : copier les clés affichées dans .env.local (voir .env.example)
+npx supabase stop    # pour arrêter
+```
+
 First, run the development server:
 
 ```bash
