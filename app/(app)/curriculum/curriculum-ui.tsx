@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,8 @@ import {
   updateSubjectAction,
   archiveSubjectAction,
   unarchiveSubjectAction,
+  generateRubricAction,
+  createManualRubricAction,
 } from "../actions";
 
 type Subject = {
@@ -22,12 +25,81 @@ type Subject = {
   methodologieTitres: string | null;
 };
 
+type SectionStatut =
+  | "importee"
+  | "a_trier"
+  | "active"
+  | "exclue"
+  | "rubrique_a_valider"
+  | "prete"
+  | "validee"
+  | "en_revision"
+  | "archivee";
+
+type Section = {
+  id: string;
+  titre: string;
+  importance: number;
+  statut: SectionStatut;
+};
+
 type Chapter = {
   id: string;
   titre: string;
   version: number;
   statut: "actif" | "archive";
+  sections: Section[];
 };
+
+const sectionStatutLabel: Record<SectionStatut, string> = {
+  importee: "importée",
+  a_trier: "à trier",
+  active: "active",
+  exclue: "exclue",
+  rubrique_a_valider: "rubrique à valider",
+  prete: "prête",
+  validee: "validée",
+  en_revision: "en révision",
+  archivee: "archivée",
+};
+
+function SectionRow({ section }: { section: Section }) {
+  const [genState, genAction, genPending] = useActionState(generateRubricAction, undefined);
+  const [manState, manAction, manPending] = useActionState(createManualRubricAction, undefined);
+  const error = genState?.error ?? manState?.error;
+
+  return (
+    <li className="flex flex-col gap-1 border-l pl-2 py-1 text-sm">
+      <div className="flex items-center gap-2">
+        <span>{section.titre}</span>
+        <Badge variant="secondary">imp. {section.importance}</Badge>
+        <Badge variant="outline">{sectionStatutLabel[section.statut]}</Badge>
+      </div>
+      {section.statut === "active" && (
+        <div className="flex gap-2">
+          <form action={genAction}>
+            <input type="hidden" name="sectionId" value={section.id} />
+            <Button type="submit" size="sm" variant="outline" disabled={genPending}>
+              {genPending ? "Génération…" : "Générer la rubrique"}
+            </Button>
+          </form>
+          <form action={manAction}>
+            <input type="hidden" name="sectionId" value={section.id} />
+            <Button type="submit" size="sm" variant="ghost" disabled={manPending}>
+              Rédiger manuellement
+            </Button>
+          </form>
+        </div>
+      )}
+      {section.statut === "rubrique_a_valider" && (
+        <Button size="sm" nativeButton={false} render={<Link href={`/section/${section.id}/rubrique`} />}>
+          Valider la rubrique
+        </Button>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </li>
+  );
+}
 
 export function AddSubjectForm() {
   const [state, action, pending] = useActionState(createSubjectAction, undefined);
@@ -105,12 +177,21 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
         {chapters.length === 0 ? (
           <p className="text-sm text-muted-foreground">Aucun chapitre pour l&apos;instant.</p>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col gap-2">
             {chapters.map((c) => (
-              <li key={c.id} className="flex items-center gap-2 text-sm">
-                <span>{c.titre}</span>
-                <Badge variant="secondary">v{c.version}</Badge>
-                {c.statut === "archive" && <Badge variant="outline">archivé</Badge>}
+              <li key={c.id} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span>{c.titre}</span>
+                  <Badge variant="secondary">v{c.version}</Badge>
+                  {c.statut === "archive" && <Badge variant="outline">archivé</Badge>}
+                </div>
+                {c.sections.length > 0 && (
+                  <ul className="flex flex-col">
+                    {c.sections.map((s) => (
+                      <SectionRow key={s.id} section={s} />
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

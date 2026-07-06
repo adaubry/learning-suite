@@ -3,12 +3,13 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { listSubjects } from "@/services/account";
-import { listChaptersBySubject } from "@/services/chapter";
+import { listChaptersBySubject, listSectionsByChapter } from "@/services/chapter";
 import { AddSubjectForm, SubjectCard } from "./curriculum-ui";
 
-// P6 É6.0 — U22 CurriculumTree minimal : matières + liste des chapitres
-// (titre, statut). L'arbre sections reste vide tant que le sectionnement
-// LLM (S2/L1, Phase 3) n'existe pas.
+// P6 É6.0 — U22 CurriculumTree minimal : matières + chapitres + sections.
+// Le tri des sections (S2/L1/U13, Phase 3) n'existe toujours pas : les
+// sections affichent leur statut brut, sans écran de triage. Bloc 4.2 y
+// ajoute l'action rubrique (générer/rédiger) sur les sections `active`.
 
 export default async function CurriculumPage() {
   const supabase = await createClient();
@@ -21,10 +22,16 @@ export default async function CurriculumPage() {
   // ponytail: un listChaptersBySubject par matière — nombre de matières faible
   // (mono-utilisateur), pas de jointure batch tant que ça ne pose pas de problème.
   const subjectsWithChapters = await Promise.all(
-    subjects.map(async (subject) => ({
-      subject,
-      chapters: await listChaptersBySubject(subject.id),
-    })),
+    subjects.map(async (subject) => {
+      const chapters = await listChaptersBySubject(subject.id);
+      const chaptersWithSections = await Promise.all(
+        chapters.map(async (chapter) => ({
+          ...chapter,
+          sections: await listSectionsByChapter(chapter.id),
+        })),
+      );
+      return { subject, chapters: chaptersWithSections };
+    }),
   );
 
   return (

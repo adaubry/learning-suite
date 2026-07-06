@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { correctionGuide, section, chapter, subject } from "@/db/schema";
 import { buildRubriqueContext } from "@/llm/context/rubrique";
 import { generateGuide } from "@/llm/generateGuide";
+import { guideOutputSchema } from "@/llm/schemas/guide";
 import * as errorService from "./error";
 import type { EmphasisSegment } from "@/core/parser/types";
 
@@ -21,9 +22,33 @@ export class NoGuideToRegenerateError extends Error {
   }
 }
 
-async function loadSectionContext(sectionId: string) {
+export class InvalidGuideEditError extends Error {}
+
+// Un seul propriétaire de vérification (FUNCTIONS §7) : chaque point d'entrée
+// remonte à la matière pour confirmer que l'utilisateur la possède, comme
+// ChapterService.importChapter.
+async function assertSectionOwnership(sectionId: string, userId: string) {
   const sec = await db.query.section.findFirst({ where: eq(section.id, sectionId) });
   if (!sec) throw new Error("Section introuvable.");
+
+  const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, sec.chapterId) });
+  if (!chap) throw new Error("Section introuvable.");
+
+  const subj = await db.query.subject.findFirst({ where: eq(subject.id, chap.subjectId) });
+  if (!subj || subj.userId !== userId) throw new Error("Section introuvable.");
+
+  return sec;
+}
+
+async function loadGuideOwned(guideId: string, userId: string) {
+  const guide = await db.query.correctionGuide.findFirst({ where: eq(correctionGuide.id, guideId) });
+  if (!guide) throw new Error("Rubrique introuvable.");
+  await assertSectionOwnership(guide.sectionId, userId);
+  return guide;
+}
+
+async function loadSectionContext(sectionId: string, userId: string) {
+  const sec = await assertSectionOwnership(sectionId, userId);
 
   const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, sec.chapterId) });
   if (!chap) throw new Error("Chapitre introuvable.");
@@ -46,8 +71,18 @@ async function loadSectionContext(sectionId: string) {
   };
 }
 
-export async function generate(sectionId: string) {
-  const { sec, context } = await loadSectionContext(sectionId);
+// Lecture pour l'écran U14 (section/[id]/rubrique) : la rubrique non-obsolète
+// de la section, quel que soit son statut (a_valider ou valide).
+export async function getForSection(userId: string, sectionId: string) {
+  const sec = await assertSectionOwnership(sectionId, userId);
+  const existingGuide = await db.query.correctionGuide.findFirst({
+    where: and(eq(correctionGuide.sectionId, sectionId), ne(correctionGuide.statut, "obsolete")),
+  });
+  return { section: sec, guide: existingGuide ?? null };
+}
+
+export async function generate(userId: string, sectionId: string) {
+  const { sec, context } = await loadSectionContext(sectionId, userId);
   if (sec.statut !== "active") throw new SectionNotActiveError();
 
   const output = await generateGuide(context);
@@ -60,13 +95,38 @@ export async function generate(sectionId: string) {
   return created;
 }
 
-export async function validate(guideId: string) {
-  const guide = await db.query.correctionGuide.findFirst({ where: eq(correctionGuide.id, guideId) });
-  if (!guide) throw new Error("Rubrique introuvable.");
+// Rédaction manuelle (USER_FLOW É1.5, secours si le LLM échoue) : rubrique
+// vide, remplie point par point dans U14 puis soumise à `validate`, qui
+// applique le même garde-fou (≥ 1 point critique) qu'une rubrique générée.
+export async function createManual(userId: string, sectionId: string) {
+  const sec = await assertSectionOwnership(sectionId, userId);
+  if (sec.statut !== "active") throw new SectionNotActiveError();
+
+  const [created] = await db
+    .insert(correctionGuide)
+    .values({ sectionId, chapterVersion: sec.chapterVersion, contenu: { points: [] } })
+    .returning();
+
+  await db.update(section).set({ statut: "rubrique_a_valider" }).where(eq(section.id, sectionId));
+  return created;
+}
+
+// Valide la rubrique avec les points tels qu'édités dans U14 : seul point où
+// la section devient `prete`, donc seul endroit où le garde-fou §7 (≥ 1 point
+// critique) doit être vérifié, quelle que soit l'origine des points (LLM ou
+// rédaction manuelle).
+export async function validate(userId: string, guideId: string, points: unknown) {
+  const guide = await loadGuideOwned(guideId, userId);
+  if (guide.statut !== "a_valider") throw new Error("Rubrique déjà validée ou obsolète.");
+
+  const parsed = guideOutputSchema.safeParse({ points });
+  if (!parsed.success) {
+    throw new InvalidGuideEditError(parsed.error.issues[0]?.message ?? "Rubrique invalide.");
+  }
 
   const [updated] = await db
     .update(correctionGuide)
-    .set({ statut: "valide", valideLe: new Date() })
+    .set({ contenu: parsed.data, statut: "valide", valideLe: new Date() })
     .where(eq(correctionGuide.id, guideId))
     .returning();
 
@@ -74,10 +134,11 @@ export async function validate(guideId: string) {
   return updated;
 }
 
-export async function regenerate(sectionId: string) {
+export async function regenerate(userId: string, sectionId: string) {
   // le partial unique index (correction_guide_section_non_obsolete) garantit
   // qu'au plus une ligne non-obsolète existe par section — ce filtre la trouve
   // de façon déterministe, sans dépendre de l'ordre naturel de la table.
+  await assertSectionOwnership(sectionId, userId);
   const existing = await db.query.correctionGuide.findFirst({
     where: and(eq(correctionGuide.sectionId, sectionId), ne(correctionGuide.statut, "obsolete")),
   });
@@ -89,7 +150,7 @@ export async function regenerate(sectionId: string) {
       .set({ statut: "obsolete" })
       .where(eq(correctionGuide.id, existing.id));
 
-    const { context } = await loadSectionContext(sectionId);
+    const { context } = await loadSectionContext(sectionId, userId);
     const output = await generateGuide(context);
 
     const [created] = await tx
@@ -102,12 +163,17 @@ export async function regenerate(sectionId: string) {
   });
 }
 
-export async function generateBatch(chapterId: string) {
+export async function generateBatch(userId: string, chapterId: string) {
+  const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, chapterId) });
+  if (!chap) throw new Error("Chapitre introuvable.");
+  const subj = await db.query.subject.findFirst({ where: eq(subject.id, chap.subjectId) });
+  if (!subj || subj.userId !== userId) throw new Error("Chapitre introuvable.");
+
   const active = await db.query.section.findMany({
     where: and(eq(section.chapterId, chapterId), eq(section.statut, "active")),
   });
 
-  const results = await Promise.allSettled(active.map((s) => generate(s.id)));
+  const results = await Promise.allSettled(active.map((s) => generate(userId, s.id)));
 
   return results.map((r, i) =>
     r.status === "fulfilled"

@@ -68,44 +68,100 @@ async function createSection(statut: "active" | "a_trier" = "active") {
   return sec;
 }
 
+const point = (type: "critique" | "important" | "secondaire" = "critique") => ({
+  type,
+  intitule: "x",
+  attendu: "y",
+  segments_couverts: [],
+});
+
 describe("guide · S3", () => {
+  it("getForSection renvoie la section et sa rubrique non-obsolète, ou null si aucune", async () => {
+    const sec = await createSection("active");
+    expect((await guide.getForSection(userId, sec.id)).guide).toBeNull();
+
+    const created = await guide.generate(userId, sec.id);
+    const found = await guide.getForSection(userId, sec.id);
+    expect(found.guide?.id).toBe(created.id);
+  });
+
+
   it("generate refuse une section qui n'est pas active", async () => {
     const sec = await createSection("a_trier");
-    await expect(guide.generate(sec.id)).rejects.toThrow(guide.SectionNotActiveError);
+    await expect(guide.generate(userId, sec.id)).rejects.toThrow(guide.SectionNotActiveError);
   });
 
   it("generate crée la rubrique a_valider et passe la section en rubrique_a_valider", async () => {
     const sec = await createSection("active");
-    const created = await guide.generate(sec.id);
+    const created = await guide.generate(userId, sec.id);
 
     expect(created.statut).toBe("a_valider");
     const updated = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
     expect(updated?.statut).toBe("rubrique_a_valider");
   });
 
-  it("validate passe la rubrique à valide et la section à prete", async () => {
+  it("generate refuse une section qui n'appartient pas à l'utilisateur", async () => {
     const sec = await createSection("active");
-    const created = await guide.generate(sec.id);
+    const other = await createUser();
+    await expect(guide.generate(other, sec.id)).rejects.toThrow("Section introuvable.");
+  });
 
-    const validated = await guide.validate(created.id);
+  it("validate persiste les points édités, passe la rubrique à valide et la section à prete", async () => {
+    const sec = await createSection("active");
+    const created = await guide.generate(userId, sec.id);
+
+    const edited = [point("critique"), point("secondaire")];
+    const validated = await guide.validate(userId, created.id, edited);
     expect(validated.statut).toBe("valide");
     expect(validated.valideLe).not.toBeNull();
+    expect(validated.contenu).toEqual({ points: edited });
 
     const updated = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
     expect(updated?.statut).toBe("prete");
   });
 
+  it("validate refuse une rubrique sans aucun point critique", async () => {
+    const sec = await createSection("active");
+    const created = await guide.generate(userId, sec.id);
+
+    await expect(guide.validate(userId, created.id, [point("secondaire")])).rejects.toThrow(
+      guide.InvalidGuideEditError,
+    );
+
+    const untouched = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
+    expect(untouched?.statut).toBe("rubrique_a_valider");
+  });
+
+  it("validate refuse une rubrique d'un autre utilisateur", async () => {
+    const sec = await createSection("active");
+    const created = await guide.generate(userId, sec.id);
+    const other = await createUser();
+    await expect(guide.validate(other, created.id, [point("critique")])).rejects.toThrow(
+      "Section introuvable.",
+    );
+  });
+
+  it("createManual crée une rubrique vide a_valider, éditable puis validable", async () => {
+    const sec = await createSection("active");
+    const created = await guide.createManual(userId, sec.id);
+    expect(created.statut).toBe("a_valider");
+    expect(created.contenu).toEqual({ points: [] });
+
+    const validated = await guide.validate(userId, created.id, [point("critique")]);
+    expect(validated.statut).toBe("valide");
+  });
+
   it("regenerate refuse s'il n'existe aucune rubrique à régénérer", async () => {
     const sec = await createSection("active");
-    await expect(guide.regenerate(sec.id)).rejects.toThrow(guide.NoGuideToRegenerateError);
+    await expect(guide.regenerate(userId, sec.id)).rejects.toThrow(guide.NoGuideToRegenerateError);
   });
 
   it("regenerate passe l'ancienne rubrique obsolete et en crée une nouvelle a_valider", async () => {
     const sec = await createSection("active");
-    const first = await guide.generate(sec.id);
-    await guide.validate(first.id);
+    const first = await guide.generate(userId, sec.id);
+    await guide.validate(userId, first.id, [point("critique")]);
 
-    const second = await guide.regenerate(sec.id);
+    const second = await guide.regenerate(userId, sec.id);
     expect(second.id).not.toBe(first.id);
     expect(second.statut).toBe("a_valider");
 
@@ -120,7 +176,7 @@ describe("guide · S3", () => {
     const ok = await createSection("active");
     const notActive = await createSection("a_trier");
 
-    const results = await guide.generateBatch(chapterId);
+    const results = await guide.generateBatch(userId, chapterId);
 
     expect(results).toHaveLength(1);
     expect(results[0].sectionId).toBe(ok.id);

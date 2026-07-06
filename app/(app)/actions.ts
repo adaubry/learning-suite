@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/auth";
 import * as account from "@/services/account";
+import * as guide from "@/services/guide";
 import {
   subjectInputSchema,
   plannerConfigInputSchema,
@@ -98,6 +99,34 @@ export async function updateMethodologieGlobaleAction(_prevState: unknown, formD
   const userId = await requireUserId();
   await account.updateMethodologieGlobale(userId, parsed.data.methodologieTitresGlobale ?? null);
   return { success: true as const };
+}
+
+// Bloc 4.2 (É1.5) : déclenche la rubrique depuis le curriculum, redirige vers
+// l'écran de validation U14 (S3 possède l'invariant, l'action reste un adaptateur mince).
+export async function generateRubricAction(_prevState: unknown, formData: FormData) {
+  const sectionId = formData.get("sectionId");
+  if (typeof sectionId !== "string" || !sectionId) return { error: "Section introuvable." };
+  const userId = await requireUserId();
+  try {
+    await guide.generate(userId, sectionId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Erreur lors de la génération." };
+  }
+  revalidatePath("/curriculum");
+  redirect(`/section/${sectionId}/rubrique`);
+}
+
+export async function createManualRubricAction(_prevState: unknown, formData: FormData) {
+  const sectionId = formData.get("sectionId");
+  if (typeof sectionId !== "string" || !sectionId) return { error: "Section introuvable." };
+  const userId = await requireUserId();
+  try {
+    await guide.createManual(userId, sectionId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Erreur." };
+  }
+  revalidatePath("/curriculum");
+  redirect(`/section/${sectionId}/rubrique`);
 }
 
 // Clôture l'onboarding (É0.2 étape 4) : garantit la ligne PlannerConfig même

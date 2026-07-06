@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { chapter, subject } from "@/db/schema";
+import { chapter, subject, section } from "@/db/schema";
 import { parseChapter } from "@/core/parser/parseChapter";
 import { validateDocument, anomalyKey } from "@/core/parser/validateDocument";
 import { computeContentHash } from "@/core/parser/contentHash";
@@ -66,5 +66,12 @@ export async function listChaptersBySubject(subjectId: string) {
   return db.query.chapter.findMany({
     where: eq(chapter.subjectId, subjectId),
     orderBy: (c, { desc }) => [desc(c.maj)],
+  });
+}
+
+export async function listSectionsByChapter(chapterId: string) {
+  return db.query.section.findMany({
+    where: eq(section.chapterId, chapterId),
+    orderBy: (s, { asc }) => [asc(s.ordre)],
   });
 }
