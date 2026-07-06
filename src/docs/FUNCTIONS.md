@@ -173,18 +173,18 @@ Une action par point d'entrée de service exposé à l'UI. Contenu type : authen
 
 ## 7. Registre des invariants — un propriétaire chacun
 
-| Invariant                                       | Propriétaire        | Renfort                             |
-| ----------------------------------------------- | ------------------- | ----------------------------------- |
-| Une seule session ouverte par utilisateur       | S4                  | contrainte DB                       |
-| Aucune étude sans rubrique `valide`             | S3                  | contrainte DB                       |
-| Sauvegarde avant tout appel LLM                 | S4                  | ordre transactionnel                |
-| Sessions & erreurs passées immuables            | S1 (cascade) + S4   | pas d'UPDATE, INSERT only           |
-| Divulgation contrôlée côté serveur              | P10 appliqué par S4 | U16 incapable d'afficher l'absent   |
-| Jamais de commit de version sans simulation     | S1                  | API en deux temps                   |
-| Gel/dégel des ReviewCards                       | S6                  | trois appelants, une implémentation |
-| Seules les erreurs `actives` alimentent les LLM | S7.activeFor        | ContextBuilders (L0)                |
-| « Journalisé » = AuditService                   | S8                  | —                                   |
-| OpenRouter uniquement via L0                    | L0                  | revue de code                       |
+| Invariant                                       | Propriétaire        | Renfort                                                                              |
+| ----------------------------------------------- | ------------------- | ------------------------------------------------------------------------------------ |
+| Une seule session ouverte par utilisateur       | S4                  | index unique partiel `StudyCycle(user_id) WHERE closed_at IS NULL` (ARCHITECTURE §8) |
+| Aucune étude sans rubrique `valide`             | S3                  | contrainte DB                                                                        |
+| Sauvegarde avant tout appel LLM                 | S4                  | ordre transactionnel                                                                 |
+| Sessions & erreurs passées immuables            | S1 (cascade) + S4   | pas d'UPDATE, INSERT only                                                            |
+| Divulgation contrôlée côté serveur              | P10 appliqué par S4 | U16 incapable d'afficher l'absent                                                    |
+| Jamais de commit de version sans simulation     | S1                  | API en deux temps                                                                    |
+| Gel/dégel des ReviewCards                       | S6                  | trois appelants, une implémentation                                                  |
+| Seules les erreurs `actives` alimentent les LLM | S7.activeFor        | ContextBuilders (L0)                                                                 |
+| « Journalisé » = AuditService                   | S8                  | —                                                                                    |
+| OpenRouter uniquement via L0                    | L0                  | revue de code                                                                        |
 
 ---
 

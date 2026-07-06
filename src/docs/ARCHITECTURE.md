@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Planificateur, machines à états & modèle de données
 
-> **Statut** : v0.3
+> **Statut** : v0.4
 > **Rôle** : source de vérité structurelle. Toute proposition de modification du code (humaine ou IA) doit être vérifiée contre ce document. Si elle le contredit, soit elle est rejetée, soit ce document est révisé d'abord — jamais l'inverse.
 > **Dépend de** : FORMAT.md v0.2 · TECH_MAPPING.md v0.2 (stack et délégations) · USER_FLOW.md v0.3 · FUNCTIONS.md v0.3 (services & invariants). **Complété par** : LLM_CONTRACTS.md.
 
@@ -193,7 +193,18 @@ CorrectionGuide  id, section_id, chapter_version INT,
                  statut ENUM(a_valider, valide, obsolete),
                  valide_le TIMESTAMPTZ
 
-StudySession  id, section_id, guide_id, chapter_version INT,
+StudyCycle    id, user_id, section_id, type ENUM(etude, revision),
+              etat ENUM(rubrique_a_valider, blurting, correction,
+                        feynman, bilan, clos),        -- état persisté machine B/C
+              closed_at TIMESTAMPTZ NULL, created_at
+              -- LE cycle en cours : porte l'invariant « une seule session
+              --   ouverte par utilisateur » via INDEX UNIQUE PARTIEL :
+              --   UNIQUE(user_id) WHERE closed_at IS NULL
+              -- sert aussi la reprise (S4.resume lit le cycle ouvert + son état)
+              -- et regroupe les tentatives d'un même cycle pour l'historique
+
+StudySession  id, cycle_id → StudyCycle,             -- chaque tentative immuable
+              section_id, guide_id, chapter_version INT,
               type ENUM(blurting, feynman, revision),
               tentative INT,
               input TEXT,               -- blurting OU transcript complet
@@ -238,6 +249,7 @@ PromptLog     id, appel ENUM(sectionnement, rubrique, correction_erreurs, feynma
 Contraintes notables :
 
 - `CorrectionGuide.statut = valide` **requis** pour qu'une section entre dans la file du jour.
+- **Une seule session ouverte par utilisateur** : index unique partiel `StudyCycle(user_id) WHERE closed_at IS NULL` — l'invariant de S4 est tenu par la base, pas seulement par le service ; ouvrir un cycle = INSERT (échoue si un cycle ouvert existe), le clore = renseigner `closed_at`.
 - Un seul `CorrectionGuide` non-obsolète par section.
 - Le "carnet d'erreurs" est une vue filtrée d'`ErrorEntry` par matière, pas une table à part.
 
@@ -291,9 +303,7 @@ prompts/                    # versionnés, hors code
   rubrique.v1.md
   correction_erreurs.v1.md
   feynman.v1.md
-e2e/                        # tout ce qui touche aux tests e2e/ia, un seul dossier (ADR 16)
-  *.spec.ts / *.canary.spec.ts   # specs Playwright (navigateur)
-  evals/                         # jeu d'or + canaris LLM, à partir de la phase blurting
+evals/                      # jeu d'or + canaris (à partir de la phase blurting)
 ```
 
 Règles d'implémentation :
@@ -338,7 +348,6 @@ Règles d'implémentation :
 | 13  | Édition WYSIWYG Tiptap limitée aux 3 constructions ; Markdown = stockage/échange                                 | la barre d'outils EST la convention ; invalidité d'emphase impossible | édition Markdown brute                                                                                                                                                                                                                                                                                  |
 | 14  | UI 100 % shadcn ; zéro lib de charts/dnd/calendrier                                                              | doctrine natif > shadcn > maison ; dépendances minimales              | dnd-kit, Recharts, FullCalendar                                                                                                                                                                                                                                                                         |
 | 15  | Parsing par remark, jamais MDX                                                                                   | données runtime, pas de JSX injectable, remark est la couche utile    | @next/mdx                                                                                                                                                                                                                                                                                               |
-| 16  | Tout ce qui touche aux tests e2e/ia (specs Playwright, evals LLM, artefacts générés) regroupé sous `e2e/`        | un seul dossier à sonder pour tout ce qui est test/ia, zéro confusion avec les tests unitaires colocalisés dans `src/`, filtrage par nom de fichier natif (Playwright ignore `evals/run.mjs`, non `.spec.ts`) | `evals/` séparé à la racine ; `src/evals/`                                                                                                                                                                                                                                                             |
 
 ## 12. Hors périmètre v1
 
@@ -350,7 +359,7 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.4     | 2026-07-06 | Regroupement de tout ce qui touche aux tests e2e/ia sous `e2e/` (specs Playwright + `e2e/evals/`) ; ADR 16. Voir DECISIONS.md.                                                                                                                                                                                                                                                                                                                                                              |
 | 0.1     | 2026-07-02 | Création                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 0.4     | 2026-07-02 | Correction de modélisation (review) : ajout de l'entité **StudyCycle** (état persisté des machines B/C, `closed_at`) portant l'invariant « une seule session ouverte » via index unique partiel, la reprise de session et le regroupement des tentatives ; `StudySession.cycle_id`.                                                                                                                                                                                                          |
 | 0.3     | 2026-07-02 | Consolidation : annexe A de USER_FLOW absorbée (date_examen, archivage matière/chapitre, RefileItem, divulgation tracée, AuditEvent, méthodologie globale+surcharge, rubriques paresseuses, Feynman optionnel importance 2) ; divulgation contrôlée et re-file inscrites aux machines B/C ; stack consolidée depuis TECH_MAPPING v0.2 (remark jamais MDX, Tiptap WYSIWYG, UI 100 % shadcn) ; arborescence alignée sur les 4 couches de FUNCTIONS (core/services/llm/components) ; ADR 11–15. |
 | 0.2     | 2026-07-02 | Le Planificateur devient l'organe central (accueil = file du jour, étude/révision subordonnées). Importance 1..5 (1 = hors programme, remplace `écartée`). OpenRouter pour tous les appels LLM et la transcription (ADR 9 + vigilance). §9 : contexte requis énuméré pour chaque appel. Ajout PlannerConfig et DeferralLog.                                                                                                                                                                  |
