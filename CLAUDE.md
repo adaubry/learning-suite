@@ -31,7 +31,7 @@ Si la récitation est corrigée par l'humain : la refaire. On ne code pas sur un
 - **Anti-scope-creep actif** : ne pas proposer de fonctionnalités, d'abstractions « pour plus tard », de généralisations multi-utilisateurs, ni de refactors non demandés. Le périmètre est celui du bloc courant, point.
 - **Prompts = code critique** : toute modification d'un fichier de `/prompts` exige nouvelle version du fichier (`.vN+1.md`), entrée PROMPTS_CHANGELOG.md, passage des evals, et verdict consigné.
 - **Vérifier avant d'affirmer** : ne jamais prétendre qu'un test passe sans l'avoir exécuté ; ne jamais décrire un comportement du code sans l'avoir lu dans cette session.
-- **Données réelles** : les fixtures de parsing/correction proviennent de `evals/` et des vrais cours de l'utilisateur — ne pas inventer de faux cours de droit pour les tests d'intégration (les exemples juridiques hallucinés sont précisément ce qu'on chasse).
+- **Données réelles** : les fixtures de parsing/correction proviennent de `e2e/evals/` et des vrais cours de l'utilisateur — ne pas inventer de faux cours de droit pour les tests d'intégration (les exemples juridiques hallucinés sont précisément ce qu'on chasse).
 
 ## 3. Commandes du projet
 
@@ -50,8 +50,10 @@ Si la récitation est corrigée par l'humain : la refaire. On ne code pas sur un
 src/docs/      FORMAT, ARCHITECTURE, USER_FLOW, FUNCTIONS, TECH_MAPPING, PLAN,
                DECISIONS.md, PROMPTS_CHANGELOG.md   ← sources de vérité
 prompts/       *.vN.md — versionnés, jamais inline
-evals/         jeu d'or + canaris LLM (données réelles de l'utilisateur)
-e2e/           specs Playwright — *.spec.ts ordinaires, *.canary.spec.ts sentinelles
+e2e/           tout ce qui touche aux tests e2e/ia, un seul dossier :
+                 *.spec.ts / *.canary.spec.ts  — specs Playwright (navigateur)
+                 evals/                        — jeu d'or + canaris LLM (vraie API)
+                 test-results/, playwright-report/ — artefacts générés, ignorés
 app/(app)/     écrans avec navigation
 app/(focus)/   écrans sanctuarisés (blurting, feynman, révision) — pas de nav
 src/core/      cœurs purs P1–P10 — tests exhaustifs

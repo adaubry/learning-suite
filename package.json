@@ -10,7 +10,7 @@
     "check": "tsc --noEmit && npm run lint && vitest run",
     "test:canary": "vitest run --passWithNoTests \"src/**/*.canary.test.ts\" && playwright test --pass-with-no-tests \"\\.canary\\.spec\\.ts$\"",
     "check:full": "npm run check && playwright test",
-    "evals": "node evals/run.mjs"
+    "evals": "node e2e/evals/run.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
