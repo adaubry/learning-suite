@@ -291,3 +291,90 @@ describe("session · S4 terminerSessionTemporaire", () => {
     await expect(session.terminerSessionTemporaire(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
   });
 });
+
+describe("session · S4 retryCorrection", () => {
+  it("rejoue L3 sur la tentative sauvegardée sans en créer une nouvelle", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("réseau down"));
+
+    await expect(session.submitBlurting(userId, cycle.id, "Ma restitution.")).rejects.toThrow();
+
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    const result = await session.retryCorrection(userId, cycle.id);
+
+    expect(result.tentative).toBe(1);
+    expect(result.verdict).toBe("acquis");
+
+    const rows = await db.query.studySession.findMany({ where: eq(studySession.cycleId, cycle.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].input).toBe("Ma restitution.");
+  });
+
+  it("refuse s'il n'y a aucune tentative en échec à relancer", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution.");
+
+    await expect(session.retryCorrection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+  });
+});
+
+describe("session · S4 getCurrentCorrection", () => {
+  it("status pending quand la tentative sauvegardée n'a pas encore de correction", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("réseau down"));
+    await expect(session.submitBlurting(userId, cycle.id, "Ma restitution.")).rejects.toThrow();
+
+    const current = await session.getCurrentCorrection(userId, cycle.id);
+    expect(current.status).toBe("pending");
+  });
+
+  it("status ready : ré-applique la même divulgation que celle déjà tranchée, sans nouvel appel LLM", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Ma restitution.");
+
+    (fetch as ReturnType<typeof vi.fn>).mockClear();
+    const current = await session.getCurrentCorrection(userId, cycle.id);
+
+    expect(fetch).not.toHaveBeenCalled();
+    if (current.status !== "ready") throw new Error("attendu: ready");
+    expect(current.verdict).toBe("insuffisant");
+    expect(current.divulgation).toBe("controlee");
+    expect(current.diff[0]).toEqual({ intitule: "Point critique", statut: "manquant" });
+  });
+
+  it("resolveOutcome('reveler') renvoie directement la vue complètement divulguée", async () => {
+    // le cycle boucle vers `blurting` dans le même appel (cf. resolveOutcome) :
+    // la vue révélée doit être renvoyée ICI, une relecture via
+    // getCurrentCorrection arriverait trop tard (etat déjà changé).
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
+
+    const revealed = await session.resolveOutcome(userId, cycle.id, "reveler");
+    if (revealed.outcome !== "reveler") throw new Error("attendu: reveler");
+    expect(revealed.divulgation).toBe("complete");
+    expect(revealed.diff[0]).toEqual({
+      intitule: "Point critique",
+      statut: "manquant",
+      attendu: "SECRET attendu Point critique",
+      explication: "SECRET explication 1",
+    });
+
+    await expect(session.getCurrentCorrection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+  });
+});

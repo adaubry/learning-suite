@@ -96,6 +96,11 @@ function SectionRow({ section }: { section: Section }) {
           Valider la rubrique
         </Button>
       )}
+      {section.statut === "prete" && (
+        <Button size="sm" nativeButton={false} render={<Link href={`/etude/${section.id}`} />}>
+          Étudier maintenant
+        </Button>
+      )}
       {error && <p className="text-sm text-destructive">{error}</p>}
     </li>
   );

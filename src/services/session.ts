@@ -11,8 +11,9 @@ import {
   presentCorrection,
   type MergedDiffPoint,
   type MergedErrorCandidate,
+  type FilteredCorrection,
 } from "@/core/correction/presentCorrection";
-import type { GuideOutput } from "@/llm/schemas/guide";
+import type { GuideOutput, ControlPoint } from "@/llm/schemas/guide";
 
 // S4 · SessionService — partiel (FUNCTIONS §3, §7 ; PLAN Bloc 5.1) : start /
 // submitBlurting / resolveOutcome (retenter, reveler) / abandon, plus un raccourci
@@ -62,6 +63,65 @@ async function loadLatestSession(cycleId: string) {
   return sessions[0] ?? null;
 }
 
+// Numéro de la PROCHAINE tentative pour ce cycle (chaque StudySession est
+// immuable, ADR 6) — exporté pour l'affichage (U15) avant toute soumission.
+export async function nextTentative(cycleId: string) {
+  const previousAttempts = await db.query.studySession.findMany({ where: eq(studySession.cycleId, cycleId) });
+  return previousAttempts.length + 1;
+}
+
+type ErreursActives = Awaited<ReturnType<typeof errorService.activeForSection>>;
+
+// Cœur partagé par submitBlurting (première tentative) et retryCorrection (échec
+// LLM rejoué sans re-saisie, USER_FLOW É3.2) : appelle L3, résout point_index/
+// recidive_index vers les vraies données, calcule le verdict, persiste, applique
+// P10. `sessionId` désigne la ligne DÉJÀ sauvegardée (input toujours en base
+// avant cet appel — FUNCTIONS §7) ; cette fonction ne fait qu'un UPDATE dessus.
+async function runCorrection(
+  sessionId: string,
+  input: string,
+  tentative: number,
+  points: ControlPoint[],
+  erreursActives: ErreursActives,
+) {
+  const context = buildCorrectionContext({
+    points,
+    blurting: input,
+    tentative,
+    erreursActives: erreursActives.map((e) => ({ id: e.id, type: e.type, description: e.description })),
+  });
+
+  const output = await correctBlurting(context);
+
+  // `attendu` vient de la rubrique déjà en base, jamais du LLM (le cours ne lui a
+  // jamais été envoyé) ; `point_index`/`recidive_index` résolus vers les vraies
+  // données ici, une fois pour toutes (les LLM comptent mal, DECISIONS.md bloc 3.2).
+  const diff: MergedDiffPoint[] = output.diff.map((d) => {
+    const p = points[d.point_index - 1];
+    return { intitule: p.intitule, type: p.type, statut: d.statut, attendu: p.attendu, explication: d.explication };
+  });
+  const erreursCandidates: MergedErrorCandidate[] = output.erreurs_candidates.map((e) => ({
+    type: e.type,
+    description: e.description,
+    idErreurExistante: e.recidive_index != null ? erreursActives[e.recidive_index - 1].id : null,
+  }));
+
+  const verdict = computeVerdict(diff);
+  const retryAttendu = verdict === "insuffisant";
+  const divulgation = retryAttendu ? "controlee" : "complete";
+
+  const [updated] = await db
+    .update(studySession)
+    .set({ correction: { diff, erreursCandidates }, verdictLlm: verdict, verdictFinal: verdict, divulgation })
+    .where(eq(studySession.id, sessionId))
+    .returning();
+
+  // P10 appliqué ici, côté serveur exclusivement : les champs masqués ne sont
+  // jamais construits pour le client (ARCHITECTURE §7).
+  const filtered = presentCorrection({ diff, erreursCandidates }, { verdict, retryAttendu });
+  return { cycleId: updated.cycleId, sessionId, tentative, ...filtered };
+}
+
 // Vérifie la rubrique via S3 (section `prete` ⇒ rubrique valide, contrainte DB en
 // renfort) ; crée ou reprend — une seule session ouverte par utilisateur, invariant
 // tenu par l'index unique partiel (ARCHITECTURE §8), doublé ici d'une vérification
@@ -99,8 +159,7 @@ export async function submitBlurting(userId: string, cycleId: string, blurtingTe
   const guide = await loadValidGuide(cycle.sectionId);
   const points = (guide.contenu as GuideOutput).points;
 
-  const previousAttempts = await db.query.studySession.findMany({ where: eq(studySession.cycleId, cycleId) });
-  const tentative = previousAttempts.length + 1;
+  const tentative = await nextTentative(cycleId);
 
   // ARCHITECTURE §9 ligne 3+4 : erreurs actives DE LA SECTION (pas de la matière,
   // contrairement à L2) — détection de récidive sur ce périmètre précis.
@@ -122,50 +181,80 @@ export async function submitBlurting(userId: string, cycleId: string, blurtingTe
 
   await db.update(studyCycle).set({ etat: "correction" }).where(eq(studyCycle.id, cycleId));
 
-  const context = buildCorrectionContext({
-    points,
-    blurting: blurtingText,
-    tentative,
-    erreursActives: erreursActives.map((e) => ({ id: e.id, type: e.type, description: e.description })),
-  });
+  return runCorrection(savedSession.id, blurtingText, tentative, points, erreursActives);
+}
 
-  const output = await correctBlurting(context);
+// USER_FLOW É3.2 : « le blurting est TOUJOURS sauvegardé d'abord ; [Relancer la
+// correction] sans re-saisie » — rejoue L3 sur la tentative déjà persistée dont
+// l'appel a échoué (`correction` encore NULL), sans en créer une nouvelle.
+export async function retryCorrection(userId: string, cycleId: string) {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction en attente.");
 
-  // `attendu` vient de la rubrique déjà en base, jamais du LLM (le cours ne lui a
-  // jamais été envoyé) ; `point_index`/`recidive_index` résolus vers les vraies
-  // données ici, une fois pour toutes (les LLM comptent mal, DECISIONS.md bloc 3.2).
-  const diff: MergedDiffPoint[] = output.diff.map((d) => {
-    const p = points[d.point_index - 1];
-    return { intitule: p.intitule, type: p.type, statut: d.statut, attendu: p.attendu, explication: d.explication };
-  });
-  const erreursCandidates: MergedErrorCandidate[] = output.erreurs_candidates.map((e) => ({
-    type: e.type,
-    description: e.description,
-    idErreurExistante: e.recidive_index != null ? erreursActives[e.recidive_index - 1].id : null,
-  }));
+  const latest = await loadLatestSession(cycleId);
+  if (!latest || latest.correction !== null) {
+    throw new WrongCycleStateError("Aucune tentative en échec à relancer.");
+  }
 
-  const verdict = computeVerdict(diff);
-  const retryAttendu = verdict === "insuffisant";
-  const divulgation = retryAttendu ? "controlee" : "complete";
+  const guide = await db.query.correctionGuide.findFirst({ where: eq(correctionGuide.id, latest.guideId) });
+  if (!guide) throw new SectionNotReadyError();
+  const points = (guide.contenu as GuideOutput).points;
 
-  await db
-    .update(studySession)
-    .set({ correction: { diff, erreursCandidates }, verdictLlm: verdict, verdictFinal: verdict, divulgation })
-    .where(eq(studySession.id, savedSession.id));
+  const erreursActives = await errorService.activeForSection(cycle.sectionId);
 
-  // P10 appliqué ici, côté serveur exclusivement : les champs masqués ne sont
-  // jamais construits pour le client (ARCHITECTURE §7).
-  const filtered = presentCorrection({ diff, erreursCandidates }, { verdict, retryAttendu });
-  return { cycleId, sessionId: savedSession.id, tentative, ...filtered };
+  return runCorrection(latest.id, latest.input, latest.tentative, points, erreursActives);
+}
+
+export type CurrentCorrection =
+  | { status: "pending"; cycleId: string; sessionId: string; tentative: number }
+  | ({ status: "ready"; cycleId: string; sessionId: string; tentative: number } & FilteredCorrection);
+
+// Re-sert une correction déjà persistée (reprise d'un rechargement de l'écran) —
+// aucun appel LLM ici, seulement une ré-application de P10 sur le JSON déjà en
+// base, avec la divulgation déjà tranchée (`StudySession.divulgation`).
+export async function getCurrentCorrection(userId: string, cycleId: string): Promise<CurrentCorrection> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction pour ce cycle.");
+
+  const latest = await loadLatestSession(cycleId);
+  if (!latest) throw new WrongCycleStateError("Aucune tentative pour ce cycle.");
+
+  if (latest.correction === null) {
+    return { status: "pending", cycleId, sessionId: latest.id, tentative: latest.tentative };
+  }
+
+  const { diff, erreursCandidates } = latest.correction as {
+    diff: MergedDiffPoint[];
+    erreursCandidates: MergedErrorCandidate[];
+  };
+  const filtered = presentCorrection(
+    { diff, erreursCandidates },
+    { verdict: latest.verdictFinal!, retryAttendu: latest.divulgation === "controlee" },
+  );
+  return { status: "ready", cycleId, sessionId: latest.id, tentative: latest.tentative, ...filtered };
 }
 
 export type ResolveOutcome = "retenter" | "reveler";
+
+export type ResolveOutcomeResult =
+  | { outcome: "retenter" }
+  | ({ outcome: "reveler" } & FilteredCorrection);
 
 // 2 branches ce bloc (retenter, reveler) — "passer au Feynman" attend Phase 7
 // (L4/L5), "valider sans Feynman" attend Phase 6 (S6.createCard). RefileItem
 // écrit directement par S4 : S5 n'existe pas encore, la donnée précède l'écran
 // (PLAN Bloc 5.2 ; DECISIONS.md bloc 5.1 — propriété migrera vers S5.refile).
-export async function resolveOutcome(userId: string, cycleId: string, outcome: ResolveOutcome) {
+//
+// Les deux branches font boucler le cycle vers `blurting` (la prochaine tentative
+// attend la re-file, jamais un retry immédiat) — mais `reveler` doit d'abord
+// montrer les réponses : renvoyer la vue complètement divulguée ICI évite de la
+// re-lire ensuite via getCurrentCorrection, qui exigerait `etat: correction` déjà
+// quitté à ce point.
+export async function resolveOutcome(
+  userId: string,
+  cycleId: string,
+  outcome: ResolveOutcome,
+): Promise<ResolveOutcomeResult> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à résoudre.");
 
@@ -175,9 +264,18 @@ export async function resolveOutcome(userId: string, cycleId: string, outcome: R
     throw new WrongCycleStateError("Cette issue ne s'applique qu'à un verdict insuffisant.");
   }
 
+  let result: ResolveOutcomeResult = { outcome: "retenter" };
+
   if (outcome === "reveler") {
     await db.update(studySession).set({ divulgation: "complete" }).where(eq(studySession.id, latest.id));
     await auditService.logEvent("revelation_correction", "study_session", latest.id);
+
+    const { diff, erreursCandidates } = latest.correction as {
+      diff: MergedDiffPoint[];
+      erreursCandidates: MergedErrorCandidate[];
+    };
+    const filtered = presentCorrection({ diff, erreursCandidates }, { verdict: latest.verdictFinal, retryAttendu: false });
+    result = { outcome: "reveler", ...filtered };
   }
 
   // jamais de retry immédiat (ARCHITECTURE §5) : le prochain blurting attend la
@@ -192,7 +290,7 @@ export async function resolveOutcome(userId: string, cycleId: string, outcome: R
   // nouvelle tentative (tentative n+1) peut le refermer.
   await db.update(studyCycle).set({ etat: "blurting" }).where(eq(studyCycle.id, cycleId));
 
-  return { ok: true as const };
+  return result;
 }
 
 export async function abandon(userId: string, cycleId: string) {
