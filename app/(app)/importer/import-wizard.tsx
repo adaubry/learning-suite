@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,19 +8,26 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { AnomalyPanel } from "@/components/anomaly-panel";
+import { TriageList } from "@/components/triage-list";
 import type { Anomaly } from "@/core/parser/types";
 import { anomalyKey } from "@/core/parser/validateDocument";
-import { analyzeChapterAction, importChapterAction } from "./actions";
+import {
+  analyzeChapterAction,
+  applyTriageAction,
+  importChapterAction,
+  proposeSectioningAction,
+} from "./actions";
 
-// U23 ImportWizard (FUNCTIONS §6.2) — étapes É1.0–É1.2 de USER_FLOW P1.
+// U23 ImportWizard (FUNCTIONS §6.2) — étapes É1.0–É1.4 de USER_FLOW P1.
 // Étape dans searchParams (TECH_MAPPING §4.3, reprise gratuite par URL).
 
-type Step = "destination" | "import" | "rapport";
+type Step = "destination" | "import" | "rapport" | "sectionnement" | "tri";
 
 export function ImportWizard({ subjects }: { subjects: { id: string; nom: string }[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const step = (searchParams.get("step") as Step) || "destination";
+  const chapterId = searchParams.get("chapterId") ?? "";
 
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? "");
   const [titre, setTitre] = useState("");
@@ -29,8 +36,15 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
 
   const [analyzeState, analyzeAction, analyzing] = useActionState(analyzeChapterAction, undefined);
   const [importState, importAction, importing] = useActionState(importChapterAction, undefined);
+  const [proposeState, proposeAction] = useActionState(proposeSectioningAction, undefined);
 
   const anomalies: Anomaly[] = analyzeState?.success ? analyzeState.anomalies : [];
+
+  function triggerPropose() {
+    const fd = new FormData();
+    fd.set("chapterId", chapterId);
+    startTransition(() => proposeAction(fd));
+  }
 
   // ponytail: un rechargement en pleine étape "rapport" perd le markdown et
   // l'analyse (état en mémoire, pas de persistance au-delà de l'étape en URL
@@ -39,6 +53,30 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
   useEffect(() => {
     if (step === "rapport" && !analyzeState) {
       router.replace("/importer?step=import");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // É1.3 : l'arrivée sur l'écran de sectionnement déclenche S2.propose (écran
+  // d'attente dédié, USER_FLOW É1.3 — pas le bouton d'import, DECISIONS.md bloc 3.3).
+  // `sectioningFiredRef` : un appel LLM de cet écran dure plusieurs minutes (modèle
+  // de raisonnement) — le double-appel de useEffect en dev (StrictMode) déclencherait
+  // deux appels concurrents avant que l'état `pending` ne se propage ; le ref bloque
+  // dès le premier montage, indépendamment du re-render.
+  const sectioningFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (step === "sectionnement" && chapterId && sectioningFiredRef.current !== chapterId) {
+      sectioningFiredRef.current = chapterId;
+      triggerPropose();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, chapterId]);
+
+  // même repli qu'à l'étape "rapport" : un rechargement à l'étape "tri" perd le
+  // résultat du sectionnement en mémoire — on relance depuis l'écran d'attente.
+  useEffect(() => {
+    if (step === "tri" && !proposeState?.success) {
+      router.replace(chapterId ? `/importer?step=sectionnement&chapterId=${chapterId}` : "/importer");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
@@ -198,6 +236,70 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
               </form>
             </>
           )}
+        </div>
+      )}
+
+      {step === "sectionnement" && (
+        <div className="flex flex-col gap-4 rounded border p-4">
+          <h2 className="text-sm font-semibold">4. Sectionnement</h2>
+          {!proposeState && (
+            <p className="text-sm text-muted-foreground">
+              Proposition d&apos;un sectionnement pédagogique en cours…
+            </p>
+          )}
+          {proposeState?.error && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-destructive">{proposeState.error}</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="self-start"
+                onClick={triggerPropose}
+              >
+                Relancer
+              </Button>
+            </div>
+          )}
+          {proposeState?.success && (
+            <>
+              {proposeState.method === "mecanique" && (
+                <p className="rounded bg-muted p-2 text-sm text-muted-foreground">
+                  L&apos;IA n&apos;a pas pu proposer de sectionnement : un découpage mécanique par
+                  titres a été utilisé. Tu peux le retrier ci-après.
+                </p>
+              )}
+              <ul className="flex flex-col gap-1 text-sm">
+                {proposeState.sections.map((s) => (
+                  <li key={s.id} className="rounded border px-2 py-1">
+                    {s.titre}
+                  </li>
+                ))}
+              </ul>
+              <Button
+                type="button"
+                className="self-start"
+                onClick={() => router.replace(`/importer?step=tri&chapterId=${chapterId}`)}
+              >
+                Passer au tri
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+
+      {step === "tri" && proposeState?.success && (
+        <div className="flex flex-col gap-4">
+          <h2 className="text-sm font-semibold">5. Tri des sections</h2>
+          <TriageList
+            chapterId={chapterId}
+            sections={proposeState.sections.map((s) => ({
+              id: s.id,
+              titre: s.titre,
+              importance: s.importance,
+              contenu: s.contenu,
+            }))}
+            action={applyTriageAction}
+          />
         </div>
       )}
     </div>

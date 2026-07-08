@@ -12,7 +12,15 @@ const fixture = readFileSync(
   "utf8",
 );
 
-test("importer un vrai chapitre : upload, rapport, validation", async ({ page, request }) => {
+test("importer un vrai chapitre : upload, rapport, sectionnement, tri", async ({ page, request }) => {
+  // L1 (sectionnement) n'est pas mocké au niveau réseau ici : `page.route`
+  // n'intercepte que les requêtes du navigateur, pas le `fetch` serveur de L0
+  // (server action). Ce test frappe donc le vrai modèle configuré en local —
+  // observé jusqu'à ~4.4 min avec un modèle de raisonnement (DECISIONS.md,
+  // bloc 3.3 : séparateur explicite du fait que PLAN §0.2 "LLM mocké au niveau
+  // réseau" n'a pas de prise côté serveur pour l'instant, à construire si ce
+  // test doit rester rapide/gratuit en CI).
+  test.setTimeout(360_000);
   const email = `e2e-import-${Date.now()}@example.com`;
 
   await page.goto("/login");
@@ -68,6 +76,24 @@ test("importer un vrai chapitre : upload, rapport, validation", async ({ page, r
   await expect(page.locator("em").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Valider l'import" }).dispatchEvent("click");
+
+  await expect(page.getByText("4. Sectionnement")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Passer au tri" })).toBeVisible({ timeout: 330_000 });
+
+  await page.getByRole("button", { name: "Passer au tri" }).dispatchEvent("click");
+  await expect(page.getByText("5. Tri des sections")).toBeVisible();
+  await expect(page.getByText(/\d+ sections · \d+ exclues/)).toBeVisible();
+
+  // U13 : fusionner la 2ᵉ section avec la 1ʳᵉ, vérifier que la liste se recompose.
+  // (scope à "form li" : la sidebar U1 a elle aussi des <li>)
+  const rows = page.locator("form li");
+  const before = await rows.count();
+  if (before > 1) {
+    await rows.nth(1).getByRole("button", { name: "Fusionner avec la précédente" }).dispatchEvent("click");
+    await expect(rows).toHaveCount(before - 1);
+  }
+
+  await page.getByRole("button", { name: "Terminer le tri" }).dispatchEvent("click");
   await expect(page).toHaveURL(/\/curriculum$/);
   await expect(page.getByText("Introduction au droit des obligations")).toBeVisible();
   await expect(page.getByText("v1")).toBeVisible();

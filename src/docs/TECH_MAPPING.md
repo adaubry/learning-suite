@@ -1,6 +1,6 @@
 # TECH_MAPPING.md — Délégation : natif Next.js d'abord, librairies spécialisées ensuite, code maison en dernier
 
-> **Statut** : v0.2
+> **Statut** : v0.3
 > **Rôle** : pour chaque brique de FUNCTIONS.md, décide dans l'ordre de priorité imposé : **(1) natif Next.js / React / TypeScript / plateforme web → (2) librairie spécialisée → (3) code maison.** Le code maison est réservé à ce qu'aucune librairie ne peut savoir : le domaine.
 > **Dépend de** : FUNCTIONS.md. **Répercuté dans** : ARCHITECTURE.md v0.3 (stack + modèle), USER_FLOW.md v0.3, FUNCTIONS.md v0.3.
 
@@ -86,7 +86,7 @@ MDX résout un autre problème. C'est un **compilateur de contenu en composants 
 
 | Brique                                       | Délégation                                                                                                  | Reste maison                                     |
 | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **U13 TriageList**                           | shadcn (inline edit, menus) ; réordonnancement comme U10                                                    | logique fusion/scission                          |
+| **U13 TriageList**                           | shadcn (inline edit, menus)                                                                                  | logique fusion/scission                          |
 | **U14, U16, U17, U21, U24**                  | primitives shadcn (formulaires, badges, accordéons)                                                         | **tout le contenu — ces écrans SONT le produit** |
 | **U15 BlurtingEditor**                       | `<textarea>` autogrow ou Tiptap minimal (gras seul)                                                         | garantie « aucun accès au cours » (composition)  |
 | **U19 FeynmanChat / U20 PushToTalkRecorder** | **MediaRecorder natif** ; Suspense/streaming pour les relances ; **`speechSynthesis` natif** pour le TTS v1 | orchestration + transcript éditable              |
@@ -130,5 +130,6 @@ MDX résout un autre problème. C'est un **compilateur de contenu en composants 
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                       |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.3     | 2026-07-08 | U13 TriageList : retrait de « réordonnancement comme U10 » — ce document de délégation technique n'a pas vocation à créer une exigence produit ; ni FUNCTIONS §6.2 ni USER_FLOW É1.4 ne décrivent de réordonnancement manuel du tri, l'ordre suit celui des bornes du plan (DECISIONS.md, bloc 3.3). |
 | 0.1     | 2026-07-02 | Création (remark, Tiptap, dnd-kit, Recharts, FullCalendar)                                                                                                                                                                                                                       |
 | 0.2     | 2026-07-02 | §0bis remark vs MDX ; **UI 100 % shadcn** : dnd-kit remplacé par boutons shadcn + drag & drop HTML5 natif, Recharts remplacé par barres Tailwind pures (note transitive honnête sur shadcn Charts), FullCalendar remplacé par shadcn Calendar ; règle anti-lib non listée en §7. |
