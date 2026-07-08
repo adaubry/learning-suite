@@ -74,7 +74,42 @@ export async function callLLM<T>(options: CallLLMOptions<T>): Promise<T> {
       : rendered;
     const messages = [{ role: "user", content }];
 
-    const response = await fetch(OPENROUTER_URL, {
+    const result = await fetchAndValidate(model, messages, schema, validate);
+    const dureeMs = Date.now() - start;
+    const isLastAttempt = attempt === maxRetries;
+
+    await db.insert(promptLog).values({
+      appel,
+      promptVersion,
+      model,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      dureeMs,
+      statut: result.ok ? "ok" : isLastAttempt ? "echec" : "retry",
+    });
+
+    if (result.ok) return result.data;
+    // une panne réseau/HTTP n'est pas la faute du modèle : rien à "corriger" dans le prompt,
+    // on retente la même requête au lieu de réinjecter une erreur qui n'a pas de sens pour lui.
+    if (!result.infra) lastError = result.error;
+    if (isLastAttempt) throw new LLMValidationError(appel, result.error);
+  }
+  throw new LLMValidationError(appel, lastError);
+}
+
+type FetchResult<T> =
+  | { ok: true; data: T; inputTokens: number; outputTokens: number }
+  | { ok: false; error: string; infra: boolean; inputTokens: number; outputTokens: number };
+
+async function fetchAndValidate<T>(
+  model: string,
+  messages: { role: string; content: string }[],
+  schema: z.ZodType<T>,
+  validate?: (data: T) => string | null,
+): Promise<FetchResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
@@ -82,29 +117,23 @@ export async function callLLM<T>(options: CallLLMOptions<T>): Promise<T> {
       },
       body: JSON.stringify({ model, messages }),
     });
-    const raw = await response.json();
-    const dureeMs = Date.now() - start;
-    const inputTokens = raw?.usage?.prompt_tokens ?? 0;
-    const outputTokens = raw?.usage?.completion_tokens ?? 0;
-
-    const result = parseAndValidate(raw, schema, validate);
-    const isLastAttempt = attempt === maxRetries;
-
-    await db.insert(promptLog).values({
-      appel,
-      promptVersion,
-      model,
-      inputTokens,
-      outputTokens,
-      dureeMs,
-      statut: result.ok ? "ok" : isLastAttempt ? "echec" : "retry",
-    });
-
-    if (result.ok) return result.data;
-    lastError = result.error;
-    if (isLastAttempt) throw new LLMValidationError(appel, lastError);
+  } catch (err) {
+    return { ok: false, error: `échec réseau : ${(err as Error).message}`, infra: true, inputTokens: 0, outputTokens: 0 };
   }
-  throw new LLMValidationError(appel, lastError);
+
+  const raw = await response.json().catch(() => null);
+  const inputTokens = raw?.usage?.prompt_tokens ?? 0;
+  const outputTokens = raw?.usage?.completion_tokens ?? 0;
+
+  if (response.ok === false) {
+    const message = raw?.error?.message ?? `HTTP ${response.status}`;
+    return { ok: false, error: `échec OpenRouter : ${message}`, infra: true, inputTokens, outputTokens };
+  }
+
+  const result = parseAndValidate(raw, schema, validate);
+  return result.ok
+    ? { ok: true, data: result.data, inputTokens, outputTokens }
+    : { ok: false, error: result.error, infra: false, inputTokens, outputTokens };
 }
 
 function parseAndValidate<T>(

@@ -26,6 +26,7 @@ const schema = z.object({ value: z.number() });
 
 function mockResponse(content: unknown) {
   return {
+    ok: true,
     json: async () => ({
       choices: [{ message: { content: JSON.stringify(content) } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 },
@@ -98,5 +99,36 @@ describe("callLLM", () => {
       select statut from prompt_log where model = 'test/model' order by created_at desc limit 2
     `;
     expect(rows.map((r) => r.statut)).toEqual(["echec", "retry"]);
+  });
+
+  it("retente sans réinjection sur échec réseau puis réussit", async () => {
+    (fetch as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error("connexion refusée"))
+      .mockResolvedValueOnce(mockResponse({ value: 9 }));
+
+    const result = await callLLM({
+      appel: "rubrique",
+      promptVersion: "v1",
+      schema,
+      context: { foo: "bar" },
+    });
+
+    expect(result).toEqual({ value: 9 });
+    const secondCallBody = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].body);
+    expect(secondCallBody.messages[0].content).not.toContain("Erreur de la tentative précédente");
+  });
+
+  it("retente sur réponse HTTP non-2xx puis échoue avec le message d'erreur d'OpenRouter", async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: { message: "rate limited" } }),
+    });
+
+    await expect(
+      callLLM({ appel: "rubrique", promptVersion: "v1", schema, context: {}, maxRetries: 1 }),
+    ).rejects.toThrow(/rate limited/);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

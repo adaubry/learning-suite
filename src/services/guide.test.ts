@@ -19,6 +19,7 @@ async function createUser() {
 
 function mockGuideResponse(points: unknown[] = [{ type: "critique", intitule: "x", attendu: "y", segments_couverts: [] }]) {
   return {
+    ok: true,
     json: async () => ({
       choices: [{ message: { content: JSON.stringify({ points }) } }],
       usage: { prompt_tokens: 1, completion_tokens: 1 },
