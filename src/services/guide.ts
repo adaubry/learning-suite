@@ -27,7 +27,7 @@ export class InvalidGuideEditError extends Error {}
 // Un seul propriétaire de vérification (FUNCTIONS §7) : chaque point d'entrée
 // remonte à la matière pour confirmer que l'utilisateur la possède, comme
 // ChapterService.importChapter.
-async function assertSectionOwnership(sectionId: string, userId: string) {
+export async function assertSectionOwnership(sectionId: string, userId: string) {
   const sec = await db.query.section.findFirst({ where: eq(section.id, sectionId) });
   if (!sec) throw new Error("Section introuvable.");
 
