@@ -102,6 +102,24 @@ describe("guide · S3", () => {
     expect(updated?.statut).toBe("rubrique_a_valider");
   });
 
+  it("generate récupère la rubrique gagnante au lieu de planter sur une course concurrente (unique_violation)", async () => {
+    // Simule deux generate() concurrents pour la même section (lazyScheduler +
+    // génération manuelle, ou deux visites d'accueil rapprochées) : une rubrique
+    // non-obsolète existe déjà quand NOTRE insert s'exécute — même violation que
+    // le partial unique index correction_guide_section_non_obsolete en base réelle.
+    const sec = await createSection("active");
+    const [winner] = await db
+      .insert(correctionGuide)
+      .values({ sectionId: sec.id, chapterVersion: sec.chapterVersion, contenu: { points: [point()] } })
+      .returning();
+
+    const result = await guide.generate(userId, sec.id);
+
+    expect(result.id).toBe(winner.id);
+    const rows = await db.query.correctionGuide.findMany({ where: eq(correctionGuide.sectionId, sec.id) });
+    expect(rows).toHaveLength(1); // notre insert a échoué, pas de doublon
+  });
+
   it("generate refuse une section qui n'appartient pas à l'utilisateur", async () => {
     const sec = await createSection("active");
     const other = await createUser();

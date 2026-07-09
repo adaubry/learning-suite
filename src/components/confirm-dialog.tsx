@@ -24,12 +24,16 @@ export function ConfirmDialog({
   description,
   action,
   confirmLabel = "Confirmer",
+  onConfirm,
 }: {
   trigger: ReactElement;
   title: string;
   description: string;
   action: () => Promise<void>;
   confirmLabel?: string;
+  /** Appelé à la confirmation, avant `action` — permet à l'appelant de verrouiller
+   *  d'autres actions concurrentes sur la même entité (ex. error-notebook.tsx). */
+  onConfirm?: () => void;
 }) {
   return (
     <AlertDialog>
@@ -41,7 +45,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <form action={action}>
+          <form action={action} onSubmit={onConfirm}>
             <AlertDialogAction type="submit" variant="destructive">
               {confirmLabel}
             </AlertDialogAction>

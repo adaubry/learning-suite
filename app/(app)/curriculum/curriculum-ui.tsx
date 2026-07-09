@@ -67,6 +67,12 @@ function SectionRow({ section }: { section: Section }) {
   const [genState, genAction, genPending] = useActionState(generateRubricAction, undefined);
   const [manState, manAction, manPending] = useActionState(createManualRubricAction, undefined);
   const error = genState?.error ?? manState?.error;
+  // Les deux boutons créent une rubrique pour la MÊME section — un double-clic
+  // générer+rédiger manuellement viole la contrainte d'unicité en base (une
+  // rubrique non-obsolète par section, même classe de bug que
+  // correction-view.tsx). L'appelant l'attrape proprement (pas de crash), mais
+  // autant l'empêcher côté UI plutôt que de laisser partir une requête inutile.
+  const submitting = genPending || manPending;
 
   return (
     <li className="flex flex-col gap-1 border-l pl-2 py-1 text-sm">
@@ -79,13 +85,13 @@ function SectionRow({ section }: { section: Section }) {
         <div className="flex gap-2">
           <form action={genAction}>
             <input type="hidden" name="sectionId" value={section.id} />
-            <Button type="submit" size="sm" variant="outline" disabled={genPending}>
+            <Button type="submit" size="sm" variant="outline" disabled={submitting}>
               {genPending ? "Génération…" : "Générer la rubrique"}
             </Button>
           </form>
           <form action={manAction}>
             <input type="hidden" name="sectionId" value={section.id} />
-            <Button type="submit" size="sm" variant="ghost" disabled={manPending}>
+            <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
               Rédiger manuellement
             </Button>
           </form>

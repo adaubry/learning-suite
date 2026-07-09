@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,6 +61,13 @@ export function ErrorNotebook({
   editAction: (errorId: string, formData: FormData) => Promise<void>;
   deleteAction: (errorId: string) => Promise<void>;
 }) {
+  // Résoudre/éditer/supprimer mutent la MÊME ErrorEntry — verrou par ligne (pas
+  // global : les autres lignes sont des entités indépendantes, pas de raison de
+  // les bloquer). Même classe de bug que correction-view.tsx, ici avec plusieurs
+  // entités en liste plutôt qu'un seul écran.
+  const [submittingIds, setSubmittingIds] = useState<Set<string>>(new Set());
+  const lock = (id: string) => setSubmittingIds((prev) => new Set(prev).add(id));
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2 border-b pb-2">
@@ -126,30 +136,35 @@ export function ErrorNotebook({
 
               <div className="flex flex-wrap items-center gap-2">
                 {e.statut === "active" && (
-                  <form action={resolveAction.bind(null, e.id)}>
-                    <Button type="submit" size="sm" variant="outline">
+                  <form action={resolveAction.bind(null, e.id)} onSubmit={() => lock(e.id)}>
+                    <Button type="submit" size="sm" variant="outline" disabled={submittingIds.has(e.id)}>
                       Marquer résolue
                     </Button>
                   </form>
                 )}
                 <details className="text-sm">
                   <summary className="cursor-pointer select-none text-muted-foreground">Éditer</summary>
-                  <form action={editAction.bind(null, e.id)} className="mt-2 flex flex-col gap-2">
+                  <form
+                    action={editAction.bind(null, e.id)}
+                    onSubmit={() => lock(e.id)}
+                    className="mt-2 flex flex-col gap-2"
+                  >
                     <Textarea name="description" defaultValue={e.description} rows={2} />
-                    <Button type="submit" size="sm" className="self-start">
+                    <Button type="submit" size="sm" className="self-start" disabled={submittingIds.has(e.id)}>
                       Enregistrer
                     </Button>
                   </form>
                 </details>
                 <ConfirmDialog
                   trigger={
-                    <Button size="sm" variant="ghost">
+                    <Button size="sm" variant="ghost" disabled={submittingIds.has(e.id)}>
                       Supprimer
                     </Button>
                   }
                   title="Supprimer cette erreur ?"
                   description="À utiliser si elle a été créée à tort — cette action est irréversible."
                   action={deleteAction.bind(null, e.id)}
+                  onConfirm={() => lock(e.id)}
                 />
                 <Link href={`/session/${e.sessionId}`} className="text-sm text-muted-foreground underline">
                   Voir la session d&apos;origine

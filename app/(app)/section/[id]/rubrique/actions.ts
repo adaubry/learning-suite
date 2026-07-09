@@ -30,9 +30,7 @@ export async function validateRubricAction(
   redirect("/curriculum");
 }
 
-export async function regenerateRubricAction(formData: FormData) {
-  const sectionId = formData.get("sectionId");
-  if (typeof sectionId !== "string" || !sectionId) return;
+export async function regenerateRubricAction(sectionId: string) {
   const userId = await requireUserId();
   await guide.regenerate(userId, sectionId);
   revalidatePath(`/section/${sectionId}/rubrique`);

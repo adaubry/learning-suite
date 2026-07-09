@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +15,12 @@ export interface QueueSectionInfo {
 // v1 : boutons monter/descendre (shadcn Button), pas de drag & drop HTML5 ce
 // bloc-ci (amélioration progressive différée). Chaque bouton renvoie la liste
 // complète des clés (S5.reorder remplace toute la permutation du jour).
+//
+// Un seul verrou pour TOUTE la file, pas par ligne : monter/descendre envoie le
+// tableau `keys` COMPLET (S5.reorder remplace toute la permutation), donc deux
+// clics sur deux lignes différentes mutent la même entité (l'ordre du jour) —
+// sans verrou partagé, le second écrase silencieusement le premier avec un
+// snapshot `keys` déjà périmé (même classe de bug que correction-view.tsx).
 export function DailyQueue({
   queue,
   infoById,
@@ -25,6 +34,9 @@ export function DailyQueue({
   moveAction: (index: number, direction: "up" | "down", formData: FormData) => Promise<void>;
   deferAction: (itemType: "etude" | "revision", itemId: string) => Promise<void>;
 }) {
+  const [submitting, setSubmitting] = useState(false);
+  const lockSubmit = () => setSubmitting(true);
+
   if (queue.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
@@ -50,9 +62,15 @@ export function DailyQueue({
                   { direction: "down" as const, label: "Descendre", arrow: "↓", disabled: index === queue.length - 1 },
                 ]
               ).map((move) => (
-                <form key={move.direction} action={moveAction.bind(null, index, move.direction)}>
+                <form key={move.direction} action={moveAction.bind(null, index, move.direction)} onSubmit={lockSubmit}>
                   <input type="hidden" name="keys" value={JSON.stringify(keys)} />
-                  <Button type="submit" size="icon" variant="ghost" disabled={move.disabled} aria-label={move.label}>
+                  <Button
+                    type="submit"
+                    size="icon"
+                    variant="ghost"
+                    disabled={move.disabled || submitting}
+                    aria-label={move.label}
+                  >
                     {move.arrow}
                   </Button>
                 </form>
@@ -77,8 +95,8 @@ export function DailyQueue({
               <Button size="sm" nativeButton={false} render={<Link href={commencerHref} />}>
                 Commencer
               </Button>
-              <form action={deferAction.bind(null, itemType, sectionId)}>
-                <Button type="submit" size="sm" variant="ghost">
+              <form action={deferAction.bind(null, itemType, sectionId)} onSubmit={lockSubmit}>
+                <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
                   Reporter
                 </Button>
               </form>

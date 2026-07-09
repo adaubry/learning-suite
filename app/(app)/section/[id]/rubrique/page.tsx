@@ -44,20 +44,13 @@ export default async function RubricPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Rubrique — {section.titre}</h1>
-        <form action={regenerateRubricAction}>
-          <input type="hidden" name="sectionId" value={section.id} />
-          <button type="submit" className="text-sm underline">
-            Relancer (nouvelle génération)
-          </button>
-        </form>
-      </div>
+      <h1 className="text-lg font-semibold">Rubrique — {section.titre}</h1>
       <RubricEditor
         sectionTitre={section.titre}
         sectionContenu={section.contenu}
         initialPoints={points}
         action={validateRubricAction.bind(null, currentGuide.id)}
+        regenerateAction={regenerateRubricAction.bind(null, section.id)}
       />
     </div>
   );

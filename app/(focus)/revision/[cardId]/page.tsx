@@ -51,20 +51,14 @@ export default async function RevisionPage({ params }: { params: Promise<{ cardI
   if (cycle.etat === "blurting") {
     const tentative = await session.nextTentative(cycle.id);
     return (
-      <div className="flex flex-1 flex-col gap-3">
-        <BlurtingEditor
-          sectionTitre={sec.titre}
-          tentative={tentative}
-          type="revision"
-          rappelNumero={(card?.reps ?? 0) + 1}
-          action={submitRevisionAction.bind(null, cycle.id, sectionId)}
-        />
-        <form action={abandonAction.bind(null, cycle.id)}>
-          <Button type="submit" variant="ghost" size="sm">
-            Abandonner la tentative
-          </Button>
-        </form>
-      </div>
+      <BlurtingEditor
+        sectionTitre={sec.titre}
+        tentative={tentative}
+        type="revision"
+        rappelNumero={(card?.reps ?? 0) + 1}
+        action={submitRevisionAction.bind(null, cycle.id, sectionId)}
+        abandonAction={abandonAction.bind(null, cycle.id)}
+      />
     );
   }
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Note } from "@/core/fsrs/fsrsCore";
 
@@ -7,6 +8,11 @@ import type { Note } from "@/core/fsrs/fsrsCore";
 // échéance prévisionnelle sous chaque bouton (S6.preview → P9.previewIntervals) ;
 // verdict LLM affiché à côté, explicitement non contraignant (ARCHITECTURE §6 :
 // c'est l'auto-note, pas le verdict, qui pilote FSRS — ADR 3).
+//
+// Les 4 notes sont des <form> indépendants sur le MÊME cycle — un drapeau
+// partagé désactive les trois autres dès qu'une note part, sinon un double-clic
+// sur deux notes différentes envoie deux rateRevision concurrents (même classe
+// d'incident que correction-view.tsx, constaté en usage).
 
 const NOTES: Note[] = ["again", "hard", "good", "easy"];
 const LABELS: Record<Note, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
@@ -30,6 +36,7 @@ export function FsrsRatingBar({
   rateAction: (note: Note, formData: FormData) => Promise<void>;
 }) {
   const today = new Date().toISOString().slice(0, 10);
+  const [submitting, setSubmitting] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
@@ -38,9 +45,14 @@ export function FsrsRatingBar({
       </p>
       <div className="flex flex-wrap gap-2">
         {NOTES.map((note) => (
-          <form key={note} action={rateAction.bind(null, note)}>
+          <form key={note} action={rateAction.bind(null, note)} onSubmit={() => setSubmitting(true)}>
             <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-            <Button type="submit" variant={note === "again" ? "outline" : "secondary"} className="h-auto flex-col gap-0.5 py-2">
+            <Button
+              type="submit"
+              variant={note === "again" ? "outline" : "secondary"}
+              className="h-auto flex-col gap-0.5 py-2"
+              disabled={submitting}
+            >
               <span>{LABELS[note]}</span>
               <span className="text-xs font-normal text-muted-foreground">
                 {formatEcheance(preview[note].due, today)}

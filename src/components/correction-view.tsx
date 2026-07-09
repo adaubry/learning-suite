@@ -88,6 +88,16 @@ export function CorrectionView({
   );
   const isRevealed = revealed?.outcome === "reveler";
 
+  // Retenter/révéler/passer au Feynman/terminer sont des <form> INDÉPENDANTS —
+  // sans ce drapeau partagé, cliquer deux boutons en succession rapide envoie
+  // deux mutations concurrentes sur le même cycle (l'une gagne, l'autre plante
+  // sur le garde d'état : incident réel constaté en usage, "Aucune correction à
+  // quitter vers le Feynman" après un double-clic révéler+Feynman). `onSubmit`
+  // se déclenche avant l'action, donc ce re-render désactive les boutons frères
+  // avant qu'un second clic ne puisse partir.
+  const [submitting, setSubmitting] = useState(false);
+  const lockSubmit = () => setSubmitting(true);
+
   // USER_FLOW É3.2 « Règle de commit » : les index rejetés sont sérialisés dans un
   // champ caché, dupliqué dans les 3 formulaires de sortie (retenter/révéler/
   // terminer) — chacun commit via S7.commitCandidates côté serveur.
@@ -141,23 +151,23 @@ export function CorrectionView({
         <div className="flex flex-wrap gap-2">
           {verdict === "insuffisant" && (
             <>
-              <form action={retenterAction}>
+              <form action={retenterAction} onSubmit={lockSubmit}>
                 <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" disabled={submitting}>
                   Retenter plus tard
                 </Button>
               </form>
-              <form action={revealFormAction}>
+              <form action={revealFormAction} onSubmit={lockSubmit}>
                 <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                <Button type="submit" size="sm" variant="outline" disabled={revealPending}>
+                <Button type="submit" size="sm" variant="outline" disabled={submitting || revealPending}>
                   {revealPending ? "…" : "Révéler les réponses"}
                 </Button>
               </form>
               {passerFeynmanAction && (
-                <form action={passerFeynmanAction}>
+                <form action={passerFeynmanAction} onSubmit={lockSubmit}>
                   <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
                   <input type="hidden" name="override" value="true" />
-                  <Button type="submit" size="sm" variant="outline">
+                  <Button type="submit" size="sm" variant="outline" disabled={submitting}>
                     Passer au Feynman quand même
                   </Button>
                 </form>
@@ -169,17 +179,17 @@ export function CorrectionView({
               {/* Feynman requis dès l'importance ≥ 3 (USER_FLOW É3.2) : pas de
                   validation directe, seul [Passer au Feynman] mène plus loin. */}
               {(importance ?? 0) < 3 && (
-                <form action={terminerAction}>
+                <form action={terminerAction} onSubmit={lockSubmit}>
                   <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <Button type="submit" size="sm">
+                  <Button type="submit" size="sm" disabled={submitting}>
                     Valider sans Feynman
                   </Button>
                 </form>
               )}
               {passerFeynmanAction && (
-                <form action={passerFeynmanAction}>
+                <form action={passerFeynmanAction} onSubmit={lockSubmit}>
                   <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <Button type="submit" size="sm" variant={(importance ?? 0) < 3 ? "outline" : "default"}>
+                  <Button type="submit" size="sm" variant={(importance ?? 0) < 3 ? "outline" : "default"} disabled={submitting}>
                     Passer au Feynman
                   </Button>
                 </form>

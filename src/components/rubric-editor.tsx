@@ -13,6 +13,13 @@ import type { ControlPoint } from "@/llm/schemas/guide";
 // L'édition est locale (useState) ; seule la soumission ("Valider la
 // rubrique") persiste — S3.validate est le seul point qui écrit en base et
 // garde l'invariant §7 (≥ 1 point critique).
+//
+// « Relancer (nouvelle génération) » vit ICI (pas en sibling dans page.tsx) pour
+// partager le même verrou que « Valider » : les deux mutent la même rubrique
+// (S3.regenerate obsolète la ligne que S3.validate vient peut-être de valider) —
+// sans verrou commun, un double-clic valider+relancer revalide silencieusement
+// dans le désordre, sans erreur visible (constaté en usage sur un autre écran,
+// même classe de bug que correction-view.tsx).
 
 const typeOrder: ControlPoint["type"][] = ["critique", "important", "secondaire"];
 const typeLabel: Record<ControlPoint["type"], string> = {
@@ -30,14 +37,18 @@ export function RubricEditor({
   sectionContenu,
   initialPoints,
   action,
+  regenerateAction,
 }: {
   sectionTitre: string;
   sectionContenu: string;
   initialPoints: ControlPoint[];
   action: (prevState: unknown, formData: FormData) => Promise<{ error?: string } | undefined>;
+  regenerateAction?: (formData: FormData) => Promise<void>;
 }) {
   const [points, setPoints] = useState<ControlPoint[]>(initialPoints);
   const [state, formAction, pending] = useActionState(action, undefined);
+  const [regenerating, setRegenerating] = useState(false);
+  const submitting = pending || regenerating;
 
   function update(i: number, patch: Partial<ControlPoint>) {
     setPoints((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -52,6 +63,15 @@ export function RubricEditor({
   return (
     <div className="grid grid-cols-2 gap-6">
       <form action={formAction} className="flex flex-col gap-5">
+        {regenerateAction && (
+          <div className="flex justify-end">
+            <form action={regenerateAction} onSubmit={() => setRegenerating(true)}>
+              <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
+                Relancer (nouvelle génération)
+              </Button>
+            </form>
+          </div>
+        )}
         <input type="hidden" name="points" value={JSON.stringify(points)} />
         {typeOrder.map((type) => (
           <div key={type} className="flex flex-col gap-2">
@@ -102,7 +122,7 @@ export function RubricEditor({
             )}
           </div>
         ))}
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={submitting}>
           {pending ? "Validation…" : "Valider la rubrique"}
         </Button>
         {state?.error && <p className="text-sm text-destructive">{state.error}</p>}

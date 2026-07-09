@@ -248,7 +248,11 @@ describe("session · S4 resolveOutcome", () => {
     const refile = await client`select * from refile_item where item_id = ${sec.id}`;
     expect(refile).toHaveLength(1);
 
-    const events = await db.query.auditEvent.findMany({ where: eq(auditEvent.entiteType, "study_session") });
+    // Scopé à CETTE session précisément — un filtre entiteType seul capte aussi
+    // les audit_event d'autres fichiers de test tournant en parallèle sur la
+    // même base réelle (ex. audit.test.ts), fausse alerte constatée en usage.
+    const blurtingSession = (await db.query.studySession.findFirst({ where: eq(studySession.cycleId, cycle.id) }))!;
+    const events = await db.query.auditEvent.findMany({ where: eq(auditEvent.entiteId, blurtingSession.id) });
     expect(events).toHaveLength(0);
   });
 

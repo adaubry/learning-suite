@@ -84,18 +84,48 @@ export async function getForSection(userId: string, sectionId: string) {
   return { section: sec, guide: existingGuide ?? null };
 }
 
+// Unique violation Postgres (SQLSTATE 23505, package `postgres`) — le partial
+// unique index correction_guide_section_non_obsolete lève ce code quand deux
+// appels concurrents (lazyScheduler + génération manuelle, ou deux visites
+// d'accueil rapprochées déclenchant chacune le hook `after()`) tentent de créer
+// une rubrique pour la même section : les deux passent le garde `statut ===
+// "active"` avant que le premier n'ait eu le temps de le faire basculer (l'appel
+// LLM entre les deux prend plusieurs secondes).
+function pgErrorCode(e: unknown): unknown {
+  if (typeof e !== "object" || e === null) return undefined;
+  if ("code" in e) return (e as { code: unknown }).code;
+  // drizzle-orm enveloppe l'erreur du driver `postgres` dans DrizzleQueryError,
+  // le vrai code SQLSTATE (ex. 23505) est porté par `.cause`, pas l'erreur elle-même.
+  if ("cause" in e) return pgErrorCode((e as { cause: unknown }).cause);
+  return undefined;
+}
+
+function isUniqueViolation(e: unknown): boolean {
+  return pgErrorCode(e) === "23505";
+}
+
 export async function generate(userId: string, sectionId: string) {
   const { sec, context } = await loadSectionContext(sectionId, userId);
   if (sec.statut !== "active") throw new SectionNotActiveError();
 
   const output = await generateGuide(context);
-  const [created] = await db
-    .insert(correctionGuide)
-    .values({ sectionId, chapterVersion: sec.chapterVersion, contenu: output })
-    .returning();
-
-  await db.update(section).set({ statut: "rubrique_a_valider" }).where(eq(section.id, sectionId));
-  return created;
+  try {
+    const [created] = await db
+      .insert(correctionGuide)
+      .values({ sectionId, chapterVersion: sec.chapterVersion, contenu: output })
+      .returning();
+    await db.update(section).set({ statut: "rubrique_a_valider" }).where(eq(section.id, sectionId));
+    return created;
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e;
+    // Un autre appel a gagné la course : sa rubrique fait foi, la nôtre (LLM déjà
+    // payé) est jetée plutôt que de faire planter l'appelant avec une erreur SQL brute.
+    const winner = await db.query.correctionGuide.findFirst({
+      where: and(eq(correctionGuide.sectionId, sectionId), ne(correctionGuide.statut, "obsolete")),
+    });
+    if (winner) return winner;
+    throw e;
+  }
 }
 
 // Rédaction manuelle (USER_FLOW É1.5, secours si le LLM échoue) : rubrique
