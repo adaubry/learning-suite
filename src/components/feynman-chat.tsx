@@ -40,6 +40,7 @@ export function FeynmanChat({
   sectionTitre,
   transcribeAction,
   closeFeynmanAction,
+  initialMessages,
 }: {
   cycleId: string;
   sectionTitre: string;
@@ -49,8 +50,13 @@ export function FeynmanChat({
     audioFormat: string,
   ) => Promise<{ transcript?: string; error?: string }>;
   closeFeynmanAction: () => Promise<void>;
+  /** Historique déjà persisté (S4.feynmanHistorique) — si non vide, ne PAS
+   *  rappeler "opening" au montage (page rechargée, retour arrière/avant) :
+   *  ça générerait un tour d'ouverture parasite au milieu de l'échange
+   *  (incident réel : "Feynman oublie ce que je viens de dire"). */
+  initialMessages: FeynmanMessage[];
 }) {
-  const [messages, setMessages] = useState<FeynmanMessage[]>([]);
+  const [messages, setMessages] = useState<FeynmanMessage[]>(initialMessages);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(false);
@@ -81,7 +87,7 @@ export function FeynmanChat({
   }
 
   useEffect(() => {
-    if (openedRef.current) return;
+    if (openedRef.current || initialMessages.length > 0) return;
     openedRef.current = true;
     void runTurn(streamTurn({ mode: "opening", cycleId }));
     // eslint-disable-next-line react-hooks/exhaustive-deps

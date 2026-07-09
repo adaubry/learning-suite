@@ -220,6 +220,29 @@ async function runCorrection(
 // section (`prete` ⇒ étude, `en_revision` ⇒ révision, USER_FLOW É4.1 : blurting
 // de rappel identique à É3.1) — un seul point d'entrée pour les deux machines
 // B/C, comme FUNCTIONS §3 n'en liste qu'un (`start`, pas de variante dédiée).
+export interface OpenCycleInfo {
+  cycleId: string;
+  sectionId: string;
+  sectionTitre: string;
+  type: "etude" | "revision";
+}
+
+// findOpenCycle : lecture seule, sert deux besoins produit — (1) l'écran qui
+// refuse `start` sur une AUTRE section (SessionAlreadyOpenError) doit pouvoir
+// proposer un lien direct vers la session réellement ouverte, pas seulement un
+// message ; (2) un bandeau dans le shell (app)/ doit rester visible sur tout
+// écran atteint par retour/accueil pendant qu'une session traîne ouverte
+// ailleurs — incident réel constaté en usage (pas d'accès simple pour y revenir).
+export async function findOpenCycle(userId: string): Promise<OpenCycleInfo | null> {
+  const cycle = await db.query.studyCycle.findFirst({
+    where: and(eq(studyCycle.userId, userId), isNull(studyCycle.closedAt)),
+  });
+  if (!cycle) return null;
+  const sec = await db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) });
+  if (!sec) return null;
+  return { cycleId: cycle.id, sectionId: cycle.sectionId, sectionTitre: sec.titre, type: cycle.type };
+}
+
 export async function start(userId: string, sectionId: string) {
   const sec = await assertSectionOwnership(sectionId, userId);
   if (sec.statut !== "prete" && sec.statut !== "en_revision") throw new SectionNotReadyError();
@@ -430,6 +453,18 @@ export async function beginFeynman(
   await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
 
   await db.update(studyCycle).set({ etat: "feynman" }).where(eq(studyCycle.id, cycleId));
+}
+
+// feynmanHistorique : lecture seule, sert à reprendre un dialogue déjà entamé
+// (page rechargée, retour en arrière puis en avant, etc.) SANS régénérer de
+// tour d'ouverture — incident réel constaté en usage : sans ça, le client
+// n'avait aucun moyen de savoir qu'une conversation existait déjà et rappelait
+// "opening" à chaque montage, injectant une question déconnectée au milieu de
+// l'échange (openingTurn n'a plus de garde contre un second appel depuis qu'il
+// sert aussi la reprise après bilan — ADR 6, historique jamais effacé).
+export async function feynmanHistorique(userId: string, cycleId: string): Promise<FeynmanTour[]> {
+  await loadOwnedOpenCycle(userId, cycleId);
+  return loadFeynmanTours(cycleId);
 }
 
 // feynmanTurn (FUNCTIONS §3 S4 « feynman » ; USER_FLOW É3.3 ; PLAN Bloc 7.2) :

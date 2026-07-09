@@ -146,6 +146,34 @@ describe("session · S4 start", () => {
   });
 });
 
+describe("session · S4 findOpenCycle", () => {
+  it("renvoie null sans cycle ouvert", async () => {
+    expect(await session.findOpenCycle(userId)).toBeNull();
+  });
+
+  it("renvoie le cycle ouvert avec de quoi construire un lien de reprise", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+
+    const open = await session.findOpenCycle(userId);
+
+    expect(open).toEqual({
+      cycleId: cycle.id,
+      sectionId: sec.id,
+      sectionTitre: sec.titre,
+      type: "etude",
+    });
+  });
+
+  it("renvoie null après clôture du cycle", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.abandon(userId, cycle.id);
+
+    expect(await session.findOpenCycle(userId)).toBeNull();
+  });
+});
+
 describe("session · S4 submitBlurting", () => {
   it("sauvegarde le blurting AVANT l'appel LLM : l'input survit à un échec LLM", async () => {
     const sec = await createReadySection();
@@ -723,6 +751,32 @@ describe("session · S4 feynmanTurn", () => {
     const tours = rows.filter((r) => r.type === "feynman");
     expect(tours).toHaveLength(2);
     expect(tours[1].input).toBe("Voici mon explication.");
+  });
+});
+
+describe("session · S4 feynmanHistorique", () => {
+  it("renvoie l'historique déjà persisté, sans appel LLM", async () => {
+    const { cycle } = await readyForFeynman();
+    await enterFeynman(cycle, ["Explique-moi."]);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockStreamResponse(["Et pourquoi donc ?"]));
+    await drain(session.feynmanTurn(userId, cycle.id, "Voici mon explication."));
+
+    const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+    const historique = await session.feynmanHistorique(userId, cycle.id);
+
+    expect(fetch).toHaveBeenCalledTimes(calls); // lecture pure, aucun appel LLM en plus
+    expect(historique).toEqual([
+      { role: "ia", texte: "Explique-moi." },
+      { role: "etudiant", texte: "Voici mon explication." },
+      { role: "ia", texte: "Et pourquoi donc ?" },
+    ]);
+  });
+
+  it("renvoie un tableau vide si aucun tour n'a encore eu lieu", async () => {
+    const { cycle } = await readyForFeynman();
+    await session.beginFeynman(userId, cycle.id);
+
+    expect(await session.feynmanHistorique(userId, cycle.id)).toEqual([]);
   });
 });
 

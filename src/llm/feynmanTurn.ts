@@ -2,7 +2,7 @@ import { streamCompletion } from "@/llm/client";
 import type { FeynmanTurnContext } from "@/llm/context/feynmanTurn";
 
 // L4 · feynmanTurn (FUNCTIONS §2, PLAN Bloc 7.2) — relance socratique streamée.
-// feynman_turn.v1.md attend ses variables en snake_case ; historique/points sont
+// feynman_turn.v2.md attend ses variables en snake_case ; historique/points sont
 // pré-formatés en lignes de texte ici (formatTemplateItem de L0 ne reconnaît que
 // la forme {type, description}, pas {role, texte} ni {intitule, attendu}).
 
@@ -23,7 +23,7 @@ function toPromptVariables(context: FeynmanTurnContext) {
 export function feynmanTurn(context: FeynmanTurnContext): AsyncGenerator<string> {
   return streamCompletion({
     appel: "feynman",
-    promptVersion: "v1",
+    promptVersion: "v2",
     promptFile: "feynman_turn",
     context: toPromptVariables(context),
   });

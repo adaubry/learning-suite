@@ -43,14 +43,28 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
   try {
     cycle = await session.start(userId, sectionId);
   } catch (e) {
-    const message =
-      e instanceof session.SessionAlreadyOpenError
-        ? "Une autre session d'étude est déjà ouverte — termine-la ou abandonne-la d'abord."
-        : "Cette section n'est pas prête à être étudiée (rubrique non validée).";
+    if (e instanceof session.SessionAlreadyOpenError) {
+      // Refuser une deuxième session est correct (une seule à la fois) — mais
+      // laisser l'utilisateur sans accès à celle déjà ouverte l'est moins :
+      // lien direct plutôt qu'un message qui l'oblige à la retrouver seul.
+      const open = await session.findOpenCycle(userId);
+      const resumeHref = open ? (open.type === "etude" ? `/etude/${open.sectionId}` : `/revision/${open.sectionId}`) : "/";
+      return (
+        <div className="flex flex-col gap-3">
+          <h1 className="text-lg font-semibold">{sec.titre}</h1>
+          <p className="text-sm text-muted-foreground">
+            Une autre session est déjà ouverte{open ? ` (${open.sectionTitre})` : ""} — termine-la ou abandonne-la d&apos;abord.
+          </p>
+          <Link href={resumeHref} className="self-start text-sm underline">
+            Reprendre cette session
+          </Link>
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col gap-3">
         <h1 className="text-lg font-semibold">{sec.titre}</h1>
-        <p className="text-sm text-muted-foreground">{message}</p>
+        <p className="text-sm text-muted-foreground">Cette section n&apos;est pas prête à être étudiée (rubrique non validée).</p>
         <Link href="/" className="self-start text-sm underline">
           Retour à l&apos;accueil
         </Link>
@@ -107,12 +121,14 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
   }
 
   if (cycle.etat === "feynman") {
+    const historique = await session.feynmanHistorique(userId, cycle.id);
     return (
       <FeynmanChat
         cycleId={cycle.id}
         sectionTitre={sec.titre}
         transcribeAction={transcribeAction}
         closeFeynmanAction={closeFeynmanAction.bind(null, cycle.id, sectionId)}
+        initialMessages={historique}
       />
     );
   }
