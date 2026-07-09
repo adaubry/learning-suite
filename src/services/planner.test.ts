@@ -159,6 +159,14 @@ describe("planner · S5 attentionBadges", () => {
     expect(badges.find((b) => b.type === "chapitres_non_tries")).toBeUndefined();
   });
 
+  it("chapitre mixte (sections déjà triées + une a_trier apparue par ré-import) ⇒ chapitres_non_tries", async () => {
+    await insertSection("active", { ordre: 1 });
+    await insertSection("prete", { ordre: 2 });
+    await insertSection("a_trier", { ordre: 3 });
+    const badges = await planner.attentionBadges(userId, TODAY);
+    expect(badges).toContainEqual({ type: "chapitres_non_tries", count: 1 });
+  });
+
   it("matière dont l'examen date de plus de 7 jours ⇒ archivage_suggere", async () => {
     await account.updateSubject(userId, subjectId, { dateExamen: "2026-06-20" });
     const badges = await planner.attentionBadges(userId, TODAY);

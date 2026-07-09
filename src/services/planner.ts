@@ -1,4 +1,4 @@
-import { and, eq, lt, ne } from "drizzle-orm";
+import { and, eq, inArray, lt, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { reviewCard, section, chapter, subject, correctionGuide, deferralLog, refileItem, queueOrder } from "@/db/schema";
 import * as account from "./account";
@@ -226,12 +226,27 @@ export async function attentionBadges(userId: string, date: string = todayIso())
     .from(chapter)
     .innerJoin(subject, eq(chapter.subjectId, subject.id))
     .where(and(eq(subject.userId, userId), eq(subject.statut, "active"), eq(chapter.statut, "actif")));
-  const triagedChapterIds = await db
-    .selectDistinct({ chapterId: section.chapterId })
-    .from(section)
-    .where(ne(section.statut, "a_trier"));
-  const triagedSet = new Set(triagedChapterIds.map((r) => r.chapterId));
-  const chapitresNonTries = activeChapters.filter((c) => !triagedSet.has(c.id)).length;
+
+  // « Jamais trié » = aucune section (sectionnement jamais lancé) OU au moins une section encore
+  // a_trier. La 2ᵉ moitié seule ne suffit plus depuis le ré-import (Bloc 8.4) : un chapitre peut
+  // être dans un état mixte (sections déjà triées de longue date + nouvelles a_trier tout juste
+  // apparues par S1.commitUpdate) — l'ancienne requête « zéro section non-a_trier », correcte
+  // tant qu'un chapitre n'était triable qu'en un seul bloc à l'import, aurait laissé ce cas
+  // invisible (DECISIONS.md bloc 8.4).
+  const sectionsDesChapitres = activeChapters.length
+    ? await db
+        .select({ chapterId: section.chapterId, statut: section.statut })
+        .from(section)
+        .where(inArray(section.chapterId, activeChapters.map((c) => c.id)))
+    : [];
+  const parChapitre = new Map<string, string[]>();
+  for (const s of sectionsDesChapitres) {
+    parChapitre.set(s.chapterId, [...(parChapitre.get(s.chapterId) ?? []), s.statut]);
+  }
+  const chapitresNonTries = activeChapters.filter((c) => {
+    const statuts = parChapitre.get(c.id) ?? [];
+    return statuts.length === 0 || statuts.includes("a_trier");
+  }).length;
   if (chapitresNonTries > 0) badges.push({ type: "chapitres_non_tries", count: chapitresNonTries });
 
   const { subjects } = await loadExamDates(userId);
