@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { chapter, subject, section, correctionGuide } from "@/db/schema";
 import { parseChapter } from "@/core/parser/parseChapter";
 import { validateDocument, anomalyKey } from "@/core/parser/validateDocument";
+import type { Anomaly } from "@/core/parser/types";
 import { computeContentHash } from "@/core/parser/contentHash";
 import { selectCandidateHeadings } from "@/core/sectioning/candidateHeadings";
 import { matchSections, type OldSection } from "@/core/matching/matchSections";
@@ -24,7 +25,7 @@ export function analyzeMarkdown(markdown: string) {
 
 export class AnomaliesNonAcquitteesError extends Error {
   constructor() {
-    super("Anomalies non acquittées : import refusé.");
+    super("Anomalies non acquittées.");
   }
 }
 
@@ -75,6 +76,13 @@ export async function listChaptersBySubject(subjectId: string) {
   });
 }
 
+// Chargement É6.1/É6.2 (Bloc 8.3) — ownership vérifiée (assertChapterOwnership, S2), rien de
+// plus que ce que U3/U4 affichent.
+export async function getChapterForEdit(userId: string, chapterId: string) {
+  const { chap } = await assertChapterOwnership(chapterId, userId);
+  return { id: chap.id, titre: chap.titre, markdown: chap.markdown, version: chap.version };
+}
+
 export async function listSectionsByChapter(chapterId: string) {
   return db.query.section.findMany({
     where: eq(section.chapterId, chapterId),
@@ -101,12 +109,16 @@ export interface UpdateSimulation {
   nouvelles: number;
   archivees: number;
   diff: DiffSegment[];
+  anomalies: Anomaly[];
 }
 
 // simulateUpdate (ARCHITECTURE §7, API en deux temps — FUNCTIONS §7 « jamais de commit sans
 // simulation ») : lecture seule, ne persiste rien. Recalculée intégralement à `commitUpdate`
 // plutôt que de faire confiance à un aller-retour client, même doctrine que `importChapter`
-// avec les anomalies.
+// avec les anomalies. `anomalies` : USER_FLOW É6.2/É6.3 exigent toutes deux « mêmes règles
+// qu'É1.1–É1.2, rapport de validation compris » (retrofit du Bloc 8.2, découvert au Bloc 8.3) —
+// reportées ici (non bloquant) pour que l'écran affiche AnomalyPanel AVANT le dialogue de
+// conséquences ; `commitUpdate` est le seul point qui refuse réellement.
 export async function simulateUpdate(
   userId: string,
   chapterId: string,
@@ -125,10 +137,12 @@ export async function simulateUpdate(
       nouvelles: 0,
       archivees: 0,
       diff: [],
+      anomalies: [],
     };
   }
 
   const ancienSections = await loadNonArchivedSections(chapterId);
+  const { anomalies } = analyzeMarkdown(nouveauMarkdown);
   const { titleTree: nouveauTree } = parseChapter(nouveauMarkdown);
   const match = matchSections(ancienSections.map(toOldSection), nouveauTree, nouveauMarkdown);
   const diff = diffChapterVersions(
@@ -147,6 +161,7 @@ export async function simulateUpdate(
     nouvelles: match.nouvelles.length,
     archivees: match.disparues.length,
     diff,
+    anomalies,
   };
 }
 
@@ -157,10 +172,23 @@ type OrdreEntry =
 // commitUpdate (ARCHITECTURE §7) : version++, cascade transactionnelle. StudySession et
 // ErrorEntry ne sont JAMAIS touchées (aucune référence à ces tables ci-dessous) — leur
 // immuabilité tient au simple fait qu'aucune requête ne les cible.
-export async function commitUpdate(userId: string, chapterId: string, nouveauMarkdown: string) {
+export async function commitUpdate(
+  userId: string,
+  chapterId: string,
+  nouveauMarkdown: string,
+  acknowledgedAnomalyKeys: string[] = [],
+) {
   const { chap } = await assertChapterOwnership(chapterId, userId);
   const nouveauHash = computeContentHash(nouveauMarkdown);
   if (nouveauHash === chap.contentHash) return { changed: false as const };
+
+  // Même garde-fou qu'importChapter : ne jamais faire confiance à l'acquittement envoyé par le
+  // client, recalculer les anomalies depuis le markdown brut (S1 possède le refus).
+  const { anomalies } = analyzeMarkdown(nouveauMarkdown);
+  const acknowledged = new Set(acknowledgedAnomalyKeys);
+  if (anomalies.some((a) => !acknowledged.has(anomalyKey(a)))) {
+    throw new AnomaliesNonAcquitteesError();
+  }
 
   const ancienSections = await loadNonArchivedSections(chapterId);
   const { titleTree, boldSegments, italicSegments } = parseChapter(nouveauMarkdown);

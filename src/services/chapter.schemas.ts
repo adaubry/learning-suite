@@ -14,3 +14,10 @@ export const chapterImportInputSchema = z.object({
   acknowledgedAnomalyKeys: z.array(z.string()),
 });
 export type ChapterImportInput = z.infer<typeof chapterImportInputSchema>;
+
+// U4 CourseEditor (É6.2, Bloc 8.3).
+export const chapterSimulateUpdateInputSchema = z.object({
+  chapterId: z.string().uuid("Chapitre requis."),
+  markdown: z.string().trim().min(1, "Le document est vide."),
+});
+export type ChapterSimulateUpdateInput = z.infer<typeof chapterSimulateUpdateInputSchema>;

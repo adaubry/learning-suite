@@ -155,6 +155,7 @@ describe("chapter · S1.simulateUpdate/commitUpdate", () => {
       nouvelles: 0,
       archivees: 0,
       diff: [],
+      anomalies: [],
     });
   });
 
@@ -313,6 +314,29 @@ describe("chapter · S1.simulateUpdate/commitUpdate", () => {
     const nouvelle = toutes.find((s) => s.titre === "Conclusion");
     expect(nouvelle?.statut).toBe("a_trier");
     expect(nouvelle?.chapterVersion).toBe(2);
+  });
+
+  it("simulateUpdate remonte les anomalies sans bloquer ; commitUpdate refuse tant qu'elles ne sont pas acquittées", async () => {
+    const markdownV1 = `# Introduction\n\n${bloc(SOURCES_TITRE, SOURCES_CORPS)}`;
+    const chap = await chapter.importChapter(userId, {
+      subjectId,
+      titre: "Introduction",
+      markdown: markdownV1,
+      acknowledgedAnomalyKeys: [],
+    });
+
+    const markdownV2 = `# Introduction\n\n${bloc(SOURCES_TITRE, SOURCES_CORPS)}\n\n#### Sous-section orpheline\n\nTexte.`;
+    const sim = await chapter.simulateUpdate(userId, chap.id, markdownV2);
+    expect(sim.changed).toBe(true);
+    expect(sim.anomalies.some((a) => a.type === "hierarchie_non_descendante")).toBe(true);
+
+    await expect(chapter.commitUpdate(userId, chap.id, markdownV2)).rejects.toThrow(
+      chapter.AnomaliesNonAcquitteesError,
+    );
+
+    const keys = sim.anomalies.map((a) => anomalyKey(a));
+    const result = await chapter.commitUpdate(userId, chap.id, markdownV2, keys);
+    expect(result.changed).toBe(true);
   });
 
   it("commitUpdate refuse un chapitre d'un autre utilisateur", async () => {

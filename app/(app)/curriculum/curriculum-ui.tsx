@@ -187,7 +187,9 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
             {chapters.map((c) => (
               <li key={c.id} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 text-sm">
-                  <span>{c.titre}</span>
+                  <Link href={`/curriculum/chapitre/${c.id}`} className="hover:underline">
+                    {c.titre}
+                  </Link>
                   <Badge variant="secondary">v{c.version}</Badge>
                   {c.statut === "archive" && <Badge variant="outline">archivé</Badge>}
                 </div>
