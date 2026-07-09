@@ -1,6 +1,6 @@
 import { and, eq, lt, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { reviewCard, section, chapter, subject, deferralLog, refileItem, queueOrder } from "@/db/schema";
+import { reviewCard, section, chapter, subject, correctionGuide, deferralLog, refileItem, queueOrder } from "@/db/schema";
 import * as account from "./account";
 import {
   buildDailyQueue,
@@ -182,13 +182,12 @@ export async function purgeExpired(date: string = todayIso()) {
 }
 
 export interface AttentionBadge {
-  type: "rubriques_a_valider" | "chapitres_non_tries" | "archivage_suggere";
+  type: "rubriques_a_valider" | "cours_modifie" | "chapitres_non_tries" | "archivage_suggere";
   count: number;
 }
 
 // FUNCTIONS §3 S5 : rubriques à valider, cours modifiés, chapitres non triés,
-// suggestion d'archivage à examen+7j. « Cours modifiés » dépend du versionnage
-// (Phase 8, inexistant) — absent ce bloc-ci, pas simulé (DECISIONS.md bloc 6.3).
+// suggestion d'archivage à examen+7j.
 export async function attentionBadges(userId: string, date: string = todayIso()): Promise<AttentionBadge[]> {
   const badges: AttentionBadge[] = [];
 
@@ -199,6 +198,28 @@ export async function attentionBadges(userId: string, date: string = todayIso())
     .innerJoin(subject, eq(chapter.subjectId, subject.id))
     .where(and(eq(subject.userId, userId), eq(subject.statut, "active"), eq(section.statut, "rubrique_a_valider")));
   if (rubriqueRows.length > 0) badges.push({ type: "rubriques_a_valider", count: rubriqueRows.length });
+
+  // « Cours modifié » (S1.commitUpdate, Bloc 8.2, ARCHITECTURE §7) : dérivé, pas de colonne
+  // dédiée — une rubrique obsolète invalidée par la cascade reste ancrée à SON ancienne
+  // chapterVersion pendant que la Section, elle, a été bumpée à la nouvelle. L'écart distingue
+  // cette invalidation d'un S3.regenerate manuel (qui recrée aussitôt une rubrique non-obsolète,
+  // même version) — tranché en récitation Bloc 8.2 (AskUserQuestion).
+  const coursModifieRows = await db
+    .select({ id: section.id })
+    .from(section)
+    .innerJoin(chapter, eq(section.chapterId, chapter.id))
+    .innerJoin(subject, eq(chapter.subjectId, subject.id))
+    .innerJoin(correctionGuide, eq(correctionGuide.sectionId, section.id))
+    .where(
+      and(
+        eq(subject.userId, userId),
+        eq(subject.statut, "active"),
+        ne(section.statut, "archivee"),
+        eq(correctionGuide.statut, "obsolete"),
+        lt(correctionGuide.chapterVersion, section.chapterVersion),
+      ),
+    );
+  if (coursModifieRows.length > 0) badges.push({ type: "cours_modifie", count: coursModifieRows.length });
 
   const activeChapters = await db
     .select({ id: chapter.id })

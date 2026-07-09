@@ -1,9 +1,10 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import * as account from "./account";
 import * as planner from "./planner";
 import { db } from "@/db";
-import { chapter, section, reviewCard, refileItem, queueOrder } from "@/db/schema";
+import { chapter, section, reviewCard, correctionGuide, refileItem, queueOrder } from "@/db/schema";
 import type { QueueItem } from "@/core/planner/buildDailyQueue";
 
 // S5 · PlannerService — Postgres réel (pattern guide.test.ts), pas de LLM.
@@ -38,6 +39,7 @@ afterAll(async () => {
   await client`delete from deferral_log`;
   for (const id of createdUserIds) {
     await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
+    await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
     await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
     await client`delete from subject where user_id = ${id}`;
@@ -166,6 +168,21 @@ describe("planner · S5 attentionBadges", () => {
   it("aucun signal ⇒ tableau vide", async () => {
     const badges = await planner.attentionBadges(await createUser(), TODAY);
     expect(badges).toEqual([]);
+  });
+
+  it("rubrique obsolète par cascade (chapterVersion en retard) ⇒ cours_modifie", async () => {
+    const sec = await insertSection("prete");
+    await db.update(section).set({ chapterVersion: 2 }).where(eq(section.id, sec.id));
+    await db.insert(correctionGuide).values({ sectionId: sec.id, chapterVersion: 1, contenu: {}, statut: "obsolete" });
+    const badges = await planner.attentionBadges(userId, TODAY);
+    expect(badges).toContainEqual({ type: "cours_modifie", count: 1 });
+  });
+
+  it("rubrique obsolète par regenerate manuel (même chapterVersion) ⇒ absent du badge", async () => {
+    const sec = await insertSection("prete");
+    await db.insert(correctionGuide).values({ sectionId: sec.id, chapterVersion: 1, contenu: {}, statut: "obsolete" });
+    const badges = await planner.attentionBadges(userId, TODAY);
+    expect(badges.find((b) => b.type === "cours_modifie")).toBeUndefined();
   });
 });
 

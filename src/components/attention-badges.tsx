@@ -4,13 +4,13 @@ import type { AttentionBadge as AttentionBadgeData } from "@/services/planner";
 
 const LABEL: Record<AttentionBadgeData["type"], string> = {
   rubriques_a_valider: "rubrique(s) à valider",
+  cours_modifie: "section(s) au cours modifié",
   chapitres_non_tries: "chapitre(s) jamais trié(s)",
   archivage_suggere: "matière(s) à archiver",
 };
 
 // U12 AttentionBadges (FUNCTIONS §6) — chaque badge, lien direct vers l'écran
-// de résolution. « Cours modifiés » absent : dépend du versionnage (Phase 8),
-// non construit (DECISIONS.md bloc 6.3).
+// de résolution.
 export function AttentionBadges({ badges }: { badges: AttentionBadgeData[] }) {
   if (badges.length === 0) return null;
 

@@ -14,7 +14,9 @@ import type { ApplyTriageInput, TriageOperation } from "./section.schemas";
 // après planification) attend un appelant réel (curriculum, Phase 6+) et le gel/dégel
 // via S6, qui n'existe pas encore — non construit ici (DECISIONS.md, bloc 3.3).
 
-async function assertChapterOwnership(chapterId: string, userId: string) {
+// Exporté : réutilisé par S1.simulateUpdate/commitUpdate (Bloc 8.2) — même vérification
+// qu'ici, pas de troisième copie.
+export async function assertChapterOwnership(chapterId: string, userId: string) {
   const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, chapterId) });
   if (!chap) throw new Error("Chapitre introuvable.");
   const subj = await db.query.subject.findFirst({ where: eq(subject.id, chap.subjectId) });
@@ -24,8 +26,9 @@ async function assertChapterOwnership(chapterId: string, userId: string) {
 
 // Section.contenu est un extrait du markdown : les segments gras/italiques (positions
 // absolues, issus de P1 sur le chapitre entier) doivent être réancrés sur cet extrait
-// pour que U3 les rende correctement.
-function extractSection(
+// pour que U3 les rende correctement. Exporté : réutilisé par S1.commitUpdate (Bloc 8.2),
+// même façon d'extraire une section que l'import initial.
+export function extractSection(
   markdown: string,
   bold: EmphasisSegment[],
   italic: EmphasisSegment[],
