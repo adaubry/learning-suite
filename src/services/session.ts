@@ -1,6 +1,6 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { studyCycle, studySession, correctionGuide, section, reviewCard } from "@/db/schema";
+import { studyCycle, studySession, correctionGuide, section, reviewCard, chapter } from "@/db/schema";
 import { assertSectionOwnership } from "./guide";
 import * as errorService from "./error";
 import * as auditService from "./audit";
@@ -8,6 +8,13 @@ import * as reviewService from "./review";
 import * as plannerService from "./planner";
 import { buildCorrectionContext } from "@/llm/context/correction";
 import { correctBlurting } from "@/llm/correctBlurting";
+import { buildTranscriptionContext } from "@/llm/context/transcription";
+import { transcribeAudio } from "@/llm/transcribeAudio";
+import { buildFeynmanTurnContext, type FeynmanTour } from "@/llm/context/feynmanTurn";
+import { feynmanTurn as feynmanTurnLLM } from "@/llm/feynmanTurn";
+import { buildFeynmanBilanContext } from "@/llm/context/feynmanBilan";
+import { feynmanReport as feynmanReportLLM } from "@/llm/feynmanReport";
+import { computeFeynmanVerdict } from "@/core/feynman/computeFeynmanVerdict";
 import {
   computeVerdict,
   presentCorrection,
@@ -17,10 +24,14 @@ import {
 } from "@/core/correction/presentCorrection";
 import type { GuideOutput, ControlPoint } from "@/llm/schemas/guide";
 import type { Note } from "@/core/fsrs/fsrsCore";
+import type { EmphasisSegment } from "@/core/parser/types";
 
-// S4 · SessionService (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2 + 6.4) : start /
-// submitBlurting / resolveOutcome (retenter, reveler) / abandon / validateSection /
-// rateRevision. Feynman (L4/L5) reste hors périmètre (Phase 7).
+// S4 · SessionService (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2 + 6.4 + 7.1 + 7.2) :
+// start / submitBlurting / resolveOutcome (retenter, reveler) / abandon /
+// validateSection / rateRevision / transcribe (L6, Bloc 7.1) / beginFeynman,
+// openingTurn, feynmanTurn, closeFeynman, beginRestartFeynman, returnToBlurting
+// (L4/L5, Bloc 7.2 — restriction « Feynman requis si importance ≥ 3 » rétablie
+// dans validateSection).
 
 export class SectionNotReadyError extends Error {
   constructor() {
@@ -62,6 +73,80 @@ async function loadLatestSession(cycleId: string) {
     orderBy: (s, { desc }) => [desc(s.createdAt)],
   });
   return sessions[0] ?? null;
+}
+
+async function subjectIdForSection(sectionId: string): Promise<string> {
+  const sec = await db.query.section.findFirst({ where: eq(section.id, sectionId) });
+  if (!sec) throw new SectionNotReadyError();
+  const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, sec.chapterId) });
+  if (!chap) throw new SectionNotReadyError();
+  return chap.subjectId;
+}
+
+// ARCHITECTURE §9 ligne 5 : erreurs actives de LA SECTION ET de LA MATIÈRE
+// (contrairement à L3, section seule) — fusionnées, dédupliquées par id.
+async function activeErreursForFeynman(sectionId: string, subjectId: string) {
+  const [parSection, parMatiere] = await Promise.all([
+    errorService.activeForSection(sectionId),
+    errorService.activeFor(subjectId),
+  ]);
+  const parId = new Map([...parSection, ...parMatiere].map((e) => [e.id, e]));
+  return Array.from(parId.values());
+}
+
+// Reconstruit l'historique du dialogue depuis les StudySession type=feynman
+// (chacune : { input: transcript étudiant (vide pour le tour d'ouverture),
+// correction: { relance: string } }) — ordre chronologique, une session = au
+// plus une paire {étudiant?, ia}.
+async function loadFeynmanTours(cycleId: string): Promise<FeynmanTour[]> {
+  const sessions = await db.query.studySession.findMany({
+    where: and(eq(studySession.cycleId, cycleId), eq(studySession.type, "feynman")),
+    orderBy: (s, { asc }) => [asc(s.createdAt)],
+  });
+  const tours: FeynmanTour[] = [];
+  for (const s of sessions) {
+    if (s.input) tours.push({ role: "etudiant", texte: s.input });
+    const { relance } = s.correction as { relance: string };
+    tours.push({ role: "ia", texte: relance });
+  }
+  return tours;
+}
+
+export interface FeynmanBilan {
+  points: { intitule: string; type: "critique" | "important" | "secondaire"; statut: string; commentaire: string }[];
+  pointsSolides: string[];
+  lacunes: string[];
+  verdict: "acquis" | "insuffisant";
+}
+
+// Streame la relance L4 et persiste le tour (StudySession type=feynman) une fois
+// le flux épuisé — partagé par startFeynman (tour d'ouverture, transcript vide)
+// et feynmanTurn (tour normal).
+async function* streamAndPersistTurn(
+  cycleId: string,
+  sectionId: string,
+  guideId: string,
+  chapterVersion: number,
+  transcript: string,
+  context: ReturnType<typeof buildFeynmanTurnContext>,
+): AsyncGenerator<string> {
+  const tentative = await nextTentative(cycleId);
+  let full = "";
+  for await (const chunk of feynmanTurnLLM(context)) {
+    full += chunk;
+    yield chunk;
+  }
+  await db.insert(studySession).values({
+    cycleId,
+    sectionId,
+    guideId,
+    chapterVersion,
+    type: "feynman",
+    tentative,
+    input: transcript,
+    correction: { relance: full },
+    divulgation: "complete",
+  });
 }
 
 // Numéro de la PROCHAINE tentative pour ce cycle (chaque StudySession est
@@ -316,24 +401,171 @@ export async function abandon(userId: string, cycleId: string) {
   return { ok: true as const };
 }
 
-// validateSection (FUNCTIONS §3 S4 ; PLAN Bloc 6.2, remplace le raccourci
-// terminerSessionTemporaire — DECISIONS.md bloc 5.1) : décision utilisateur sur
-// verdict acquis → section `validee`, ReviewCard créée (S6.createCard) → section
-// `en_revision` (Machine A, ARCHITECTURE §4), cycle refermé. Feynman requis si
-// importance ≥ 3 NON appliqué ce bloc-ci (PLAN Bloc 6.2 : bypass temporaire pour
-// toutes les importances, restriction rétablie en Phase 7).
+// beginFeynman (FUNCTIONS §3 S4 « feynman » ; USER_FLOW É3.2 [Passer au Feynman] /
+// [Passer au Feynman quand même] ; PLAN Bloc 7.2) : quitte l'écran de correction
+// vers le dialogue — même « Règle de commit » que les autres sorties d'É3.2
+// (retenter/révéler/terminer), donc commit des candidates ICI (jamais rejoué
+// ensuite sur cette même session, doctrine S7.commitCandidates). Verdict
+// insuffisant ⇒ override obligatoire, journalisé (`override_verdict`, distinct de
+// `validation_sur_insuffisant` qui couvre le bilan à la clôture, É3.4). Guard +
+// transition SEULE (pas de génération) : appelée depuis un Server Action classique
+// (redirect), pas depuis la route de streaming — laisse le tour d'ouverture
+// streamer séparément une fois sur l'écran Feynman (openingTurn), pour un vrai
+// streaming dès la première relance (pas seulement les suivantes).
+export async function beginFeynman(
+  userId: string,
+  cycleId: string,
+  rejectedCandidateIndexes: number[] = [],
+  override = false,
+): Promise<void> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à quitter vers le Feynman.");
+
+  const latest = await loadLatestSession(cycleId);
+  if (!latest || latest.correction === null) throw new WrongCycleStateError("Aucune correction disponible.");
+  if (latest.verdictFinal === "insuffisant") {
+    if (!override) throw new WrongCycleStateError("Verdict insuffisant : confirmation explicite requise.");
+    await auditService.logEvent("override_verdict", "study_session", latest.id);
+  }
+  await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
+
+  await db.update(studyCycle).set({ etat: "feynman" }).where(eq(studyCycle.id, cycleId));
+}
+
+// feynmanTurn (FUNCTIONS §3 S4 « feynman » ; USER_FLOW É3.3 ; PLAN Bloc 7.2) :
+// un tour — transcript édité de l'étudiant (déjà produit par U20/S4.transcribe,
+// vide pour le tout premier tour d'ouverture) → relance streamée (L4), ciblant
+// l'historique RÉEL de CETTE session (vide la toute première fois ; non vide
+// après beginRestartFeynman, qui préserve l'historique passé, ADR 6 — l'IA
+// n'oublie pas ce qui a déjà été dit) + erreurs actives.
+export async function* feynmanTurn(userId: string, cycleId: string, transcript: string): AsyncGenerator<string> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "feynman") throw new WrongCycleStateError("Aucun dialogue Feynman en cours.");
+
+  const guide = await loadValidGuide(cycle.sectionId);
+  const points = (guide.contenu as GuideOutput).points;
+
+  const sec = await db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) });
+  if (!sec) throw new SectionNotReadyError();
+  const subjectId = await subjectIdForSection(cycle.sectionId);
+  const [erreursActives, historique] = await Promise.all([
+    activeErreursForFeynman(cycle.sectionId, subjectId),
+    loadFeynmanTours(cycleId),
+  ]);
+
+  const context = buildFeynmanTurnContext({
+    points,
+    contenuSection: sec.contenu,
+    erreursActives: erreursActives.map((e) => ({ type: e.type, description: e.description })),
+    historique,
+    dernierTranscript: transcript,
+  });
+  yield* streamAndPersistTurn(cycleId, cycle.sectionId, guide.id, sec.chapterVersion, transcript, context);
+}
+
+// openingTurn (USER_FLOW É3.3 « Premier message IA : invitation à expliquer… » ;
+// aussi réutilisée par [Refaire un Feynman], USER_FLOW É3.4) : un tour d'ouverture
+// est un feynmanTurn sans transcript — même fonction, transcript vide.
+export const openingTurn = (userId: string, cycleId: string): AsyncGenerator<string> => feynmanTurn(userId, cycleId, "");
+
+// closeFeynman (FUNCTIONS §3 S4 « feynman » clôture ; USER_FLOW É3.3 [Clore et
+// demander le bilan] → É3.4 ; PLAN Bloc 7.2) : appelle L5 sur l'historique complet,
+// résout `type` de chaque point depuis la rubrique locale (jamais le LLM,
+// même doctrine que L3/point_index — DECISIONS.md bloc 5.1), calcule le verdict
+// en code (computeFeynmanVerdict), persiste le bilan sur le cycle (UN par cycle,
+// pas une StudySession — study_session_type n'a pas de valeur "bilan").
+export async function closeFeynman(userId: string, cycleId: string): Promise<FeynmanBilan> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "feynman") throw new WrongCycleStateError("Aucun dialogue Feynman en cours.");
+
+  const guide = await loadValidGuide(cycle.sectionId);
+  const points = (guide.contenu as GuideOutput).points;
+  const historique = await loadFeynmanTours(cycleId);
+
+  const bilanContext = buildFeynmanBilanContext({ points, historique });
+  const output = await feynmanReportLLM(bilanContext);
+
+  const bilanPoints = output.points.map((p) => {
+    const point = points[p.point_index - 1];
+    return { intitule: point.intitule, type: point.type, statut: p.statut, commentaire: p.commentaire };
+  });
+  const verdict = computeFeynmanVerdict(bilanPoints.map((p) => ({ type: p.type, statut: p.statut })));
+  const bilan: FeynmanBilan = {
+    points: bilanPoints,
+    pointsSolides: output.points_solides,
+    lacunes: output.lacunes,
+    verdict,
+  };
+
+  await db.update(studyCycle).set({ etat: "bilan", bilanFeynman: bilan }).where(eq(studyCycle.id, cycleId));
+  return bilan;
+}
+
+// beginRestartFeynman (USER_FLOW É3.4 [Refaire un Feynman] → « É3.3, nouvelle
+// session » ; PLAN Bloc 7.2) : transition SEULE (même patron que beginFeynman),
+// reprend le MÊME cycle (immuabilité ADR 6 — l'historique des tours passés
+// n'est jamais effacé, seulement le bilan qui devient caduc). Le tour d'ouverture
+// streame séparément via openingTurn, qui relit l'historique réel (non vide ici).
+export async function beginRestartFeynman(userId: string, cycleId: string): Promise<void> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "bilan") throw new WrongCycleStateError("Aucun bilan à reprendre.");
+  await db.update(studyCycle).set({ etat: "feynman", bilanFeynman: null }).where(eq(studyCycle.id, cycleId));
+}
+
+// returnToBlurting (USER_FLOW É3.4 [Revenir au blurting] → « re-file intra-journée » ;
+// PLAN Bloc 7.2) : abandonne cette tentative Feynman, la section repasse par le
+// vivier du jour (S5.refile, même mécanique que resolveOutcome « retenter » —
+// jamais de retry immédiat, ARCHITECTURE §5).
+export async function returnToBlurting(userId: string, cycleId: string) {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "bilan") throw new WrongCycleStateError("Aucun bilan disponible.");
+
+  await plannerService.refile("etude", cycle.sectionId);
+  await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
+  return { ok: true as const };
+}
+
+// validateSection (FUNCTIONS §3 S4 ; PLAN Bloc 6.2 + 7.2, remplace le raccourci
+// terminerSessionTemporaire — DECISIONS.md bloc 5.1) : décision utilisateur →
+// section `validee`, ReviewCard créée (S6.createCard) → section `en_revision`
+// (Machine A, ARCHITECTURE §4), cycle refermé. Feynman requis si importance ≥ 3
+// (bypass temporaire du Bloc 6.2 levé, ARCHITECTURE §5 Machine B) : deux chemins
+// — `etat: correction` (sans Feynman, importance < 3 seulement, verdict blurting
+// acquis) ou `etat: bilan` (après Feynman, verdict du bilan acquis, ou insuffisant
+// avec confirmation explicite journalisée `validation_sur_insuffisant`, USER_FLOW
+// É3.4). Le commit des erreurs candidates du BLURTING est déjà fait par
+// beginFeynman en entrant en Feynman (jamais rejoué ici sur le chemin bilan —
+// doctrine S7.commitCandidates : jamais deux fois sur la même session).
 export async function validateSection(
   userId: string,
   cycleId: string,
   rejectedCandidateIndexes: number[] = [],
+  override = false,
 ) {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
-  const latest = await loadLatestSession(cycleId);
-  if (!latest || latest.verdictFinal !== "acquis") {
-    throw new WrongCycleStateError("validateSection exige un verdict final acquis.");
+  const sec = await db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) });
+  if (!sec) throw new SectionNotReadyError();
+
+  if (cycle.etat === "bilan") {
+    const bilan = cycle.bilanFeynman as FeynmanBilan | null;
+    if (!bilan) throw new WrongCycleStateError("Aucun bilan Feynman disponible.");
+    if (bilan.verdict !== "acquis") {
+      if (!override) {
+        throw new WrongCycleStateError("Bilan insuffisant : confirmation explicite requise pour valider.");
+      }
+      await auditService.logEvent("validation_sur_insuffisant", "study_cycle", cycleId);
+    }
+  } else {
+    if (sec.importance >= 3) {
+      throw new WrongCycleStateError("Feynman requis pour valider une section d'importance ≥ 3.");
+    }
+    const latest = await loadLatestSession(cycleId);
+    if (!latest || latest.verdictFinal !== "acquis") {
+      throw new WrongCycleStateError("validateSection exige un verdict final acquis.");
+    }
+    // Même règle de commit qu'à la sortie via resolveOutcome (USER_FLOW É3.2).
+    await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
   }
-  // Même règle de commit qu'à la sortie via resolveOutcome (USER_FLOW É3.2).
-  await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
 
   await db.update(section).set({ statut: "validee" }).where(eq(section.id, cycle.sectionId));
 
@@ -351,6 +583,22 @@ export async function validateSection(
 
   await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
   return { ok: true as const };
+}
+
+// transcribe (FUNCTIONS §3 S4 « feynman » : transcript édité ; PLAN Bloc 7.1) :
+// audio → transcript, étape intermédiaire avant l'envoi d'un tour Feynman
+// (S4.feynman n'existe pas avant le Bloc 7.2 — pas de garde sur un état dédié
+// du cycle, cette transition machine B n'existe pas encore). Audio jamais
+// persisté : transite en base64, rien n'est écrit en base ici.
+export async function transcribe(userId: string, cycleId: string, audioBase64: string, audioFormat: string) {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  const sec = await db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) });
+  if (!sec) throw new SectionNotReadyError();
+
+  const segmentsGras = (sec.segmentsGras as EmphasisSegment[] | null) ?? [];
+  const context = buildTranscriptionContext({ section: { titre: sec.titre, segmentsGras } });
+
+  return transcribeAudio(context, audioBase64, audioFormat);
 }
 
 // rateRevision (FUNCTIONS §3 S4 ; ARCHITECTURE §6 Machine C ; PLAN Bloc 6.4) :

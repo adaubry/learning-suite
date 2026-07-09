@@ -14,10 +14,11 @@ import type { Note } from "@/core/fsrs/fsrsCore";
 // que P10 a laissé passer : par construction, ce composant ne peut pas révéler
 // ce que le serveur n'a pas envoyé (aucun champ masqué n'existe côté client tant
 // que `revelerAction` n'a pas répondu). Boutons d'issue selon le contexte :
-// étude insuffisant → retenter/révéler(/Feynman placeholder) ; étude acquis →
-// terminer(/Feynman placeholder) ; révision (`mode="revision"`) → U18
-// FsrsRatingBar à la place, la divulgation étant déjà complète d'emblée côté
-// serveur (ARCHITECTURE §6, aucune branche retenter/révéler n'a de sens ici).
+// étude insuffisant → retenter/révéler/passer au Feynman quand même (override) ;
+// étude acquis → valider sans Feynman (importance < 3 seulement) et/ou passer au
+// Feynman (Bloc 7.2) ; révision (`mode="revision"`) → U18 FsrsRatingBar à la
+// place, la divulgation étant déjà complète d'emblée côté serveur (ARCHITECTURE
+// §6, aucune branche retenter/révéler n'a de sens ici).
 
 const statutIcon: Record<FilteredDiffPoint["statut"], string> = {
   couvert: "✅",
@@ -51,9 +52,11 @@ export function CorrectionView({
   erreursCandidates,
   divulgation,
   mode = "etude",
+  importance,
   retenterAction,
   revelerAction,
   terminerAction,
+  passerFeynmanAction,
   ratingPreview,
   rateAction,
 }: {
@@ -66,9 +69,13 @@ export function CorrectionView({
   /** Étude (défaut) : retenter/révéler/terminer. Révision : U18 à la place (aucune
    *  branche retenter/révéler n'a de sens, divulgation déjà complète — ARCHITECTURE §6). */
   mode?: "etude" | "revision";
+  /** Feynman requis si ≥ 3 (terminerAction alors masqué, seul passerFeynmanAction
+   *  mène à la validation) ; optionnel si 2 (les deux boutons cohabitent, USER_FLOW É3.2). */
+  importance?: number;
   retenterAction?: (formData: FormData) => Promise<void>;
   revelerAction?: (prevState: unknown, formData: FormData) => Promise<ResolveOutcomeResult>;
   terminerAction?: (formData: FormData) => Promise<void>;
+  passerFeynmanAction?: (formData: FormData) => Promise<void>;
   ratingPreview?: Record<Note, { due: string }>;
   rateAction?: (note: Note, formData: FormData) => Promise<void>;
 }) {
@@ -146,19 +153,39 @@ export function CorrectionView({
                   {revealPending ? "…" : "Révéler les réponses"}
                 </Button>
               </form>
+              {passerFeynmanAction && (
+                <form action={passerFeynmanAction}>
+                  <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
+                  <input type="hidden" name="override" value="true" />
+                  <Button type="submit" size="sm" variant="outline">
+                    Passer au Feynman quand même
+                  </Button>
+                </form>
+              )}
             </>
           )}
           {verdict === "acquis" && (
-            <form action={terminerAction}>
-              <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-              <Button type="submit" size="sm">
-                Terminer l&apos;étude
-              </Button>
-            </form>
+            <>
+              {/* Feynman requis dès l'importance ≥ 3 (USER_FLOW É3.2) : pas de
+                  validation directe, seul [Passer au Feynman] mène plus loin. */}
+              {(importance ?? 0) < 3 && (
+                <form action={terminerAction}>
+                  <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
+                  <Button type="submit" size="sm">
+                    Valider sans Feynman
+                  </Button>
+                </form>
+              )}
+              {passerFeynmanAction && (
+                <form action={passerFeynmanAction}>
+                  <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
+                  <Button type="submit" size="sm" variant={(importance ?? 0) < 3 ? "outline" : "default"}>
+                    Passer au Feynman
+                  </Button>
+                </form>
+              )}
+            </>
           )}
-          <Button size="sm" variant="ghost" disabled title="Feynman arrive en Phase 7">
-            Passer au Feynman (bientôt disponible)
-          </Button>
         </div>
       )}
     </div>

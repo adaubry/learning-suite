@@ -172,6 +172,10 @@ export const studyCycle = pgTable(
       .references(() => section.id),
     type: studyCycleTypeEnum("type").notNull(),
     etat: studyCycleEtatEnum("etat").notNull().default("rubrique_a_valider"),
+    // Bilan Feynman (L5, Bloc 7.2) : artefact de clôture UNIQUE par cycle, pas une
+    // tentative (study_session.type n'a pas de valeur "bilan") — un seul propriétaire,
+    // ici, plutôt que de le loger dans le JSONB `correction` d'un tour Feynman.
+    bilanFeynman: jsonb("bilan_feynman"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -73,10 +73,12 @@ afterAll(async () => {
 });
 
 // Section en_revision + ReviewCard, prête pour la machine C (état d'entrée).
+// importance 2 : ce canary teste rateRevision/Again, pas la restriction Feynman
+// (Bloc 7.2) — la fixture doit pouvoir valider directement (sans Feynman).
 async function createRevisionSection() {
   const [sec] = await db
     .insert(section)
-    .values({ chapterId, chapterVersion: 1, titre: "Sec", ordre: 1, niveauSource: 1, contenu: "...", importance: 3, statut: "active" })
+    .values({ chapterId, chapterVersion: 1, titre: "Sec", ordre: 1, niveauSource: 1, contenu: "...", importance: 2, statut: "active" })
     .returning();
   const created = await guide.createManual(userId, sec.id);
   await guide.validate(userId, created.id, [point("critique"), point("important")]);

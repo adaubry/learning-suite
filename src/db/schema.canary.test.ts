@@ -40,7 +40,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     "parent_ids",
   ],
   correction_guide: ["id", "section_id", "chapter_version", "contenu", "statut", "valide_le"],
-  study_cycle: ["id", "user_id", "section_id", "type", "etat", "closed_at", "created_at"],
+  study_cycle: ["id", "user_id", "section_id", "type", "etat", "bilan_feynman", "closed_at", "created_at"],
   study_session: [
     "id",
     "cycle_id",

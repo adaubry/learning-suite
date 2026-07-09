@@ -5,8 +5,11 @@ import { db } from "@/db";
 import { section } from "@/db/schema";
 import { requireUserId } from "@/lib/auth";
 import * as session from "@/services/session";
+import type { FeynmanBilan } from "@/services/session";
 import { BlurtingEditor } from "@/components/blurting-editor";
 import { CorrectionView } from "@/components/correction-view";
+import { FeynmanChat } from "@/components/feynman-chat";
+import { FeynmanReportView } from "@/components/feynman-report-view";
 import { Button } from "@/components/ui/button";
 import {
   submitBlurtingAction,
@@ -15,9 +18,15 @@ import {
   revelerAction,
   abandonAction,
   terminerAction,
+  passerFeynmanAction,
+  transcribeAction,
+  closeFeynmanAction,
+  validerBilanAction,
+  refaireFeynmanAction,
+  revenirBlurtingAction,
 } from "./actions";
 
-// P3 · É3.1/É3.2 (USER_FLOW, ARCHITECTURE §5 Machine B) — atteint depuis la
+// P3 · É3.1–É3.4 (USER_FLOW, ARCHITECTURE §5 Machine B) — atteint depuis la
 // file du jour (PLAN Bloc 6.3, S5.todayQueue) via `[Commencer]`.
 
 export default async function EtudePage({ params }: { params: Promise<{ sectionId: string }> }) {
@@ -26,7 +35,7 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
 
   const sec = await db.query.section.findFirst({
     where: eq(section.id, sectionId),
-    columns: { titre: true },
+    columns: { titre: true, importance: true },
   });
   if (!sec) notFound();
 
@@ -94,13 +103,39 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
         diff={current.diff}
         erreursCandidates={current.erreursCandidates}
         divulgation={current.divulgation}
+        importance={sec.importance}
         retenterAction={retenterAction.bind(null, cycle.id)}
         revelerAction={revelerAction.bind(null, cycle.id)}
         terminerAction={terminerAction.bind(null, cycle.id)}
+        passerFeynmanAction={passerFeynmanAction.bind(null, cycle.id, sectionId)}
       />
     );
   }
 
-  // feynman/bilan/clos : hors scope Bloc 5.2 (Phase 6/7)
+  if (cycle.etat === "feynman") {
+    return (
+      <FeynmanChat
+        cycleId={cycle.id}
+        sectionTitre={sec.titre}
+        transcribeAction={transcribeAction}
+        closeFeynmanAction={closeFeynmanAction.bind(null, cycle.id, sectionId)}
+      />
+    );
+  }
+
+  if (cycle.etat === "bilan") {
+    return (
+      <FeynmanReportView
+        sectionTitre={sec.titre}
+        bilan={cycle.bilanFeynman as FeynmanBilan}
+        validerAction={validerBilanAction.bind(null, cycle.id)}
+        refaireAction={refaireFeynmanAction.bind(null, cycle.id, sectionId)}
+        revenirAction={revenirBlurtingAction.bind(null, cycle.id)}
+      />
+    );
+  }
+
+  // clos : ne devrait pas être atteignable ici (session.start reprend un cycle
+  // ouvert ou en crée un nouveau, jamais un cycle clos).
   notFound();
 }
