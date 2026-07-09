@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { inArray, eq } from "drizzle-orm";
 import { createClient } from "@/lib/supabase/server";
 import { db } from "@/db";
 import { chapter, subject, section } from "@/db/schema";
 import { hasCompletedOnboarding, listSubjects } from "@/services/account";
 import * as planner from "@/services/planner";
+import * as guide from "@/services/guide";
 import { Button } from "@/components/ui/button";
 import { DailyQueue, type QueueSectionInfo } from "@/components/daily-queue";
 import { HorizonChart } from "@/components/horizon-chart";
@@ -55,6 +57,16 @@ export default async function HomePage() {
     planner.attentionBadges(user.id),
     listSubjects(user.id),
   ]);
+
+  // S3.lazyScheduler comme « hook de S5 » (FUNCTIONS §3, PLAN Bloc 6.4) : la
+  // recomposition de la file du jour déclenche la pré-génération en tâche de
+  // fond — après()/non bloquant, ne retarde jamais le rendu de l'accueil.
+  // Appelé ici (pas dans le service S5 lui-même) : `after()` exige un contexte
+  // de requête Next, absent des tests Vitest qui appellent `todayQueue`
+  // directement (planner.test.ts).
+  after(() => {
+    guide.lazyScheduler(user.id).catch(() => {});
+  });
 
   const sectionIds = [...new Set(queue.map((item) => (item.kind === "re_file" ? item.itemId : item.sectionId)))];
   const sectionRows = sectionIds.length

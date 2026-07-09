@@ -1,8 +1,13 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, lt, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { reviewCard, section, chapter, subject, deferralLog, refileItem, queueOrder } from "@/db/schema";
 import * as account from "./account";
-import { buildDailyQueue, type QueueItem, type ReviewCardInput } from "@/core/planner/buildDailyQueue";
+import {
+  buildDailyQueue,
+  compareOrdreCurriculum,
+  type QueueItem,
+  type ReviewCardInput,
+} from "@/core/planner/buildDailyQueue";
 import { computeHorizon, type HorizonReviewCard } from "@/core/planner/computeHorizon";
 
 // S5 · PlannerService — l'organe central (FUNCTIONS §3, §7 ; ARCHITECTURE §3).
@@ -70,12 +75,7 @@ async function loadReadyStudyCandidates(userId: string, deferredKeys: Set<string
   // le chapitre), tiebreaker de dernier rang après importance/examen (P7).
   return rows
     .filter((r) => !deferredKeys.has(`etude:${r.sectionId}`))
-    .sort(
-      (a, b) =>
-        a.subjectOrdre - b.subjectOrdre ||
-        a.chapterMaj.getTime() - b.chapterMaj.getTime() ||
-        a.sectionOrdre - b.sectionOrdre,
-    )
+    .sort(compareOrdreCurriculum)
     .map((r, i) => ({ sectionId: r.sectionId, importance: r.importance, subjectId: r.subjectId, ordreCurriculum: i }));
 }
 
@@ -145,8 +145,9 @@ export async function horizon(userId: string, date: string = todayIso()) {
 }
 
 // Élément regénéré → queue du jour même (ARCHITECTURE §3 : note Again, retry de
-// blurting différé). Expiration : simple filtrage par date au prochain
-// todayQueue, pas de purge active ce bloc-ci (tâches de fond, Bloc 6.4).
+// blurting différé). Expiration : filtrage par date à chaque todayQueue (une
+// ligne d'hier n'est plus jamais lue) ; la purge active de stockage (housekeeping,
+// pas de correction fonctionnelle) est `purgeExpired`, Bloc 6.4.
 export async function refile(itemType: ItemType, itemId: string, date: string = todayIso()) {
   await db.insert(refileItem).values({ date, itemType, itemId });
 }
@@ -168,6 +169,16 @@ export async function reorder(orderedKeys: string[], date: string = todayIso()) 
     .insert(queueOrder)
     .values({ date, order: orderedKeys })
     .onConflictDoUpdate({ target: queueOrder.date, set: { order: orderedKeys } });
+}
+
+// Purge de l'ordre manuel + expiration de la re-file (FUNCTIONS §5 : tâche de
+// fond, déclencheur minuit ; PLAN Bloc 6.4). Housekeeping seul : `todayQueue`
+// filtre déjà par date et ne lit jamais une ligne antérieure à aujourd'hui —
+// cette fonction ne fait que ne pas laisser ces deux tables mono-utilisateur
+// croître indéfiniment (RefileItem/QueueOrder, ARCHITECTURE §8).
+export async function purgeExpired(date: string = todayIso()) {
+  await db.delete(refileItem).where(lt(refileItem.date, date));
+  await db.delete(queueOrder).where(lt(queueOrder.date, date));
 }
 
 export interface AttentionBadge {

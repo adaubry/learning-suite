@@ -25,11 +25,14 @@ export function BlurtingEditor({
   sectionTitre,
   tentative,
   type = "etude",
+  rappelNumero,
   action,
 }: {
   sectionTitre: string;
   tentative: number;
   type?: "etude" | "revision";
+  /** USER_FLOW É4.1 : badge « Révision — Xᵉ rappel » (X = ReviewCard.reps + 1). */
+  rappelNumero?: number;
   action: (prevState: unknown, formData: FormData) => Promise<{ error?: string } | undefined>;
 }) {
   const elapsed = useElapsed();
@@ -39,7 +42,9 @@ export function BlurtingEditor({
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <Badge variant="secondary">{type === "etude" ? "Étude" : "Révision"}</Badge>
+        <Badge variant="secondary">
+          {type === "etude" ? "Étude" : rappelNumero != null ? `Révision — ${rappelNumero}ᵉ rappel` : "Révision"}
+        </Badge>
         <Badge variant="outline">tentative n°{tentative}</Badge>
         <span className="ml-auto text-xs text-muted-foreground">{elapsed}</span>
       </div>

@@ -5,14 +5,19 @@ import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
+import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
 import type { FilteredDiffPoint, FilteredErrorCandidate } from "@/core/correction/presentCorrection";
 import type { ResolveOutcomeResult } from "@/services/session";
+import type { Note } from "@/core/fsrs/fsrsCore";
 
-// U16 CorrectionView (FUNCTIONS §6.2, USER_FLOW É3.2) — rend exactement ce que
-// P10 a laissé passer : par construction, ce composant ne peut pas révéler ce
-// que le serveur n'a pas envoyé (aucun champ masqué n'existe côté client tant
-// que `revelerAction` n'a pas répondu). Boutons d'issue selon verdict : insuffisant
-// → retenter/révéler(/Feynman placeholder) ; acquis → terminer(/Feynman placeholder).
+// U16 CorrectionView (FUNCTIONS §6.2, USER_FLOW É3.2/É4.2) — rend exactement ce
+// que P10 a laissé passer : par construction, ce composant ne peut pas révéler
+// ce que le serveur n'a pas envoyé (aucun champ masqué n'existe côté client tant
+// que `revelerAction` n'a pas répondu). Boutons d'issue selon le contexte :
+// étude insuffisant → retenter/révéler(/Feynman placeholder) ; étude acquis →
+// terminer(/Feynman placeholder) ; révision (`mode="revision"`) → U18
+// FsrsRatingBar à la place, la divulgation étant déjà complète d'emblée côté
+// serveur (ARCHITECTURE §6, aucune branche retenter/révéler n'a de sens ici).
 
 const statutIcon: Record<FilteredDiffPoint["statut"], string> = {
   couvert: "✅",
@@ -45,9 +50,12 @@ export function CorrectionView({
   diff,
   erreursCandidates,
   divulgation,
+  mode = "etude",
   retenterAction,
   revelerAction,
   terminerAction,
+  ratingPreview,
+  rateAction,
 }: {
   sectionTitre: string;
   tentative: number;
@@ -55,11 +63,22 @@ export function CorrectionView({
   diff: FilteredDiffPoint[];
   erreursCandidates: FilteredErrorCandidate[];
   divulgation: "controlee" | "complete";
-  retenterAction: (formData: FormData) => Promise<void>;
-  revelerAction: (prevState: unknown, formData: FormData) => Promise<ResolveOutcomeResult>;
-  terminerAction: (formData: FormData) => Promise<void>;
+  /** Étude (défaut) : retenter/révéler/terminer. Révision : U18 à la place (aucune
+   *  branche retenter/révéler n'a de sens, divulgation déjà complète — ARCHITECTURE §6). */
+  mode?: "etude" | "revision";
+  retenterAction?: (formData: FormData) => Promise<void>;
+  revelerAction?: (prevState: unknown, formData: FormData) => Promise<ResolveOutcomeResult>;
+  terminerAction?: (formData: FormData) => Promise<void>;
+  ratingPreview?: Record<Note, { due: string }>;
+  rateAction?: (note: Note, formData: FormData) => Promise<void>;
 }) {
-  const [revealed, revealFormAction, revealPending] = useActionState(revelerAction, undefined);
+  // `useActionState` ne peut pas être appelé conditionnellement : en mode
+  // révision, `revelerAction` n'est jamais fourni ni jamais invoqué (aucun
+  // bouton révéler n'est rendu plus bas) — le stub ne sert qu'à satisfaire le hook.
+  const [revealed, revealFormAction, revealPending] = useActionState(
+    revelerAction ?? (async () => ({ outcome: "retenter" as const })),
+    undefined,
+  );
   const isRevealed = revealed?.outcome === "reveler";
 
   // USER_FLOW É3.2 « Règle de commit » : les index rejetés sont sérialisés dans un
@@ -100,7 +119,14 @@ export function CorrectionView({
         />
       )}
 
-      {isRevealed ? (
+      {mode === "revision" ? (
+        <FsrsRatingBar
+          verdict={verdict}
+          preview={ratingPreview!}
+          rejectedIndexesField={rejectedIndexesField}
+          rateAction={rateAction!}
+        />
+      ) : isRevealed ? (
         <Link href="/" className="self-start text-sm underline">
           Retour à l&apos;accueil
         </Link>

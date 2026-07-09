@@ -106,4 +106,22 @@ describe("review · S6", () => {
     const otherUserId = await createUser();
     await expect(review.createCard(otherUserId, sec.id)).rejects.toThrow();
   });
+
+  it("preview : simule les 4 notes sans écrire en base (U18)", async () => {
+    const sec = await createSection();
+    await review.createCard(userId, sec.id);
+    const before = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
+
+    const preview = await review.preview(userId, sec.id);
+    expect(Object.keys(preview).sort()).toEqual(["again", "easy", "good", "hard"]);
+    expect(preview.easy.due >= preview.again.due).toBe(true);
+
+    const after = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
+    expect(after).toEqual(before);
+  });
+
+  it("preview : sans ReviewCard ⇒ NoReviewCardError", async () => {
+    const sec = await createSection();
+    await expect(review.preview(userId, sec.id)).rejects.toThrow(review.NoReviewCardError);
+  });
 });

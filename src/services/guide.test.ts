@@ -52,6 +52,7 @@ afterEach(() => {
 afterAll(async () => {
   await client`delete from prompt_log where model = 'test/guideService'`;
   for (const id of createdUserIds) {
+    await client`delete from planner_config where user_id = ${id}`;
     await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
     await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
@@ -185,5 +186,47 @@ describe("guide · S3", () => {
 
     const untouched = await db.query.section.findFirst({ where: eq(section.id, notActive.id) });
     expect(untouched?.statut).toBe("a_trier");
+  });
+});
+
+describe("guide · S3 lazyScheduler", () => {
+  async function createSectionImportance(importance: number, ordre = 1) {
+    const [sec] = await db
+      .insert(section)
+      .values({ chapterId, chapterVersion: 1, titre: `Sec imp${importance}`, ordre, niveauSource: 1, contenu: "...", importance, statut: "active" })
+      .returning();
+    return sec;
+  }
+
+  it("génère la rubrique des sections active d'importance ≥ 3, jamais pour l'importance 2 (jamais d'avance)", async () => {
+    const imp5 = await createSectionImportance(5, 1);
+    const imp2 = await createSectionImportance(2, 2);
+
+    const results = await guide.lazyScheduler(userId);
+
+    expect(results.map((r) => r.sectionId)).toEqual([imp5.id]);
+    const untouchedImp2 = await db.query.section.findFirst({ where: eq(section.id, imp2.id) });
+    expect(untouchedImp2?.statut).toBe("active");
+  });
+
+  it("plafonne à config.nouvellesParJour, priorité à l'importance la plus haute", async () => {
+    await account.updatePlannerConfig(userId, 1);
+    const imp5 = await createSectionImportance(5, 1);
+    const imp4 = await createSectionImportance(4, 2);
+
+    const results = await guide.lazyScheduler(userId);
+
+    expect(results.map((r) => r.sectionId)).toEqual([imp5.id]);
+    const untouchedImp4 = await db.query.section.findFirst({ where: eq(section.id, imp4.id) });
+    expect(untouchedImp4?.statut).toBe("active");
+  });
+
+  it("ne touche pas une section déjà au-delà de active (rubrique_a_valider, prete…)", async () => {
+    const already = await createSectionImportance(5, 1);
+    await guide.generate(userId, already.id); // -> rubrique_a_valider
+
+    const results = await guide.lazyScheduler(userId);
+
+    expect(results).toHaveLength(0);
   });
 });

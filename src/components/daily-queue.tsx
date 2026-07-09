@@ -39,7 +39,7 @@ export function DailyQueue({
         const sectionId = item.kind === "re_file" ? item.itemId : item.sectionId;
         const info = infoById.get(sectionId);
         const itemType = item.kind === "re_file" ? item.itemType : item.kind === "revision" ? "revision" : "etude";
-        const commencerHref = itemType === "etude" ? `/etude/${sectionId}` : null;
+        const commencerHref = itemType === "etude" ? `/etude/${sectionId}` : `/revision/${sectionId}`;
 
         return (
           <li key={keys[index]} className="flex items-center gap-3 rounded border p-3">
@@ -74,15 +74,9 @@ export function DailyQueue({
             </div>
 
             <div className="flex items-center gap-2">
-              {commencerHref ? (
-                <Button size="sm" nativeButton={false} render={<Link href={commencerHref} />}>
-                  Commencer
-                </Button>
-              ) : (
-                <Button size="sm" disabled title="Écran de révision — Bloc 6.4">
-                  Commencer
-                </Button>
-              )}
+              <Button size="sm" nativeButton={false} render={<Link href={commencerHref} />}>
+                Commencer
+              </Button>
               <form action={deferAction.bind(null, itemType, sectionId)}>
                 <Button type="submit" size="sm" variant="ghost">
                   Reporter

@@ -62,11 +62,27 @@ function daysBetween(fromIso: string, toIso: string): number {
 
 // DECISIONS.md bloc 6.1 : un examen déjà passé compte comme « pas d'examen »
 // (distance infinie) — pas d'urgence artificielle une fois l'échéance dépassée.
-function joursAvantExamen(today: string, subjectId: string, examDates: BuildDailyQueueInput["examDates"]): number | null {
-  const date = examDates[subjectId];
-  if (!date) return null;
-  const diff = daysBetween(today, date);
+// Exportée : même règle réutilisée par S3.lazyScheduler (guide.ts, Bloc 6.4),
+// qui trie des sections `active` en dehors de buildDailyQueue.
+export function joursAvantExamen(today: string, dateExamen: string | null | undefined): number | null {
+  if (!dateExamen) return null;
+  const diff = daysBetween(today, dateExamen);
   return diff < 0 ? null : diff;
+}
+
+// Tiebreaker « ordre curriculum » (matière → maj du chapitre → position dans le
+// chapitre) : aucun champ dédié en base (DECISIONS.md bloc 6.3). Exporté : même
+// tri réutilisé par S5.loadReadyStudyCandidates (planner.ts) et S3.lazyScheduler
+// (guide.ts) pour construire `ordreCurriculum`/trier les sections `active`.
+export function compareOrdreCurriculum(
+  a: { subjectOrdre: number; chapterMaj: Date; sectionOrdre: number },
+  b: { subjectOrdre: number; chapterMaj: Date; sectionOrdre: number },
+): number {
+  return (
+    a.subjectOrdre - b.subjectOrdre ||
+    a.chapterMaj.getTime() - b.chapterMaj.getTime() ||
+    a.sectionOrdre - b.sectionOrdre
+  );
 }
 
 const INFINI = Number.POSITIVE_INFINITY;
@@ -82,7 +98,7 @@ export function buildDailyQueue(input: BuildDailyQueueInput): QueueItem[] {
       subjectId: c.subjectId,
       importance: c.importance,
       retardJours: daysBetween(c.due, today),
-      joursAvantExamen: joursAvantExamen(today, c.subjectId, examDates),
+      joursAvantExamen: joursAvantExamen(today, examDates[c.subjectId]),
     }))
     .sort(
       (a, b) =>
@@ -97,7 +113,7 @@ export function buildDailyQueue(input: BuildDailyQueueInput): QueueItem[] {
       sectionId: c.sectionId,
       subjectId: c.subjectId,
       importance: c.importance,
-      joursAvantExamen: joursAvantExamen(today, c.subjectId, examDates),
+      joursAvantExamen: joursAvantExamen(today, examDates[c.subjectId]),
       ordreCurriculum: c.ordreCurriculum,
     }))
     .sort(

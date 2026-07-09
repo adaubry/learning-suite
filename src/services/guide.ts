@@ -1,14 +1,17 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, gt, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { correctionGuide, section, chapter, subject } from "@/db/schema";
 import { buildRubriqueContext } from "@/llm/context/rubrique";
 import { generateGuide } from "@/llm/generateGuide";
 import { guideOutputSchema } from "@/llm/schemas/guide";
 import * as errorService from "./error";
+import * as accountService from "./account";
+import { joursAvantExamen, compareOrdreCurriculum } from "@/core/planner/buildDailyQueue";
 import type { EmphasisSegment } from "@/core/parser/types";
 
-// S3 · GuideService — rubriques (FUNCTIONS §3, §7). Bouton manuel ce bloc ; le
-// lazyScheduler (génération à l'approche de la file) attend le Planificateur (Phase 6).
+// S3 · GuideService — rubriques (FUNCTIONS §3, §7). `lazyScheduler` (Bloc 6.4)
+// remplace la génération purement manuelle de Bloc 4.1, conservée pour l'option
+// « générer la rubrique » du chapitre (`generateBatch`).
 
 export class SectionNotActiveError extends Error {
   constructor() {
@@ -163,6 +166,63 @@ export async function regenerate(userId: string, sectionId: string) {
   });
 }
 
+// Un seul appelant en échec ne doit pas empêcher les autres (bouton manuel de
+// chapitre ET lazyScheduler) — partagé par generateBatch et lazyScheduler.
+async function generateMany(userId: string, sectionIds: string[]) {
+  const results = await Promise.allSettled(sectionIds.map((id) => generate(userId, id)));
+  return results.map((r, i) =>
+    r.status === "fulfilled"
+      ? { sectionId: sectionIds[i], ok: true as const, guide: r.value }
+      : { sectionId: sectionIds[i], ok: false as const, error: String(r.reason) },
+  );
+}
+
+// lazyScheduler (FUNCTIONS §3 S3 ; ARCHITECTURE §3/§4 : LLM 2 « à l'approche de
+// la tête de file » ; PLAN Bloc 6.4) — tâche de fond + hook de S5.todayQueue.
+// Pré-génère la rubrique des sections `active` (jamais de rubrique encore,
+// Machine A) dans la limite de config.nouvellesParJour (même plafond que les
+// nouvelles études du jour — fenêtre tranchée avec l'humain en récitation),
+// triées comme S5 (importance DESC, proximité d'examen, ordre curriculum).
+// Jamais d'avance pour l'importance 2 (secondaire, étudiée en dernier) : exclue
+// du tri, reste uniquement accessible via le bouton manuel (`generate`/
+// `generateBatch`).
+export async function lazyScheduler(userId: string, date: string = new Date().toISOString().slice(0, 10)) {
+  const config = await accountService.getPlannerConfig(userId);
+
+  const rows = await db
+    .select({
+      sectionId: section.id,
+      importance: section.importance,
+      subjectOrdre: subject.ordre,
+      chapterMaj: chapter.maj,
+      sectionOrdre: section.ordre,
+      dateExamen: subject.dateExamen,
+    })
+    .from(section)
+    .innerJoin(chapter, eq(section.chapterId, chapter.id))
+    .innerJoin(subject, eq(chapter.subjectId, subject.id))
+    .where(
+      and(
+        eq(subject.userId, userId),
+        eq(subject.statut, "active"),
+        eq(section.statut, "active"),
+        gt(section.importance, 2),
+      ),
+    );
+
+  const candidates = rows
+    .map((r) => ({ ...r, joursAvantExamen: joursAvantExamen(date, r.dateExamen) }))
+    .sort(
+      (a, b) =>
+        b.importance - a.importance ||
+        (a.joursAvantExamen ?? Infinity) - (b.joursAvantExamen ?? Infinity) ||
+        compareOrdreCurriculum(a, b),
+    )
+    .slice(0, Math.max(0, config.nouvellesParJour));
+
+  return generateMany(userId, candidates.map((c) => c.sectionId));
+}
+
 export async function generateBatch(userId: string, chapterId: string) {
   const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, chapterId) });
   if (!chap) throw new Error("Chapitre introuvable.");
@@ -173,11 +233,5 @@ export async function generateBatch(userId: string, chapterId: string) {
     where: and(eq(section.chapterId, chapterId), eq(section.statut, "active")),
   });
 
-  const results = await Promise.allSettled(active.map((s) => generate(userId, s.id)));
-
-  return results.map((r, i) =>
-    r.status === "fulfilled"
-      ? { sectionId: active[i].id, ok: true as const, guide: r.value }
-      : { sectionId: active[i].id, ok: false as const, error: String(r.reason) },
-  );
+  return generateMany(userId, active.map((s) => s.id));
 }

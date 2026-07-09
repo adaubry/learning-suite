@@ -3,7 +3,7 @@ import postgres from "postgres";
 import * as account from "./account";
 import * as planner from "./planner";
 import { db } from "@/db";
-import { chapter, section, reviewCard } from "@/db/schema";
+import { chapter, section, reviewCard, refileItem, queueOrder } from "@/db/schema";
 import type { QueueItem } from "@/core/planner/buildDailyQueue";
 
 // S5 · PlannerService — Postgres réel (pattern guide.test.ts), pas de LLM.
@@ -166,5 +166,28 @@ describe("planner · S5 attentionBadges", () => {
   it("aucun signal ⇒ tableau vide", async () => {
     const badges = await planner.attentionBadges(await createUser(), TODAY);
     expect(badges).toEqual([]);
+  });
+});
+
+describe("planner · S5 purgeExpired", () => {
+  it("supprime les RefileItem et QueueOrder antérieurs à la date, garde ceux du jour et du futur", async () => {
+    const sec = await insertSection("prete");
+
+    await db.insert(refileItem).values([
+      { date: "2026-07-08", itemType: "etude", itemId: sec.id },
+      { date: TODAY, itemType: "etude", itemId: sec.id },
+    ]);
+    await db.insert(queueOrder).values([
+      { date: "2026-07-08", order: ["a"] },
+      { date: "2026-07-10", order: ["b"] },
+    ]);
+
+    await planner.purgeExpired(TODAY);
+
+    const refileRows = await db.query.refileItem.findMany({ where: (r, { eq: eqOp }) => eqOp(r.itemId, sec.id) });
+    expect(refileRows.map((r) => r.date)).toEqual([TODAY]);
+
+    const orderRows = await db.query.queueOrder.findMany({ where: (o, { inArray }) => inArray(o.date, ["2026-07-08", "2026-07-10"]) });
+    expect(orderRows.map((r) => r.date)).toEqual(["2026-07-10"]);
   });
 });

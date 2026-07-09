@@ -85,6 +85,18 @@ async function createReadySection(points = [point("critique"), point("important"
   return sec;
 }
 
+// Section `en_revision` + ReviewCard due aujourd'hui — état d'entrée machine C.
+async function createRevisionSection(points = [point("critique"), point("important")]) {
+  const sec = await createReadySection(points);
+  const cycle = await session.start(userId, sec.id);
+  (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+    mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
+  );
+  await session.submitBlurting(userId, cycle.id, "Restitution parfaite.");
+  await session.validateSection(userId, cycle.id);
+  return db.query.section.findFirst({ where: eq(section.id, sec.id) }).then((s) => s!);
+}
+
 describe("session · S4 start", () => {
   it("crée un cycle en état blurting sur une section prête", async () => {
     const sec = await createReadySection();
@@ -113,6 +125,20 @@ describe("session · S4 start", () => {
     const secB = await createReadySection();
     await session.start(userId, secA.id);
     await expect(session.start(userId, secB.id)).rejects.toThrow(session.SessionAlreadyOpenError);
+  });
+
+  it("section en_revision : ouvre un cycle de type revision (USER_FLOW É4.1)", async () => {
+    const sec = await createRevisionSection();
+    const cycle = await session.start(userId, sec.id);
+    expect(cycle.type).toBe("revision");
+    expect(cycle.etat).toBe("blurting");
+  });
+
+  it("refuse une révision sur une ReviewCard gelée", async () => {
+    const sec = await createRevisionSection();
+    const { freeze } = await import("./review");
+    await freeze(userId, sec.id);
+    await expect(session.start(userId, sec.id)).rejects.toThrow(session.SectionNotReadyError);
   });
 });
 
@@ -422,5 +448,104 @@ describe("session · S4 getCurrentCorrection", () => {
     });
 
     await expect(session.getCurrentCorrection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+  });
+});
+
+// Le canari correspondant (« Again ⇒ RefileItem du jour ; 2ᵉ Again consécutif ⇒
+// section prete ») vit dans session.canary.test.ts (suffixe requis par
+// CLAUDE.md §1 pour que `npm run test:canary` l'exécute réellement).
+describe("session · S4 rateRevision", () => {
+  async function submitRevisionBlurting(sec: { id: string }) {
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Rappel de révision.");
+    return cycle;
+  }
+
+  it("divulgation complète d'emblée en révision, quel que soit le verdict (ARCHITECTURE §6)", async () => {
+    const sec = await createRevisionSection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    const result = await session.submitBlurting(userId, cycle.id, "Rappel incomplet.");
+
+    expect(result.verdict).toBe("insuffisant");
+    expect(result.divulgation).toBe("complete");
+    expect(JSON.stringify(result)).toContain("SECRET");
+  });
+
+  it("note Again : FSRS mis à jour, re-file intra-journée, cycle fermé, section reste en_revision", async () => {
+    const sec = await createRevisionSection();
+    const cycle = await submitRevisionBlurting(sec);
+
+    await session.rateRevision(userId, cycle.id, "again");
+
+    const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
+    expect(closed?.closedAt).not.toBeNull();
+
+    const refile = await client`select * from refile_item where item_id = ${sec.id} and item_type = 'revision'`;
+    expect(refile).toHaveLength(1);
+
+    const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
+    expect(updatedSection?.statut).toBe("en_revision");
+  });
+
+  it("2ᵉ Again consécutif : section repasse prete, pas de nouvelle re-file", async () => {
+    const sec = await createRevisionSection();
+
+    const firstCycle = await submitRevisionBlurting(sec);
+    await session.rateRevision(userId, firstCycle.id, "again");
+
+    const secondCycle = await submitRevisionBlurting(sec);
+    await session.rateRevision(userId, secondCycle.id, "again");
+
+    const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
+    expect(updatedSection?.statut).toBe("prete");
+
+    const refileRows = await client`select * from refile_item where item_id = ${sec.id} and item_type = 'revision'`;
+    expect(refileRows).toHaveLength(1); // uniquement celle du 1er Again, pas une 2e
+  });
+
+  it("Again puis Good : la note Good remet le compteur consécutif à zéro", async () => {
+    const sec = await createRevisionSection();
+
+    const firstCycle = await submitRevisionBlurting(sec);
+    await session.rateRevision(userId, firstCycle.id, "again");
+
+    const secondCycle = await submitRevisionBlurting(sec);
+    await session.rateRevision(userId, secondCycle.id, "good");
+
+    const thirdCycle = await submitRevisionBlurting(sec);
+    await session.rateRevision(userId, thirdCycle.id, "again");
+
+    const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
+    expect(updatedSection?.statut).toBe("en_revision"); // pas 2 Again consécutifs (Good entre les deux)
+  });
+
+  it("note non-Again : ferme le cycle sans re-file", async () => {
+    const sec = await createRevisionSection();
+    const cycle = await submitRevisionBlurting(sec);
+
+    await session.rateRevision(userId, cycle.id, "good");
+
+    const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
+    expect(closed?.closedAt).not.toBeNull();
+
+    const refile = await client`select * from refile_item where item_id = ${sec.id}`;
+    expect(refile).toHaveLength(0);
+  });
+
+  it("refuse une note sur un cycle d'étude", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution.");
+
+    await expect(session.rateRevision(userId, cycle.id, "good")).rejects.toThrow(session.WrongCycleStateError);
   });
 });

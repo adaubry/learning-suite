@@ -1,6 +1,6 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { studyCycle, studySession, correctionGuide, section } from "@/db/schema";
+import { studyCycle, studySession, correctionGuide, section, reviewCard } from "@/db/schema";
 import { assertSectionOwnership } from "./guide";
 import * as errorService from "./error";
 import * as auditService from "./audit";
@@ -16,12 +16,11 @@ import {
   type FilteredCorrection,
 } from "@/core/correction/presentCorrection";
 import type { GuideOutput, ControlPoint } from "@/llm/schemas/guide";
+import type { Note } from "@/core/fsrs/fsrsCore";
 
-// S4 · SessionService — partiel (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2) : start /
-// submitBlurting / resolveOutcome (retenter, reveler) / abandon / validateSection.
-// Ni feynman (Phase 7) ni révision/rateRevision (Bloc 6.4, dépend de S5.refile)
-// ce bloc — entrée temporaire par le curriculum, le Planificateur n'existe pas
-// encore (PLAN Bloc 5.1/6.3).
+// S4 · SessionService (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2 + 6.4) : start /
+// submitBlurting / resolveOutcome (retenter, reveler) / abandon / validateSection /
+// rateRevision. Feynman (L4/L5) reste hors périmètre (Phase 7).
 
 export class SectionNotReadyError extends Error {
   constructor() {
@@ -79,12 +78,16 @@ type ErreursActives = Awaited<ReturnType<typeof errorService.activeForSection>>;
 // recidive_index vers les vraies données, calcule le verdict, persiste, applique
 // P10. `sessionId` désigne la ligne DÉJÀ sauvegardée (input toujours en base
 // avant cet appel — FUNCTIONS §7) ; cette fonction ne fait qu'un UPDATE dessus.
+// `cycleType` tranche `retryAttendu` (P10.DivulgationContext) : en révision, la
+// divulgation est complète d'emblée quel que soit le verdict (ARCHITECTURE §6,
+// P10 ne fait qu'appliquer ce que S4 décide).
 async function runCorrection(
   sessionId: string,
   input: string,
   tentative: number,
   points: ControlPoint[],
   erreursActives: ErreursActives,
+  cycleType: "etude" | "revision",
 ) {
   const context = buildCorrectionContext({
     points,
@@ -109,7 +112,7 @@ async function runCorrection(
   }));
 
   const verdict = computeVerdict(diff);
-  const retryAttendu = verdict === "insuffisant";
+  const retryAttendu = cycleType === "etude" && verdict === "insuffisant";
   const divulgation = retryAttendu ? "controlee" : "complete";
 
   const [updated] = await db
@@ -124,13 +127,18 @@ async function runCorrection(
   return { cycleId: updated.cycleId, sessionId, tentative, ...filtered };
 }
 
-// Vérifie la rubrique via S3 (section `prete` ⇒ rubrique valide, contrainte DB en
-// renfort) ; crée ou reprend — une seule session ouverte par utilisateur, invariant
-// tenu par l'index unique partiel (ARCHITECTURE §8), doublé ici d'une vérification
-// applicative pour une erreur lisible plutôt que l'exception Postgres brute.
+// Vérifie la rubrique via S3 (section `prete`/`en_revision` ⇒ rubrique valide,
+// contrainte DB en renfort) ; crée ou reprend — une seule session ouverte par
+// utilisateur, invariant tenu par l'index unique partiel (ARCHITECTURE §8),
+// doublé ici d'une vérification applicative pour une erreur lisible plutôt que
+// l'exception Postgres brute. Le type de cycle se déduit du statut de la
+// section (`prete` ⇒ étude, `en_revision` ⇒ révision, USER_FLOW É4.1 : blurting
+// de rappel identique à É3.1) — un seul point d'entrée pour les deux machines
+// B/C, comme FUNCTIONS §3 n'en liste qu'un (`start`, pas de variante dédiée).
 export async function start(userId: string, sectionId: string) {
   const sec = await assertSectionOwnership(sectionId, userId);
-  if (sec.statut !== "prete") throw new SectionNotReadyError();
+  if (sec.statut !== "prete" && sec.statut !== "en_revision") throw new SectionNotReadyError();
+  const type: "etude" | "revision" = sec.statut === "en_revision" ? "revision" : "etude";
 
   const openCycle = await db.query.studyCycle.findFirst({
     where: and(eq(studyCycle.userId, userId), isNull(studyCycle.closedAt)),
@@ -140,12 +148,17 @@ export async function start(userId: string, sectionId: string) {
     throw new SessionAlreadyOpenError();
   }
 
-  await loadValidGuide(sectionId); // garde défensive : `prete` implique déjà une rubrique valide
+  await loadValidGuide(sectionId); // garde défensive : `prete`/`en_revision` implique déjà une rubrique valide
 
-  const [cycle] = await db
-    .insert(studyCycle)
-    .values({ userId, sectionId, type: "etude", etat: "blurting" })
-    .returning();
+  if (type === "revision") {
+    // Garde défensive : la file du jour (S5) exclut déjà les ReviewCards gelées
+    // ou sans échéance due — cette vérification ne protège que l'accès direct à
+    // l'URL, jamais atteint par le flux normal.
+    const card = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sectionId) });
+    if (!card || card.gelee) throw new SectionNotReadyError();
+  }
+
+  const [cycle] = await db.insert(studyCycle).values({ userId, sectionId, type, etat: "blurting" }).returning();
   return cycle;
 }
 
@@ -183,7 +196,7 @@ export async function submitBlurting(userId: string, cycleId: string, blurtingTe
 
   await db.update(studyCycle).set({ etat: "correction" }).where(eq(studyCycle.id, cycleId));
 
-  return runCorrection(savedSession.id, blurtingText, tentative, points, erreursActives);
+  return runCorrection(savedSession.id, blurtingText, tentative, points, erreursActives, cycle.type);
 }
 
 // USER_FLOW É3.2 : « le blurting est TOUJOURS sauvegardé d'abord ; [Relancer la
@@ -204,7 +217,7 @@ export async function retryCorrection(userId: string, cycleId: string) {
 
   const erreursActives = await errorService.activeForSection(cycle.sectionId);
 
-  return runCorrection(latest.id, latest.input, latest.tentative, points, erreursActives);
+  return runCorrection(latest.id, latest.input, latest.tentative, points, erreursActives, cycle.type);
 }
 
 export type CurrentCorrection =
@@ -323,8 +336,74 @@ export async function validateSection(
   await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
 
   await db.update(section).set({ statut: "validee" }).where(eq(section.id, cycle.sectionId));
-  await reviewService.createCard(userId, cycle.sectionId);
+
+  // Une ReviewCard peut déjà exister : section repassée `prete` après 2×Again
+  // (Machine C) puis re-étudiée avec succès. Décision tranchée avec l'humain
+  // (récitation Bloc 6.4) : on conserve la carte existante (historique FSRS —
+  // stability/difficulty/lapses — jamais réinitialisé), on ne fait qu'ignorer
+  // l'erreur d'unicité plutôt que la lever à l'appelant.
+  try {
+    await reviewService.createCard(userId, cycle.sectionId);
+  } catch (e) {
+    if (!(e instanceof reviewService.ReviewCardAlreadyExistsError)) throw e;
+  }
   await db.update(section).set({ statut: "en_revision" }).where(eq(section.id, cycle.sectionId));
+
+  await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
+  return { ok: true as const };
+}
+
+// rateRevision (FUNCTIONS §3 S4 ; ARCHITECTURE §6 Machine C ; PLAN Bloc 6.4) :
+// auto-note utilisateur → S6.rate (jamais le verdict LLM, ADR 3) ; Again ⇒
+// re-file intra-journée (S5.refile) ; 2ᵉ Again CONSÉCUTIF (la révision
+// précédente de cette section était elle aussi notée Again) ⇒ section `prete`,
+// retour en étude complète (Machine A). Contrairement à l'étude, une révision
+// ne boucle jamais sur le même cycle (pas de retry — divulgation déjà complète
+// dès la correction) : chaque révision ferme son propre StudyCycle.
+export async function rateRevision(
+  userId: string,
+  cycleId: string,
+  note: Note,
+  rejectedCandidateIndexes: number[] = [],
+) {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.type !== "revision") {
+    throw new WrongCycleStateError("rateRevision ne s'applique qu'à un cycle de révision.");
+  }
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à noter.");
+
+  const latest = await loadLatestSession(cycleId);
+  if (!latest || latest.correction === null) throw new WrongCycleStateError("Aucune correction disponible.");
+
+  await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
+  await db.update(studySession).set({ noteFsrs: note }).where(eq(studySession.id, latest.id));
+  await reviewService.rate(userId, cycle.sectionId, note);
+
+  let secondConsecutiveAgain = false;
+  if (note === "again") {
+    const previousCycle = await db.query.studyCycle.findFirst({
+      where: and(
+        eq(studyCycle.userId, userId),
+        eq(studyCycle.sectionId, cycle.sectionId),
+        eq(studyCycle.type, "revision"),
+        ne(studyCycle.id, cycleId),
+      ),
+      orderBy: (c, { desc }) => [desc(c.closedAt)],
+    });
+    const previousSession =
+      previousCycle &&
+      (await db.query.studySession.findFirst({
+        where: eq(studySession.cycleId, previousCycle.id),
+        orderBy: (s, { desc }) => [desc(s.createdAt)],
+      }));
+    secondConsecutiveAgain = previousSession?.noteFsrs === "again";
+  }
+
+  if (secondConsecutiveAgain) {
+    await db.update(section).set({ statut: "prete" }).where(eq(section.id, cycle.sectionId));
+  } else if (note === "again") {
+    await plannerService.refile("revision", cycle.sectionId);
+  }
 
   await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
   return { ok: true as const };

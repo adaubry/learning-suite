@@ -66,7 +66,7 @@ export function rate(state: CardState, note: Note, now: Date): CardState {
   return fromCard(card);
 }
 
-// Simulation des 4 notes sans effet de bord (U18 FsrsRatingBar, Bloc 6.3).
+// Simulation des 4 notes sans effet de bord (U18 FsrsRatingBar, Bloc 6.4).
 export function previewIntervals(state: CardState, now: Date): Record<Note, CardState> {
   const record = scheduler.repeat(toCardInput(state), now);
   return {

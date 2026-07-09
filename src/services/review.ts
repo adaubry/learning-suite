@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { reviewCard } from "@/db/schema";
 import { assertSectionOwnership } from "./guide";
-import { createInitialState, rate as fsrsRate, type CardState, type Note } from "@/core/fsrs/fsrsCore";
+import { createInitialState, rate as fsrsRate, previewIntervals, type CardState, type Note } from "@/core/fsrs/fsrsCore";
 
 // S6 · ReviewService — l'échéancier (FUNCTIONS §3, §7). Possède exclusivement la
 // table ReviewCard : createCard (unicité par section), rate (P9 ; la note
@@ -90,6 +90,15 @@ export async function rate(userId: string, sectionId: string, note: Note) {
 // ou une section sans ReviewCard) est un no-op silencieux — trois appelants
 // (S1.archive, S2.setImportance(1), la cascade) n'ont pas à vérifier l'état
 // avant d'appeler.
+// Simulation sans effet de bord des 4 notes (U18 FsrsRatingBar, Bloc 6.4) — la
+// même fonction pure P9 que `rate` utilise, juste sans écriture en base.
+export async function preview(userId: string, sectionId: string): Promise<Record<Note, CardState>> {
+  await assertSectionOwnership(sectionId, userId);
+  const card = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sectionId) });
+  if (!card) throw new NoReviewCardError();
+  return previewIntervals(toState(card), new Date());
+}
+
 export async function freeze(userId: string, sectionId: string) {
   await assertSectionOwnership(sectionId, userId);
   await db.update(reviewCard).set({ gelee: true }).where(eq(reviewCard.sectionId, sectionId));
