@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, type ChangeEvent } from "react";
+import { startTransition, useActionState, useEffect, useState, type ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,7 +65,7 @@ export function ChapterEditorScreen({
     const fd = new FormData();
     fd.set("chapterId", chapterId);
     fd.set("markdown", markdown);
-    simAction(fd);
+    startTransition(() => simAction(fd));
   }
 
   function handleFileUpload(e: ChangeEvent<HTMLInputElement>) {
