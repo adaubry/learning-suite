@@ -254,6 +254,7 @@ export async function resolveOutcome(
   userId: string,
   cycleId: string,
   outcome: ResolveOutcome,
+  rejectedCandidateIndexes: number[] = [],
 ): Promise<ResolveOutcomeResult> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à résoudre.");
@@ -263,6 +264,11 @@ export async function resolveOutcome(
   if (latest.verdictFinal !== "insuffisant") {
     throw new WrongCycleStateError("Cette issue ne s'applique qu'à un verdict insuffisant.");
   }
+
+  // USER_FLOW É3.2 « Règle de commit » : quitter l'écran (ici : retenter/révéler)
+  // commit les candidates — acceptées explicitement ou non statuées, jamais les
+  // rejetées (S7.commitCandidates, Bloc 5.3).
+  await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
 
   let result: ResolveOutcomeResult = { outcome: "retenter" };
 
@@ -303,12 +309,18 @@ export async function abandon(userId: string, cycleId: string) {
 // transitionner la section (elle reste `prete`, aucune ReviewCard créée). Remplacé
 // par S4.validateSection + S6.createCard en Phase 6 (PLAN Bloc 6.2) —
 // DECISIONS.md bloc 5.1 pour le TODO daté.
-export async function terminerSessionTemporaire(userId: string, cycleId: string) {
+export async function terminerSessionTemporaire(
+  userId: string,
+  cycleId: string,
+  rejectedCandidateIndexes: number[] = [],
+) {
   await loadOwnedOpenCycle(userId, cycleId);
   const latest = await loadLatestSession(cycleId);
   if (!latest || latest.verdictFinal !== "acquis") {
     throw new WrongCycleStateError("terminerSessionTemporaire exige un verdict final acquis.");
   }
+  // Même règle de commit qu'à la sortie via resolveOutcome (USER_FLOW É3.2).
+  await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
   await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
   return { ok: true as const };
 }

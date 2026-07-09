@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { FilteredErrorCandidate } from "@/core/correction/presentCorrection";
 
 const typeLabel: Record<FilteredErrorCandidate["type"], string> = {
@@ -8,23 +9,58 @@ const typeLabel: Record<FilteredErrorCandidate["type"], string> = {
   imprecision: "Imprécision",
 };
 
-// U17 ErrorCandidatesPanel (FUNCTIONS §6.2, USER_FLOW É3.2) — LECTURE SEULE ce
-// bloc : édition/suppression/[Tout accepter] écrivent via S7.commitCandidates,
-// qui n'existe qu'en Bloc 5.3 (pas de bouton qui ne ferait rien). Même
-// divulgation contrôlée que le diff — `description` absente tant qu'un nouvel
-// essai est attendu.
-export function ErrorCandidatesPanel({ candidates }: { candidates: FilteredErrorCandidate[] }) {
+// U17 ErrorCandidatesPanel (FUNCTIONS §6.2, USER_FLOW É3.2, DECISIONS.md bloc
+// 5.3) : « Règle de commit » — supprimer / [Tout accepter] (édition du texte
+// laissée au carnet, S7.edit, post-commit — revu ponytail-review : dupliquer
+// cette mutation ici n'ajoutait rien). Ce qui n'est pas explicitement rejeté
+// est committé par le parent (CorrectionView) au moment de quitter l'écran, y
+// compris sans aucune action de l'utilisateur.
+export function ErrorCandidatesPanel({
+  candidates,
+  rejected,
+  onChange,
+  readOnly = false,
+}: {
+  candidates: FilteredErrorCandidate[];
+  rejected: boolean[];
+  onChange: (index: number, rejected: boolean) => void;
+  /** Correction déjà résolue (ex. après révélation) : candidates déjà committées, aucune action possible. */
+  readOnly?: boolean;
+}) {
   if (candidates.length === 0) return null;
 
   return (
     <div className="flex flex-col gap-2 rounded border p-3">
-      <h2 className="text-sm font-semibold">Erreurs candidates (proposées)</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Erreurs candidates {readOnly ? "" : "(proposées)"}</h2>
+        {!readOnly && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => candidates.forEach((_, i) => onChange(i, false))}
+          >
+            Tout accepter
+          </Button>
+        )}
+      </div>
       <ul className="flex flex-col gap-2">
         {candidates.map((c, i) => (
-          <li key={i} className="flex flex-col gap-1 text-sm">
+          <li key={i} className={`flex flex-col gap-1 text-sm ${rejected[i] ? "opacity-50" : ""}`}>
             <div className="flex items-center gap-2">
               <Badge variant="outline">{typeLabel[c.type]}</Badge>
               {c.idErreurExistante && <Badge variant="secondary">récidive</Badge>}
+              {!readOnly && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto h-6 px-2 text-xs"
+                  onClick={() => onChange(i, !rejected[i])}
+                >
+                  {rejected[i] ? "Restaurer" : "Supprimer"}
+                </Button>
+              )}
             </div>
             <p className="text-muted-foreground">
               {c.description ?? "Détail masqué tant qu'un nouvel essai est attendu."}

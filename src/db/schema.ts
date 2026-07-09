@@ -221,6 +221,7 @@ export const errorEntry = pgTable("error_entry", {
   type: errorEntryTypeEnum("type").notNull(),
   description: text("description").notNull(),
   statut: errorEntryStatutEnum("statut").notNull().default("active"),
+  occurrences: integer("occurrences").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -1,4 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import * as account from "./account";
 import * as errorService from "./error";
@@ -19,6 +20,8 @@ async function createUser() {
 let userId: string;
 let subjectId: string;
 let sectionId: string;
+let sessionId: string;
+let activeErrorId: string;
 
 beforeEach(async () => {
   userId = await createUser();
@@ -52,11 +55,16 @@ beforeEach(async () => {
       divulgation: "controlee",
     })
     .returning();
+  sessionId = session.id;
 
-  await db.insert(errorEntry).values([
-    { subjectId, sectionId, sessionId: session.id, type: "omission", description: "active", statut: "active" },
-    { subjectId, sectionId, sessionId: session.id, type: "omission", description: "resolue", statut: "resolue" },
-  ]);
+  const [activeError] = await db
+    .insert(errorEntry)
+    .values({ subjectId, sectionId, sessionId, type: "omission", description: "active", statut: "active" })
+    .returning();
+  activeErrorId = activeError.id;
+  await db
+    .insert(errorEntry)
+    .values({ subjectId, sectionId, sessionId, type: "omission", description: "resolue", statut: "resolue" });
 });
 
 afterAll(async () => {
@@ -73,10 +81,99 @@ afterAll(async () => {
   await client.end();
 });
 
-describe("error · S7 partiel", () => {
+async function setCorrection(erreursCandidates: unknown) {
+  await db
+    .update(studySession)
+    .set({ correction: { diff: [], erreursCandidates } })
+    .where(eq(studySession.id, sessionId));
+}
+
+describe("error · S7", () => {
   it("activeFor ne renvoie que les erreurs actives de la matière", async () => {
     const rows = await errorService.activeFor(subjectId);
     expect(rows).toHaveLength(1);
     expect(rows[0].description).toBe("active");
+  });
+
+  describe("commitCandidates", () => {
+    it("crée une nouvelle ErrorEntry pour une candidate sans récidive", async () => {
+      await setCorrection([{ type: "confusion", description: "nouvelle erreur", idErreurExistante: null }]);
+      await errorService.commitCandidates(userId, sessionId, []);
+
+      const rows = await errorService.list(userId, { sectionId, type: "confusion" });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].description).toBe("nouvelle erreur");
+      expect(rows[0].occurrences).toBe(1);
+    });
+
+    it("incrémente occurrences au lieu de dupliquer sur récidive (idErreurExistante)", async () => {
+      await setCorrection([{ type: "omission", description: "revu", idErreurExistante: activeErrorId }]);
+      await errorService.commitCandidates(userId, sessionId, []);
+
+      const rows = await errorService.list(userId, { sectionId, statut: "active" });
+      expect(rows).toHaveLength(1);
+      expect(rows[0].id).toBe(activeErrorId);
+      expect(rows[0].occurrences).toBe(2);
+    });
+
+    it("index rejeté (rejectedIndexes) ⇒ candidate non committée", async () => {
+      await setCorrection([{ type: "confusion", description: "à rejeter", idErreurExistante: null }]);
+      await errorService.commitCandidates(userId, sessionId, [0]);
+
+      const rows = await errorService.list(userId, { sectionId, type: "confusion" });
+      expect(rows).toHaveLength(0);
+    });
+
+    it("auto-acceptation : un index non explicitement rejeté est committé", async () => {
+      await setCorrection([
+        { type: "confusion", description: "gardée", idErreurExistante: null },
+        { type: "imprecision", description: "rejetée", idErreurExistante: null },
+      ]);
+      await errorService.commitCandidates(userId, sessionId, [1]);
+
+      const rows = await errorService.list(userId, { sectionId });
+      const descriptions = rows.map((r) => r.description);
+      expect(descriptions).toContain("gardée");
+      expect(descriptions).not.toContain("rejetée");
+    });
+
+    it("refuse une session qui n'appartient pas à l'utilisateur", async () => {
+      const otherUserId = await createUser();
+      await setCorrection([{ type: "confusion", description: "x", idErreurExistante: null }]);
+      await expect(errorService.commitCandidates(otherUserId, sessionId, [])).rejects.toThrow();
+    });
+  });
+
+  describe("list/resolve/edit/deleteEntry", () => {
+    it("list filtre par statut et scope à l'utilisateur", async () => {
+      const otherUserId = await createUser();
+      const rows = await errorService.list(userId, { statut: "active" });
+      expect(rows).toHaveLength(1);
+      const otherRows = await errorService.list(otherUserId, { statut: "active" });
+      expect(otherRows).toHaveLength(0);
+    });
+
+    it("resolve passe le statut à resolue", async () => {
+      const updated = await errorService.resolve(userId, activeErrorId);
+      expect(updated.statut).toBe("resolue");
+    });
+
+    it("edit modifie la description", async () => {
+      const updated = await errorService.edit(userId, activeErrorId, { description: "corrigée" });
+      expect(updated.description).toBe("corrigée");
+    });
+
+    it("deleteEntry supprime la ligne", async () => {
+      await errorService.deleteEntry(userId, activeErrorId);
+      const rows = await errorService.list(userId, { sectionId });
+      expect(rows.find((r) => r.id === activeErrorId)).toBeUndefined();
+    });
+
+    it("refuse resolve/edit/delete pour un autre utilisateur", async () => {
+      const otherUserId = await createUser();
+      await expect(errorService.resolve(otherUserId, activeErrorId)).rejects.toThrow();
+      await expect(errorService.edit(otherUserId, activeErrorId, { description: "x" })).rejects.toThrow();
+      await expect(errorService.deleteEntry(otherUserId, activeErrorId)).rejects.toThrow();
+    });
   });
 });

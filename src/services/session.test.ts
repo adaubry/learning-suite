@@ -5,7 +5,7 @@ import * as account from "./account";
 import * as guide from "./guide";
 import * as session from "./session";
 import { db } from "@/db";
-import { chapter, section, studyCycle, studySession, auditEvent } from "@/db/schema";
+import { chapter, section, studyCycle, studySession, auditEvent, errorEntry } from "@/db/schema";
 
 // S4 · SessionService — LLM toujours mocké (fetch), Postgres réel (pattern guide.test.ts).
 
@@ -244,6 +244,26 @@ describe("session · S4 resolveOutcome", () => {
 
     await expect(session.resolveOutcome(userId, cycle.id, "retenter")).rejects.toThrow(session.WrongCycleStateError);
   });
+
+  it("commit les candidates non rejetées (S7.commitCandidates, Bloc 5.3)", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({
+        diff: [diffManquant(1), diffCouvert(2)],
+        erreurs_candidates: [
+          { type: "confusion", description: "gardée" },
+          { type: "imprecision", description: "rejetée" },
+        ],
+      }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
+
+    await session.resolveOutcome(userId, cycle.id, "retenter", [1]);
+
+    const rows = await db.query.errorEntry.findMany({ where: eq(errorEntry.sectionId, sec.id) });
+    expect(rows.map((r) => r.description)).toEqual(["gardée"]);
+  });
 });
 
 describe("session · S4 abandon", () => {
@@ -289,6 +309,24 @@ describe("session · S4 terminerSessionTemporaire", () => {
     await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
 
     await expect(session.terminerSessionTemporaire(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+  });
+
+  it("commit les candidates (auto-acceptation) même sur clôture acquis", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({
+        diff: [diffCouvert(1), diffCouvert(2)],
+        erreurs_candidates: [{ type: "confusion", description: "imprécision relevée quand même" }],
+      }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution parfaite mais imprécise.");
+
+    await session.terminerSessionTemporaire(userId, cycle.id);
+
+    const rows = await db.query.errorEntry.findMany({ where: eq(errorEntry.sectionId, sec.id) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].description).toBe("imprécision relevée quand même");
   });
 });
 

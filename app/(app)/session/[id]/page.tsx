@@ -1,0 +1,72 @@
+import { notFound } from "next/navigation";
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { studySession } from "@/db/schema";
+import { requireUserId } from "@/lib/auth";
+import { assertSectionOwnership } from "@/services/guide";
+import * as auditService from "@/services/audit";
+import {
+  presentCorrection,
+  type MergedDiffPoint,
+  type MergedErrorCandidate,
+} from "@/core/correction/presentCorrection";
+import { Badge } from "@/components/ui/badge";
+import { DiffList } from "@/components/correction-view";
+import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
+
+// U24 « [Voir la session d'origine] » (USER_FLOW É5.1, DECISIONS.md bloc 5.3) —
+// lecture seule : une StudySession passée est immuable (FUNCTIONS §7), toujours
+// affichée en divulgation complète (elle est close, aucun nouvel essai n'est
+// attendu — même règle que le verdict `acquis`/révision, P10). Badge « override »
+// (FUNCTIONS §3 S8) si un événement a été journalisé sur cette session.
+export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const userId = await requireUserId();
+
+  const sess = await db.query.studySession.findFirst({ where: eq(studySession.id, id) });
+  if (!sess) notFound();
+
+  let sec;
+  try {
+    sec = await assertSectionOwnership(sess.sectionId, userId);
+  } catch {
+    notFound();
+  }
+
+  if (sess.correction === null) notFound();
+
+  const { diff, erreursCandidates } = sess.correction as {
+    diff: MergedDiffPoint[];
+    erreursCandidates: MergedErrorCandidate[];
+  };
+  const filtered = presentCorrection({ diff, erreursCandidates }, { verdict: sess.verdictFinal!, retryAttendu: false });
+
+  const events = await auditService.forEntity("study_session", sess.id);
+  const overridden = events.some((e) => e.type === "revelation_correction" || e.type === "override_verdict");
+
+  return (
+    <div className="mx-auto flex max-w-2xl flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <h1 className="text-lg font-semibold">{sec.titre}</h1>
+        <Badge variant="outline">tentative n°{sess.tentative}</Badge>
+        {overridden && <Badge variant="secondary">override</Badge>}
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Lecture seule — session close, verdict {filtered.verdict}.
+      </p>
+
+      <div className="rounded border p-3">
+        <h2 className="mb-2 text-sm font-semibold">Restitution soumise</h2>
+        <p className="whitespace-pre-wrap text-sm">{sess.input}</p>
+      </div>
+
+      <DiffList diff={filtered.diff} />
+      <ErrorCandidatesPanel
+        candidates={filtered.erreursCandidates}
+        rejected={filtered.erreursCandidates.map(() => false)}
+        onChange={() => {}}
+        readOnly
+      />
+    </div>
+  );
+}

@@ -66,6 +66,7 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     "type",
     "description",
     "statut",
+    "occurrences",
     "created_at",
   ],
   review_card: ["id", "section_id", "due", "stability", "difficulty", "reps", "lapses", "last_review"],

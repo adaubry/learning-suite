@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
@@ -20,7 +20,8 @@ const statutIcon: Record<FilteredDiffPoint["statut"], string> = {
   deforme: "⚠️",
 };
 
-function DiffList({ diff }: { diff: FilteredDiffPoint[] }) {
+// Exporté : réutilisé par la vue session lecture seule (/session/[id], U24).
+export function DiffList({ diff }: { diff: FilteredDiffPoint[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {diff.map((p, i) => (
@@ -54,12 +55,18 @@ export function CorrectionView({
   diff: FilteredDiffPoint[];
   erreursCandidates: FilteredErrorCandidate[];
   divulgation: "controlee" | "complete";
-  retenterAction: () => Promise<void>;
+  retenterAction: (formData: FormData) => Promise<void>;
   revelerAction: (prevState: unknown, formData: FormData) => Promise<ResolveOutcomeResult>;
-  terminerAction: () => Promise<void>;
+  terminerAction: (formData: FormData) => Promise<void>;
 }) {
   const [revealed, revealFormAction, revealPending] = useActionState(revelerAction, undefined);
   const isRevealed = revealed?.outcome === "reveler";
+
+  // USER_FLOW É3.2 « Règle de commit » : les index rejetés sont sérialisés dans un
+  // champ caché, dupliqué dans les 3 formulaires de sortie (retenter/révéler/
+  // terminer) — chacun commit via S7.commitCandidates côté serveur.
+  const [rejected, setRejected] = useState<boolean[]>(() => erreursCandidates.map(() => false));
+  const rejectedIndexesField = JSON.stringify(rejected.flatMap((r, i) => (r ? [i] : [])));
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -78,7 +85,20 @@ export function CorrectionView({
       )}
 
       <DiffList diff={isRevealed ? revealed.diff : diff} />
-      <ErrorCandidatesPanel candidates={isRevealed ? revealed.erreursCandidates : erreursCandidates} />
+      {isRevealed ? (
+        <ErrorCandidatesPanel
+          candidates={revealed.erreursCandidates}
+          rejected={revealed.erreursCandidates.map(() => false)}
+          onChange={() => {}}
+          readOnly
+        />
+      ) : (
+        <ErrorCandidatesPanel
+          candidates={erreursCandidates}
+          rejected={rejected}
+          onChange={(i, r) => setRejected((prev) => prev.map((p, pi) => (pi === i ? r : p)))}
+        />
+      )}
 
       {isRevealed ? (
         <Link href="/" className="self-start text-sm underline">
@@ -89,11 +109,13 @@ export function CorrectionView({
           {verdict === "insuffisant" && (
             <>
               <form action={retenterAction}>
+                <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
                 <Button type="submit" size="sm">
                   Retenter plus tard
                 </Button>
               </form>
               <form action={revealFormAction}>
+                <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
                 <Button type="submit" size="sm" variant="outline" disabled={revealPending}>
                   {revealPending ? "…" : "Révéler les réponses"}
                 </Button>
@@ -102,6 +124,7 @@ export function CorrectionView({
           )}
           {verdict === "acquis" && (
             <form action={terminerAction}>
+              <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
               <Button type="submit" size="sm">
                 Terminer l&apos;étude
               </Button>

@@ -19,14 +19,14 @@ import {
 } from "@/components/ui/sidebar";
 import { signOut } from "../../app/(auth)/actions";
 
-// U1 AppShell minimal (FUNCTIONS §6.1) : Erreurs et Réglages ne sont pas
-// encore construits (blocs à venir) — items désactivés plutôt que retirés,
-// pour respecter la navigation permanente de USER_FLOW.
+// U1 AppShell minimal (FUNCTIONS §6.1) : Réglages n'est pas encore construit
+// (bloc à venir) — item désactivé plutôt que retiré, pour respecter la
+// navigation permanente de USER_FLOW. Erreurs activé (Bloc 5.3, U24).
 
 const NAV_ITEMS = [
   { href: "/", label: "Aujourd'hui", enabled: true },
   { href: "/curriculum", label: "Curriculum", enabled: true },
-  { href: "/erreurs", label: "Erreurs", enabled: false },
+  { href: "/erreurs", label: "Erreurs", enabled: true },
   { href: "/reglages", label: "Réglages", enabled: false },
 ] as const;
 
