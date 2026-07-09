@@ -1,9 +1,11 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
-import { studyCycle, studySession, correctionGuide, section, refileItem } from "@/db/schema";
+import { studyCycle, studySession, correctionGuide, section } from "@/db/schema";
 import { assertSectionOwnership } from "./guide";
 import * as errorService from "./error";
 import * as auditService from "./audit";
+import * as reviewService from "./review";
+import * as plannerService from "./planner";
 import { buildCorrectionContext } from "@/llm/context/correction";
 import { correctBlurting } from "@/llm/correctBlurting";
 import {
@@ -15,11 +17,11 @@ import {
 } from "@/core/correction/presentCorrection";
 import type { GuideOutput, ControlPoint } from "@/llm/schemas/guide";
 
-// S4 · SessionService — partiel (FUNCTIONS §3, §7 ; PLAN Bloc 5.1) : start /
-// submitBlurting / resolveOutcome (retenter, reveler) / abandon, plus un raccourci
-// temporaire `terminerSessionTemporaire`. Ni feynman (Phase 7) ni révision/
-// validateSection (Phase 6) ce bloc — entrée temporaire par le curriculum, le
-// Planificateur n'existe pas encore (PLAN Bloc 5.1).
+// S4 · SessionService — partiel (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2) : start /
+// submitBlurting / resolveOutcome (retenter, reveler) / abandon / validateSection.
+// Ni feynman (Phase 7) ni révision/rateRevision (Bloc 6.4, dépend de S5.refile)
+// ce bloc — entrée temporaire par le curriculum, le Planificateur n'existe pas
+// encore (PLAN Bloc 5.1/6.3).
 
 export class SectionNotReadyError extends Error {
   constructor() {
@@ -286,11 +288,7 @@ export async function resolveOutcome(
 
   // jamais de retry immédiat (ARCHITECTURE §5) : le prochain blurting attend la
   // re-file intra-journée, jamais la soumission courante.
-  await db.insert(refileItem).values({
-    date: new Date().toISOString().slice(0, 10),
-    itemType: "etude",
-    itemId: cycle.sectionId,
-  });
+  await plannerService.refile("etude", cycle.sectionId);
 
   // boucle vers blurting_en_cours (machine B) : le cycle reste ouvert, seule une
   // nouvelle tentative (tentative n+1) peut le refermer.
@@ -305,22 +303,29 @@ export async function abandon(userId: string, cycleId: string) {
   return { ok: true as const };
 }
 
-// Raccourci TEMPORAIRE (PLAN Bloc 5.1) : ferme le cycle sur verdict acquis SANS
-// transitionner la section (elle reste `prete`, aucune ReviewCard créée). Remplacé
-// par S4.validateSection + S6.createCard en Phase 6 (PLAN Bloc 6.2) —
-// DECISIONS.md bloc 5.1 pour le TODO daté.
-export async function terminerSessionTemporaire(
+// validateSection (FUNCTIONS §3 S4 ; PLAN Bloc 6.2, remplace le raccourci
+// terminerSessionTemporaire — DECISIONS.md bloc 5.1) : décision utilisateur sur
+// verdict acquis → section `validee`, ReviewCard créée (S6.createCard) → section
+// `en_revision` (Machine A, ARCHITECTURE §4), cycle refermé. Feynman requis si
+// importance ≥ 3 NON appliqué ce bloc-ci (PLAN Bloc 6.2 : bypass temporaire pour
+// toutes les importances, restriction rétablie en Phase 7).
+export async function validateSection(
   userId: string,
   cycleId: string,
   rejectedCandidateIndexes: number[] = [],
 ) {
-  await loadOwnedOpenCycle(userId, cycleId);
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
   const latest = await loadLatestSession(cycleId);
   if (!latest || latest.verdictFinal !== "acquis") {
-    throw new WrongCycleStateError("terminerSessionTemporaire exige un verdict final acquis.");
+    throw new WrongCycleStateError("validateSection exige un verdict final acquis.");
   }
   // Même règle de commit qu'à la sortie via resolveOutcome (USER_FLOW É3.2).
   await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
+
+  await db.update(section).set({ statut: "validee" }).where(eq(section.id, cycle.sectionId));
+  await reviewService.createCard(userId, cycle.sectionId);
+  await db.update(section).set({ statut: "en_revision" }).where(eq(section.id, cycle.sectionId));
+
   await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
   return { ok: true as const };
 }

@@ -70,10 +70,8 @@ export async function abandonAction(cycleId: string) {
   redirect("/");
 }
 
-// Raccourci temporaire (session.ts, DECISIONS.md bloc 5.1) : remplacé par
-// validateSection en Phase 6.
 export async function terminerAction(cycleId: string, formData: FormData) {
   const userId = await requireUserId();
-  await session.terminerSessionTemporaire(userId, cycleId, parseRejectedIndexes(formData));
+  await session.validateSection(userId, cycleId, parseRejectedIndexes(formData));
   redirect("/");
 }

@@ -22,6 +22,20 @@
       "when": 1783589551662,
       "tag": "0002_error_entry_occurrences",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783592763413,
+      "tag": "0003_real_lord_hawal",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783593466312,
+      "tag": "0004_complex_war_machine",
+      "breakpoints": true
     }
   ]
 }

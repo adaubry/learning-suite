@@ -45,7 +45,7 @@ export async function activeForSection(sectionId: string) {
 // committée. Récidive (`idErreurExistante` non-nul, résolu par S4 dès la
 // correction, DECISIONS.md bloc 5.1) : incrémente `occurrences` au lieu de créer
 // un doublon. Idempotence : confiée aux appelants (S4 resolveOutcome/
-// terminerSessionTemporaire ne rejouent jamais cette fonction sur un cycle déjà
+// validateSection ne rejouent jamais cette fonction sur un cycle déjà
 // refermé).
 export async function commitCandidates(userId: string, sessionId: string, rejectedIndexes: number[] = []) {
   const sess = await db.query.studySession.findFirst({ where: eq(studySession.id, sessionId) });

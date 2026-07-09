@@ -1,0 +1,1 @@
+ALTER TABLE "review_card" ADD COLUMN "gelee" boolean DEFAULT false NOT NULL;

@@ -1,0 +1,97 @@
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import type { QueueItem } from "@/core/planner/buildDailyQueue";
+
+export interface QueueSectionInfo {
+  titre: string;
+  subjectNom: string;
+}
+
+// U10 DailyQueue + QueueCard (FUNCTIONS §6, TECH_MAPPING §4.2). Réordonnancement
+// v1 : boutons monter/descendre (shadcn Button), pas de drag & drop HTML5 ce
+// bloc-ci (amélioration progressive différée). Chaque bouton renvoie la liste
+// complète des clés (S5.reorder remplace toute la permutation du jour).
+export function DailyQueue({
+  queue,
+  infoById,
+  keys,
+  moveAction,
+  deferAction,
+}: {
+  queue: QueueItem[];
+  infoById: Map<string, QueueSectionInfo>;
+  keys: string[];
+  moveAction: (index: number, direction: "up" | "down", formData: FormData) => Promise<void>;
+  deferAction: (itemType: "etude" | "revision", itemId: string) => Promise<void>;
+}) {
+  if (queue.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        Rien à faire aujourd&apos;hui. Reviens demain, ou avance une étude depuis le curriculum.
+      </p>
+    );
+  }
+
+  return (
+    <ol className="flex flex-col gap-2">
+      {queue.map((item, index) => {
+        const sectionId = item.kind === "re_file" ? item.itemId : item.sectionId;
+        const info = infoById.get(sectionId);
+        const itemType = item.kind === "re_file" ? item.itemType : item.kind === "revision" ? "revision" : "etude";
+        const commencerHref = itemType === "etude" ? `/etude/${sectionId}` : null;
+
+        return (
+          <li key={keys[index]} className="flex items-center gap-3 rounded border p-3">
+            <div className="flex flex-col gap-1">
+              {(
+                [
+                  { direction: "up" as const, label: "Monter", arrow: "↑", disabled: index === 0 },
+                  { direction: "down" as const, label: "Descendre", arrow: "↓", disabled: index === queue.length - 1 },
+                ]
+              ).map((move) => (
+                <form key={move.direction} action={moveAction.bind(null, index, move.direction)}>
+                  <input type="hidden" name="keys" value={JSON.stringify(keys)} />
+                  <Button type="submit" size="icon" variant="ghost" disabled={move.disabled} aria-label={move.label}>
+                    {move.arrow}
+                  </Button>
+                </form>
+              ))}
+            </div>
+
+            <div className="flex flex-1 flex-col gap-1">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                {item.kind === "revision" && <Badge variant="outline">Révision{item.retardJours > 0 ? ` — ${item.retardJours}j de retard` : ""}</Badge>}
+                {item.kind === "nouvelle_etude" && <Badge variant="outline">Nouvelle étude</Badge>}
+                {item.kind === "re_file" && <Badge variant="secondary">À repasser aujourd&apos;hui</Badge>}
+                {info && <span className="text-muted-foreground">{info.subjectNom}</span>}
+                {"importance" in item && <Badge variant="secondary">imp. {item.importance}</Badge>}
+                {"joursAvantExamen" in item && item.joursAvantExamen !== null && item.joursAvantExamen < 30 && (
+                  <Badge variant="destructive">examen dans {item.joursAvantExamen}j</Badge>
+                )}
+              </div>
+              <span>{info?.titre ?? "Section"}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {commencerHref ? (
+                <Button size="sm" nativeButton={false} render={<Link href={commencerHref} />}>
+                  Commencer
+                </Button>
+              ) : (
+                <Button size="sm" disabled title="Écran de révision — Bloc 6.4">
+                  Commencer
+                </Button>
+              )}
+              <form action={deferAction.bind(null, itemType, sectionId)}>
+                <Button type="submit" size="sm" variant="ghost">
+                  Reporter
+                </Button>
+              </form>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}

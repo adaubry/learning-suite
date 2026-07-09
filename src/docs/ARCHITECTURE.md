@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Planificateur, machines à états & modèle de données
 
-> **Statut** : v0.4
+> **Statut** : v0.7
 > **Rôle** : source de vérité structurelle. Toute proposition de modification du code (humaine ou IA) doit être vérifiée contre ce document. Si elle le contredit, soit elle est rejetée, soit ce document est révisé d'abord — jamais l'inverse.
 > **Dépend de** : FORMAT.md v0.2 · TECH_MAPPING.md v0.2 (stack et délégations) · USER_FLOW.md v0.3 · FUNCTIONS.md v0.3 (services & invariants). **Complété par** : LLM_CONTRACTS.md.
 
@@ -225,8 +225,10 @@ ErrorEntry    id, subject_id, section_id, session_id,
 
 ReviewCard    id, section_id UNIQUE,
               due DATE, stability REAL, difficulty REAL,
-              reps INT, lapses INT, last_review TIMESTAMPTZ
+              reps INT, lapses INT, last_review TIMESTAMPTZ,
               -- état FSRS standard (lib ts-fsrs)
+              gelee BOOLEAN DEFAULT false
+              -- seul champ que S6.freeze/unfreeze possède (FUNCTIONS §7)
 
 DeferralLog   id, date, item_type, item_id, created_at
               -- reports d'éléments de la file du jour (visibilité de la dette)
@@ -234,6 +236,11 @@ DeferralLog   id, date, item_type, item_id, created_at
 RefileItem    id, date, item_type ENUM(revision, etude), item_id, created_at
               -- re-file intra-journée ; expire en fin de journée
               --   (revision ⇒ dette visible, etude ⇒ retour au vivier)
+
+QueueOrder    date PRIMARY KEY, order JSONB
+              -- S5.reorder (FUNCTIONS §7 « purge de l'ordre manuel ») : la
+              --   permutation manuelle du jour, tableau ordonné de {kind, id} ;
+              --   mono-utilisateur comme DeferralLog/RefileItem ci-dessus
 
 AuditEvent    id, type ENUM(override_verdict, revelation_correction, report,
                             acquittement_anomalie, validation_sur_insuffisant),
@@ -360,6 +367,8 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.7     | 2026-07-09 | Bloc 6.3 (S5.reorder) : ajout de l'entité `QueueOrder(date PK, order JSONB)` — FUNCTIONS §3/§7 fait de S5 le seul propriétaire d'une « permutation datée, purgée à minuit », absente du modèle §8 v0.6. Une ligne par jour (tableau JSONB ordonné de clés `{kind,id}`) plutôt qu'une ligne par item positionné — la réconciliation avec la file fraîche du jour (P7) est un simple diff de tableau, et le réordonnancement v1 (boutons shadcn) envoie de toute façon l'ordre complet, pas un déplacement incrémental. Mono-utilisateur (pas de `user_id`), même doctrine que `DeferralLog`/`RefileItem`. Tranché avec l'humain (AskUserQuestion). Voir DECISIONS.md.                                                                                                                        |
+| 0.6     | 2026-07-09 | Bloc 6.2 (S6.freeze/unfreeze) : ajout de `ReviewCard.gelee BOOLEAN DEFAULT false` — FUNCTIONS §7 fait de S6 « le seul propriétaire du gel », mais le modèle §8 v0.5 n'avait aucun champ pour le porter. Tranché avec l'humain (AskUserQuestion) plutôt qu'une dérivation implicite depuis `section.statut` (aurait recréé l'ambiguïté de propriétaire critiquée en FUNCTIONS §0). `due`/`stability`/`difficulty`/`reps`/`lapses`/`last_review` restent suffisants pour P9 (confirmé : `enable_short_term: false` élimine tout besoin de persister `state`/`learning_steps` ts-fsrs — une carte est toujours New (reps=0) ou Review (reps>0), jamais Learning/Relearning). Voir DECISIONS.md.                                                                                                                                        |
 | 0.5     | 2026-07-09 | Bloc 5.3 (S7.commitCandidates) : ajout de `ErrorEntry.occurrences INT DEFAULT 1` — FUNCTIONS §3 S7 (« récidive incrémente le compteur ») et USER_FLOW É5.1 (« compteur de récidives ») exigeaient ce compteur, absent du modèle §8 v0.4. Tranché avec l'humain (AskUserQuestion) plutôt qu'un recalcul dynamique depuis les JSONB `StudySession.correction` (fragile, coûteux). Voir DECISIONS.md.                                                                                        |
 | 0.1     | 2026-07-02 | Création                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | 0.4     | 2026-07-02 | Correction de modélisation (review) : ajout de l'entité **StudyCycle** (état persisté des machines B/C, `closed_at`) portant l'invariant « une seule session ouverte » via index unique partiel, la reprise de session et le regroupement des tentatives ; `StudySession.cycle_id`.                                                                                                                                                                                                          |

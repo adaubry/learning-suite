@@ -69,9 +69,10 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     "occurrences",
     "created_at",
   ],
-  review_card: ["id", "section_id", "due", "stability", "difficulty", "reps", "lapses", "last_review"],
+  review_card: ["id", "section_id", "due", "stability", "difficulty", "reps", "lapses", "last_review", "gelee"],
   deferral_log: ["id", "date", "item_type", "item_id", "created_at"],
   refile_item: ["id", "date", "item_type", "item_id", "created_at"],
+  queue_order: ["date", "order"],
   audit_event: ["id", "type", "entite_type", "entite_id", "created_at"],
   prompt_config: ["user_id", "methodologie_titres_globale"],
   prompt_log: [

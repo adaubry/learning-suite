@@ -17,8 +17,8 @@ import {
   terminerAction,
 } from "./actions";
 
-// P3 · É3.1/É3.2 (USER_FLOW, ARCHITECTURE §5 Machine B) — entrée temporaire par
-// le curriculum (PLAN Bloc 5.1) : pas de Planificateur avant Phase 6.
+// P3 · É3.1/É3.2 (USER_FLOW, ARCHITECTURE §5 Machine B) — atteint depuis la
+// file du jour (PLAN Bloc 6.3, S5.todayQueue) via `[Commencer]`.
 
 export default async function EtudePage({ params }: { params: Promise<{ sectionId: string }> }) {
   const { sectionId } = await params;

@@ -65,6 +65,7 @@ afterAll(async () => {
     await client`delete from error_entry where session_id in (select id from study_session where cycle_id in (select id from study_cycle where user_id = ${id}))`;
     await client`delete from study_session where cycle_id in (select id from study_cycle where user_id = ${id})`;
     await client`delete from study_cycle where user_id = ${id}`;
+    await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
     await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
@@ -173,7 +174,10 @@ describe("session · S4 submitBlurting", () => {
       mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
     const firstResult = await session.submitBlurting(userId, firstCycle.id, "Première restitution.");
-    await session.terminerSessionTemporaire(userId, firstCycle.id);
+    // abandon (pas validateSection) : ce test porte sur la résolution de
+    // recidive_index, pas sur la transition de section — juste besoin de
+    // libérer le slot de session unique pour redémarrer sur la même section.
+    await session.abandon(userId, firstCycle.id);
 
     const [erreurActive] = await client`insert into error_entry (subject_id, section_id, session_id, type, description)
       values (${subjectId}, ${sec.id}, ${firstResult.sessionId}, 'confusion', 'erreur récurrente') returning id`;
@@ -282,8 +286,8 @@ describe("session · S4 abandon", () => {
   });
 });
 
-describe("session · S4 terminerSessionTemporaire", () => {
-  it("ferme le cycle sur verdict acquis sans toucher au statut de la section", async () => {
+describe("session · S4 validateSection", () => {
+  it("ferme le cycle sur verdict acquis, section validee → en_revision, ReviewCard créée", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -291,13 +295,17 @@ describe("session · S4 terminerSessionTemporaire", () => {
     );
     await session.submitBlurting(userId, cycle.id, "Restitution parfaite.");
 
-    await session.terminerSessionTemporaire(userId, cycle.id);
+    await session.validateSection(userId, cycle.id);
 
     const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
     expect(closed?.closedAt).not.toBeNull();
 
-    const untouchedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
-    expect(untouchedSection?.statut).toBe("prete");
+    const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
+    expect(updatedSection?.statut).toBe("en_revision");
+
+    const card = await db.query.reviewCard.findFirst({ where: (r, { eq: eqOp }) => eqOp(r.sectionId, sec.id) });
+    expect(card).toBeTruthy();
+    expect(card?.gelee).toBe(false);
   });
 
   it("refuse sur un verdict insuffisant", async () => {
@@ -308,7 +316,7 @@ describe("session · S4 terminerSessionTemporaire", () => {
     );
     await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
 
-    await expect(session.terminerSessionTemporaire(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+    await expect(session.validateSection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
   });
 
   it("commit les candidates (auto-acceptation) même sur clôture acquis", async () => {
@@ -322,7 +330,7 @@ describe("session · S4 terminerSessionTemporaire", () => {
     );
     await session.submitBlurting(userId, cycle.id, "Restitution parfaite mais imprécise.");
 
-    await session.terminerSessionTemporaire(userId, cycle.id);
+    await session.validateSection(userId, cycle.id);
 
     const rows = await db.query.errorEntry.findMany({ where: eq(errorEntry.sectionId, sec.id) });
     expect(rows).toHaveLength(1);

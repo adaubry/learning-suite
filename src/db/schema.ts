@@ -237,6 +237,9 @@ export const reviewCard = pgTable("review_card", {
   reps: integer("reps").notNull().default(0),
   lapses: integer("lapses").notNull().default(0),
   lastReview: timestamp("last_review", { withTimezone: true }),
+  // gel (FUNCTIONS §7, ARCHITECTURE v0.6) : seul champ que S6.freeze/unfreeze
+  // possède — le futur S5 (Bloc 6.3) filtrera `gelee = false` avant P7.
+  gelee: boolean("gelee").notNull().default(false),
 });
 
 // ponytail: DeferralLog/RefileItem/AuditEvent référencent item_id/entite_id de
@@ -257,6 +260,15 @@ export const refileItem = pgTable("refile_item", {
   itemType: refileItemTypeEnum("item_type").notNull(),
   itemId: uuid("item_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// S5.reorder (FUNCTIONS §3, §7 « purge de l'ordre manuel ») : une permutation
+// datée de la file du jour — mono-utilisateur (ADR 6), même doctrine que
+// DeferralLog/RefileItem ci-dessus (pas de user_id, un seul utilisateur).
+// `order` : tableau ordonné de {kind, id} (QueueItem sans les champs dérivés).
+export const queueOrder = pgTable("queue_order", {
+  date: date("date").primaryKey(),
+  order: jsonb("order").notNull(),
 });
 
 export const auditEvent = pgTable("audit_event", {
