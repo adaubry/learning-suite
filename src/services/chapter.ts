@@ -287,23 +287,33 @@ export async function commitUpdate(
 // gap que celui corrigé sur `subject` — DECISIONS.md), donc un chapitre archivé disparaît de la
 // file et de la génération paresseuse sans qu'aucune ReviewCard n'ait besoin d'être gelée.
 // Réversible à la lettre (rien n'a été touché en dessous).
+// Gel/dégel des ReviewCards du chapitre (Bloc 9.1 fix, USER_FLOW É6.4, FUNCTIONS
+// §S6 : S1.archive est l'un des 3 appelants de S6.freeze/unfreeze) — `archivedAt`
+// porte la durée réelle du gel, dont `unfreeze` a besoin pour décaler `due`.
 export async function archiveChapter(userId: string, chapterId: string) {
   await assertChapterOwnership(chapterId, userId);
   const [updated] = await db
     .update(chapter)
-    .set({ statut: "archive" })
+    .set({ statut: "archive", archivedAt: new Date() })
     .where(eq(chapter.id, chapterId))
     .returning();
+
+  const sections = await db.query.section.findMany({ where: eq(section.chapterId, chapterId), columns: { id: true } });
+  for (const s of sections) await reviewService.freeze(userId, s.id);
   return updated;
 }
 
 export async function unarchiveChapter(userId: string, chapterId: string) {
-  await assertChapterOwnership(chapterId, userId);
+  const { chap } = await assertChapterOwnership(chapterId, userId);
+
   const [updated] = await db
     .update(chapter)
-    .set({ statut: "actif" })
+    .set({ statut: "actif", archivedAt: null })
     .where(eq(chapter.id, chapterId))
     .returning();
+
+  const sections = await db.query.section.findMany({ where: eq(section.chapterId, chapterId), columns: { id: true } });
+  for (const s of sections) await reviewService.unfreeze(userId, s.id, chap.archivedAt);
   return updated;
 }
 

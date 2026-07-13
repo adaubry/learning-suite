@@ -30,8 +30,15 @@ export async function validateRubricAction(
   redirect("/curriculum");
 }
 
+// Erreur LLM honnête + [Relancer] (USER_FLOW É1.5, règle transversale 7) : la
+// régénération ne doit jamais faire planter l'écran (la rédaction manuelle
+// reste la voie de secours affichée juste en dessous, RubricEditor).
 export async function regenerateRubricAction(sectionId: string) {
   const userId = await requireUserId();
-  await guide.regenerate(userId, sectionId);
+  try {
+    await guide.regenerate(userId, sectionId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Erreur lors de la régénération." };
+  }
   revalidatePath(`/section/${sectionId}/rubrique`);
 }

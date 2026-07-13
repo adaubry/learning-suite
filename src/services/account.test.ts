@@ -2,8 +2,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { db } from "@/db";
-import { chapter, section } from "@/db/schema";
+import { chapter, section, reviewCard, subject as subjectTable } from "@/db/schema";
 import * as account from "./account";
+import * as review from "./review";
 
 // ponytail: tests d'intégration contre le Postgres local (supabase start),
 // même pattern que src/db/schema.test.ts — un utilisateur jetable par test.
@@ -78,6 +79,73 @@ describe("account · S9 partiel", () => {
 
     const restored = await account.unarchiveSubject(userId, s.id);
     expect(restored.statut).toBe("active");
+  });
+
+  it("archiveSubject gèle les ReviewCards des chapitres actifs ; unarchiveSubject dégèle et décale due de la durée du gel (USER_FLOW É6.4)", async () => {
+    const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
+    const [chap] = await db
+      .insert(chapter)
+      .values({ subjectId: s.id, titre: "Chap", markdown: "# Chap", contentHash: "h" })
+      .returning();
+    const [sec] = await db
+      .insert(section)
+      .values({
+        chapterId: chap.id,
+        chapterVersion: 1,
+        titre: "Sec",
+        ordre: 1,
+        niveauSource: 1,
+        contenu: "...",
+        importance: 3,
+        statut: "en_revision",
+      })
+      .returning();
+    const created = await review.createCard(userId, sec.id);
+
+    await account.archiveSubject(userId, s.id);
+    const frozen = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
+    expect(frozen?.gelee).toBe(true);
+
+    await db
+      .update(subjectTable)
+      .set({ archivedAt: new Date(Date.now() - 5 * 86_400_000) })
+      .where(eq(subjectTable.id, s.id));
+
+    await account.unarchiveSubject(userId, s.id);
+    const unfrozen = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
+    expect(unfrozen?.gelee).toBe(false);
+    const expectedDue = new Date(created.due);
+    expectedDue.setUTCDate(expectedDue.getUTCDate() + 5);
+    expect(unfrozen?.due).toBe(expectedDue.toISOString().slice(0, 10));
+  });
+
+  it("archiveSubject n'affecte pas les ReviewCards d'un chapitre déjà archivé individuellement (pas de double décalage)", async () => {
+    const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
+    const [chap] = await db
+      .insert(chapter)
+      .values({ subjectId: s.id, titre: "Chap", markdown: "# Chap", contentHash: "h", statut: "archive", archivedAt: new Date() })
+      .returning();
+    const [sec] = await db
+      .insert(section)
+      .values({
+        chapterId: chap.id,
+        chapterVersion: 1,
+        titre: "Sec",
+        ordre: 1,
+        niveauSource: 1,
+        contenu: "...",
+        importance: 3,
+        statut: "en_revision",
+      })
+      .returning();
+    await review.createCard(userId, sec.id);
+    await review.freeze(userId, sec.id);
+
+    await account.archiveSubject(userId, s.id);
+    await account.unarchiveSubject(userId, s.id);
+
+    const card = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
+    expect(card?.gelee).toBe(true); // toujours gelée : son propre chapitre est resté archivé
   });
 
   it("getPlannerConfig renvoie le défaut tant qu'aucune ligne n'existe", async () => {

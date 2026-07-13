@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { DailyQueue, type QueueSectionInfo } from "@/components/daily-queue";
 import { HorizonChart } from "@/components/horizon-chart";
 import { AttentionBadges } from "@/components/attention-badges";
-import { deferAction, reorderAction } from "./planner-actions";
+import { deferAction, reorderAction, advanceFromBacklogAction } from "./planner-actions";
 
 // É2.0 Accueil = Planificateur (ARCHITECTURE §3, USER_FLOW É2.0 ; PLAN Bloc 6.3)
 // — remplace l'entrée temporaire par le curriculum (Phase 5).
@@ -51,11 +51,13 @@ export default async function HomePage() {
     );
   }
 
-  const [queue, horizon, badges, subjects] = await Promise.all([
+  const [queue, horizon, badges, subjects, nextDeadline, backlogCandidate] = await Promise.all([
     planner.todayQueue(user.id),
     planner.horizon(user.id),
     planner.attentionBadges(user.id),
     listSubjects(user.id),
+    planner.nextDeadline(user.id),
+    planner.nextBacklogCandidate(user.id),
   ]);
 
   // S3.lazyScheduler comme « hook de S5 » (FUNCTIONS §3, PLAN Bloc 6.4) : la
@@ -85,7 +87,16 @@ export default async function HomePage() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6 py-6">
       <AttentionBadges badges={badges} />
       <h1 className="text-xl font-semibold">Aujourd&apos;hui</h1>
-      <DailyQueue queue={queue} infoById={infoById} keys={keys} moveAction={reorderAction} deferAction={deferAction} />
+      <DailyQueue
+        queue={queue}
+        infoById={infoById}
+        keys={keys}
+        moveAction={reorderAction}
+        deferAction={deferAction}
+        nextDeadline={nextDeadline}
+        backlogCandidate={backlogCandidate}
+        advanceAction={advanceFromBacklogAction}
+      />
       <HorizonChart horizon={horizon} subjectNomById={subjectNomById} />
     </div>
   );

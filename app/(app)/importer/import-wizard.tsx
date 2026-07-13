@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,9 +100,14 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
         <div className="flex flex-col gap-4 rounded border p-4">
           <h2 className="text-sm font-semibold">1. Destination</h2>
           {subjects.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Crée d&apos;abord une matière depuis le Curriculum.
-            </p>
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-sm text-muted-foreground">
+                Crée d&apos;abord une matière.
+              </p>
+              <Button size="sm" nativeButton={false} render={<Link href="/curriculum" />}>
+                Créer une matière
+              </Button>
+            </div>
           ) : (
             <>
               <div className="flex flex-col gap-1">
@@ -263,10 +269,15 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
           {proposeState?.success && (
             <>
               {proposeState.method === "mecanique" && (
-                <p className="rounded bg-muted p-2 text-sm text-muted-foreground">
-                  L&apos;IA n&apos;a pas pu proposer de sectionnement : un découpage mécanique par
-                  titres a été utilisé. Tu peux le retrier ci-après.
-                </p>
+                <div className="flex flex-col items-start gap-2 rounded bg-muted p-2">
+                  <p className="text-sm text-muted-foreground">
+                    L&apos;IA n&apos;a pas pu proposer de sectionnement : un découpage mécanique par
+                    titres a été utilisé. Tu peux le retrier ci-après, ou réessayer l&apos;IA.
+                  </p>
+                  <Button type="button" size="sm" variant="outline" onClick={triggerPropose}>
+                    Réessayer avec l&apos;IA
+                  </Button>
+                </div>
               )}
               <ul className="flex flex-col gap-1 text-sm">
                 {proposeState.sections.map((s) => (

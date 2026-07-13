@@ -6,6 +6,7 @@ import { chapter as chapterTable, section, reviewCard, correctionGuide, studyCyc
 import * as chapter from "./chapter";
 import * as account from "./account";
 import * as guide from "./guide";
+import * as review from "./review";
 import { anomalyKey } from "@/core/parser/validateDocument";
 
 // ponytail: même pattern que account.test.ts — un utilisateur/matière jetables par test.
@@ -370,6 +371,48 @@ describe("chapter · S1.archive/unarchive/deleteChapter", () => {
     expect(archived?.statut).toBe("archive");
     const unarchived = await chapter.unarchiveChapter(userId, chap.id);
     expect(unarchived?.statut).toBe("actif");
+  });
+
+  it("archive gèle les ReviewCards des sections ; unarchive dégèle et décale due de la durée du gel (USER_FLOW É6.4)", async () => {
+    const chap = await chapter.importChapter(userId, {
+      subjectId,
+      titre: "Introduction",
+      markdown: propre,
+      acknowledgedAnomalyKeys: [],
+    });
+    const [sec] = await db
+      .insert(section)
+      .values({
+        chapterId: chap.id,
+        chapterVersion: 1,
+        titre: "Sec",
+        ordre: 1,
+        niveauSource: 1,
+        contenu: "...",
+        importance: 3,
+        statut: "en_revision",
+      })
+      .returning();
+    const created = await review.createCard(userId, sec.id);
+
+    await chapter.archiveChapter(userId, chap.id);
+    const frozen = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
+    expect(frozen?.gelee).toBe(true);
+
+    // Simule un gel de 10 jours réels (archivedAt reculé manuellement).
+    await db
+      .update(chapterTable)
+      .set({ archivedAt: new Date(Date.now() - 10 * 86_400_000) })
+      .where(eq(chapterTable.id, chap.id));
+
+    await chapter.unarchiveChapter(userId, chap.id);
+    const unfrozen = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
+    expect(unfrozen?.gelee).toBe(false);
+    const expectedDue = new Date(created.due);
+    expectedDue.setUTCDate(expectedDue.getUTCDate() + 10);
+    expect(unfrozen?.due).toBe(expectedDue.toISOString().slice(0, 10));
+    expect(unfrozen?.stability).toBe(created.stability);
+    expect(unfrozen?.reps).toBe(created.reps);
   });
 
   it("archiveChapter refuse un chapitre d'un autre utilisateur", async () => {

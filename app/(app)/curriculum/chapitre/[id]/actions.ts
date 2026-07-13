@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/auth";
 import * as chapter from "@/services/chapter";
+import * as guide from "@/services/guide";
 import { chapterSimulateUpdateInputSchema } from "@/services/chapter.schemas";
 
 // Adaptateurs minces S1.simulateUpdate/commitUpdate (FUNCTIONS §4, Bloc 8.3, É6.2).
@@ -58,4 +59,16 @@ export async function deleteChapterAction(chapterId: string) {
   await chapter.deleteChapter(userId, chapterId);
   revalidatePath("/curriculum");
   redirect("/curriculum");
+}
+
+// Adaptateur mince S3.generateBatch (USER_FLOW É6.1 « [Générer les rubriques en
+// lot] », FUNCTIONS §3) — jamais bloquant (règle transversale 1) : generateBatch
+// isole chaque échec par section (Promise.allSettled), une section en échec
+// reste `rubrique_a_valider`, rédigeable à la main depuis son propre écran
+// (voie de secours déjà construite, É1.5).
+export async function generateBatchAction(chapterId: string) {
+  const userId = await requireUserId();
+  const results = await guide.generateBatch(userId, chapterId);
+  revalidatePath(`/curriculum/chapitre/${chapterId}`);
+  return { total: results.length, echecs: results.filter((r) => !r.ok).length };
 }

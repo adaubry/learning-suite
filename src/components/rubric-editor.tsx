@@ -43,11 +43,14 @@ export function RubricEditor({
   sectionContenu: string;
   initialPoints: ControlPoint[];
   action: (prevState: unknown, formData: FormData) => Promise<{ error?: string } | undefined>;
-  regenerateAction?: (formData: FormData) => Promise<void>;
+  regenerateAction?: (prevState: unknown, formData: FormData) => Promise<{ error?: string } | undefined>;
 }) {
   const [points, setPoints] = useState<ControlPoint[]>(initialPoints);
   const [state, formAction, pending] = useActionState(action, undefined);
-  const [regenerating, setRegenerating] = useState(false);
+  const [regenerateState, regenerateFormAction, regenerating] = useActionState(
+    regenerateAction ?? (async () => undefined),
+    undefined,
+  );
   const submitting = pending || regenerating;
 
   function update(i: number, patch: Partial<ControlPoint>) {
@@ -64,8 +67,13 @@ export function RubricEditor({
     <div className="grid grid-cols-2 gap-6">
       <form action={formAction} className="flex flex-col gap-5">
         {regenerateAction && (
-          <div className="flex justify-end">
-            <form action={regenerateAction} onSubmit={() => setRegenerating(true)}>
+          <div className="flex flex-col items-end gap-1">
+            {regenerateState?.error && (
+              <p className="text-sm text-destructive">
+                {regenerateState.error} — la rédaction manuelle ci-dessous reste disponible.
+              </p>
+            )}
+            <form action={regenerateFormAction}>
               <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
                 Relancer (nouvelle génération)
               </Button>

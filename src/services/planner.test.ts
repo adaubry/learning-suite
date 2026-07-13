@@ -107,6 +107,25 @@ describe("planner · S5 todayQueue", () => {
     expect(await planner.todayQueue(userId, date)).toEqual([]);
   });
 
+  it("defer(etude) : le slot du jour est perdu, jamais remplacé par la candidate suivante du vivier (USER_FLOW É2.0)", async () => {
+    const a = await insertSection("prete", { ordre: 1 });
+    const b = await insertSection("prete", { ordre: 2 });
+    const c = await insertSection("prete", { ordre: 3 });
+    await insertSection("prete", { ordre: 4 }); // 4e candidate : ne doit jamais apparaître
+    const date = "2026-07-13"; // date dédiée, cf. commentaire ci-dessus
+
+    const before = await planner.todayQueue(userId, date);
+    expect(before.map((i) => (i as Extract<QueueItem, { kind: "nouvelle_etude" }>).sectionId)).toEqual([
+      a.id,
+      b.id,
+      c.id,
+    ]);
+
+    await planner.defer("etude", a.id, date);
+    const after = await planner.todayQueue(userId, date);
+    expect(after.map((i) => (i as Extract<QueueItem, { kind: "nouvelle_etude" }>).sectionId)).toEqual([b.id, c.id]);
+  });
+
   it("refile ⇒ item re_file en fin de file", async () => {
     const s = await insertSection("prete");
     const date = "2026-07-11";
@@ -129,6 +148,42 @@ describe("planner · S5 todayQueue", () => {
   });
 });
 
+describe("planner · S5 advanceFromBacklog / nextBacklogCandidate", () => {
+  it("nextBacklogCandidate renvoie la 1ère candidate par priorité (importance DESC, ordre curriculum) ; null si aucune", async () => {
+    expect(await planner.nextBacklogCandidate(userId, "2026-07-14")).toBeNull();
+
+    await insertSection("prete", { ordre: 1, importance: 3 });
+    const higher = await insertSection("prete", { ordre: 2, importance: 5 });
+    const top = await planner.nextBacklogCandidate(userId, "2026-07-14");
+    // l'importance 5 passe devant malgré un ordre curriculum plus tardif
+    expect(top).toEqual({ sectionId: higher.id, titre: "Sec" });
+  });
+
+  it("advanceFromBacklog consomme un slot de DEMAIN, jamais aujourd'hui", async () => {
+    const date = "2026-07-16";
+    const tomorrow = "2026-07-17";
+    const a = await insertSection("prete", { ordre: 1 });
+    const b = await insertSection("prete", { ordre: 2 });
+
+    await planner.advanceFromBacklog(a.id, date);
+
+    // aujourd'hui : la dette ne le concerne pas, plafond et vivier intacts
+    const today = await planner.todayQueue(userId, date);
+    expect(today.map((i) => (i as Extract<QueueItem, { kind: "nouvelle_etude" }>).sectionId)).toEqual([a.id, b.id]);
+
+    // demain : le plafond par défaut (3) perd 1 slot pour la dette d'avance ; a
+    // (déjà "avancée") est exclue du vivier de demain même si son statut n'a
+    // pas encore changé (pas de vraie étude simulée dans ce test unitaire).
+    const c = await insertSection("prete", { ordre: 3 });
+    await insertSection("prete", { ordre: 4 }); // 4e candidate : au-delà du plafond réduit (2), ne doit pas apparaître
+    const tomorrowQueue = await planner.todayQueue(userId, tomorrow);
+    expect(tomorrowQueue.map((i) => (i as Extract<QueueItem, { kind: "nouvelle_etude" }>).sectionId)).toEqual([
+      b.id,
+      c.id,
+    ]);
+  });
+});
+
 describe("planner · S5 horizon", () => {
   it("délègue à P8 sur les ReviewCards actives (gelées exclues)", async () => {
     const s1 = await insertSection("en_revision");
@@ -138,6 +193,21 @@ describe("planner · S5 horizon", () => {
 
     const h = await planner.horizon(userId, TODAY);
     expect(h.chargeJ7).toBe(1);
+  });
+});
+
+describe("planner · S5 nextDeadline", () => {
+  it("renvoie la due la plus proche parmi les ReviewCards actives (gelées exclues) ; null si aucune (USER_FLOW É2.0)", async () => {
+    expect(await planner.nextDeadline(userId)).toBeNull();
+
+    const s1 = await insertSection("en_revision");
+    const s2 = await insertSection("en_revision");
+    const s3 = await insertSection("en_revision");
+    await insertReviewCard(s1.id, "2026-07-15", false);
+    await insertReviewCard(s2.id, "2026-07-12", true); // gelée : exclue
+    await insertReviewCard(s3.id, "2026-07-20", false);
+
+    expect(await planner.nextDeadline(userId)).toBe("2026-07-15");
   });
 });
 

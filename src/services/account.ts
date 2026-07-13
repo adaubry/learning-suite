@@ -13,6 +13,7 @@ import {
   promptConfig,
 } from "@/db/schema";
 import * as chapterService from "./chapter";
+import * as reviewService from "./review";
 
 // S9 · AccountService (FUNCTIONS §3) : CRUD matières, rythme, méthodologie globale,
 // suppression gardée (Bloc 9.1, réutilise S1.deleteChapter), export complet.
@@ -64,20 +65,53 @@ export async function updateSubject(
   return updated;
 }
 
-async function setSubjectStatut(userId: string, subjectId: string, statut: "active" | "archivee") {
+// Sections des chapitres ACTIFS de la matière (Bloc 9.1 fix, USER_FLOW É6.4) — un
+// chapitre déjà archivé individuellement garde son propre gel, non re-touché ici
+// (évite un double décalage de `due` quand matière et chapitre sont archivés/
+// désarchivés indépendamment).
+async function activeSectionIdsOf(subjectId: string) {
+  const chapters = await db.query.chapter.findMany({
+    where: and(eq(chapter.subjectId, subjectId), eq(chapter.statut, "actif")),
+    columns: { id: true },
+  });
+  if (chapters.length === 0) return [];
+  const sections = await db.query.section.findMany({
+    where: inArray(section.chapterId, chapters.map((c) => c.id)),
+    columns: { id: true },
+  });
+  return sections.map((s) => s.id);
+}
+
+export async function archiveSubject(userId: string, subjectId: string) {
   const [updated] = await db
     .update(subject)
-    .set({ statut })
+    .set({ statut: "archivee", archivedAt: new Date() })
     .where(and(eq(subject.id, subjectId), eq(subject.userId, userId)))
     .returning();
+  if (!updated) return updated;
+
+  for (const sectionId of await activeSectionIdsOf(subjectId)) {
+    await reviewService.freeze(userId, sectionId);
+  }
   return updated;
 }
 
-export const archiveSubject = (userId: string, subjectId: string) =>
-  setSubjectStatut(userId, subjectId, "archivee");
+export async function unarchiveSubject(userId: string, subjectId: string) {
+  const owned = await db.query.subject.findFirst({
+    where: and(eq(subject.id, subjectId), eq(subject.userId, userId)),
+  });
 
-export const unarchiveSubject = (userId: string, subjectId: string) =>
-  setSubjectStatut(userId, subjectId, "active");
+  const [updated] = await db
+    .update(subject)
+    .set({ statut: "active", archivedAt: null })
+    .where(and(eq(subject.id, subjectId), eq(subject.userId, userId)))
+    .returning();
+
+  for (const sectionId of await activeSectionIdsOf(subjectId)) {
+    await reviewService.unfreeze(userId, sectionId, owned?.archivedAt ?? null);
+  }
+  return updated;
+}
 
 // delete (FUNCTIONS §3 S9, USER_FLOW É6.4) : suppression gardée — détruit l'historique de
 // chaque chapitre de la matière via S1.deleteChapter (même cascade ordonnée, pas de logique

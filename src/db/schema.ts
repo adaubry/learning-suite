@@ -107,6 +107,9 @@ export const subject = pgTable("subject", {
   dateExamen: date("date_examen"),
   statut: subjectStatutEnum("statut").notNull().default("active"),
   methodologieTitres: text("methodologie_titres"),
+  // Durée du gel (Bloc 9.1 fix, USER_FLOW É6.4) : S9.unarchiveSubject en a besoin
+  // pour décaler les échéances FSRS des ReviewCards gelées le temps réel de l'archivage.
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
 export const chapter = pgTable("chapter", {
@@ -120,6 +123,8 @@ export const chapter = pgTable("chapter", {
   contentHash: text("content_hash").notNull(),
   maj: timestamp("maj", { withTimezone: true }).notNull().defaultNow(),
   statut: chapterStatutEnum("statut").notNull().default("actif"),
+  // Même besoin que Subject.archivedAt ci-dessus, au niveau chapitre.
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
 export const section = pgTable(
@@ -259,6 +264,12 @@ export const deferralLog = pgTable("deferral_log", {
   itemType: refileItemTypeEnum("item_type").notNull(),
   itemId: uuid("item_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Distingue un report normal (slot du jour perdu SI la section est encore dans
+  // le vivier ce jour-là) d'une dette d'avance (Bloc 9.2 fix, USER_FLOW É2.0,
+  // S5.advanceFromBacklog) : le slot de la date visée est perdu inconditionnellement,
+  // même une fois la section étudiée et sortie du vivier. Sans ce champ, les deux
+  // se confondraient sous le même itemType "etude" et l'un casserait l'autre.
+  avance: boolean("avance").notNull().default(false),
 });
 
 export const refileItem = pgTable("refile_item", {

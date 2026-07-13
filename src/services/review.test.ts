@@ -96,6 +96,23 @@ describe("review · S6", () => {
     expect(card?.gelee).toBe(false);
   });
 
+  it("unfreeze : frozenSince décale due de la durée écoulée sans toucher stability/difficulty/reps/lapses (Bloc 9.1 fix, USER_FLOW É6.4)", async () => {
+    const sec = await createSection();
+    const created = await review.createCard(userId, sec.id);
+    await review.freeze(userId, sec.id);
+
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000);
+    const updated = await review.unfreeze(userId, sec.id, tenDaysAgo);
+    const expectedDue = new Date(created.due);
+    expectedDue.setUTCDate(expectedDue.getUTCDate() + 10);
+    expect(updated?.due).toBe(expectedDue.toISOString().slice(0, 10));
+    expect(updated?.gelee).toBe(false);
+    expect(updated?.stability).toBe(created.stability);
+    expect(updated?.difficulty).toBe(created.difficulty);
+    expect(updated?.reps).toBe(created.reps);
+    expect(updated?.lapses).toBe(created.lapses);
+  });
+
   it("freeze : no-op silencieux si aucune ReviewCard pour la section (n'échoue pas)", async () => {
     const sec = await createSection();
     await expect(review.freeze(userId, sec.id)).resolves.toBeUndefined();

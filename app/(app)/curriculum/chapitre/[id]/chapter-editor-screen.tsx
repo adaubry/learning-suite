@@ -18,13 +18,14 @@ import {
   archiveChapterAction,
   unarchiveChapterAction,
   deleteChapterAction,
+  generateBatchAction,
 } from "./actions";
 
 // É6.1 (vue minimale) → É6.2 (éditeur intégré, Bloc 8.3) → É6.3 (ré-import, Bloc 8.4). Les deux
 // portes partagent le même pipeline S1.simulateUpdate/commitUpdate (ARCHITECTURE §7) — seule la
 // façon d'obtenir le nouveau markdown change (édition WYSIWYG vs upload/collage brut, mêmes
-// règles qu'É1.1). Les autres actions du catalogue É6.1 (re-trier = déjà accessible depuis
-// /importer, générer en lot/archiver/supprimer = Bloc 9.1) ne sont pas construites ici.
+// règles qu'É1.1). Re-trier reste accessible depuis /importer ; archiver/supprimer = Bloc 9.1 ;
+// générer en lot (Bloc 9.2 fix, USER_FLOW É6.1) câblé ci-dessous.
 
 type Mode = "vue" | "edition" | "reimport";
 
@@ -44,6 +45,10 @@ export function ChapterEditorScreen({
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [simState, simAction, simulating] = useActionState(simulateUpdateAction, undefined);
+  const [batchState, batchAction, batchPending] = useActionState(
+    generateBatchAction.bind(null, chapterId),
+    undefined,
+  );
 
   function enterMode(next: Mode) {
     setMarkdown(next === "reimport" ? "" : initialMarkdown);
@@ -92,6 +97,11 @@ export function ChapterEditorScreen({
         </div>
         {mode === "vue" && (
           <div className="flex gap-2">
+            <form action={batchAction}>
+              <Button type="submit" size="sm" variant="outline" disabled={batchPending}>
+                Générer les rubriques en lot
+              </Button>
+            </form>
             <Button size="sm" variant="outline" onClick={() => enterMode("reimport")}>
               Ré-importer depuis Google Docs
             </Button>
@@ -104,6 +114,15 @@ export function ChapterEditorScreen({
 
       {mode === "vue" && (
         <>
+          {batchState && (
+            <p className="text-sm text-muted-foreground">
+              {batchState.total === 0
+                ? "Aucune section active sans rubrique."
+                : batchState.echecs > 0
+                  ? `${batchState.total - batchState.echecs}/${batchState.total} rubriques générées — ${batchState.echecs} en échec, à rédiger à la main depuis leur écran.`
+                  : `${batchState.total} rubrique(s) générée(s), à valider.`}
+            </p>
+          )}
           <MarkdownViewer markdown={initialMarkdown} />
           {/* USER_FLOW É6.4 : l'archivage est toujours proposé avant la suppression. */}
           <div className="flex items-center gap-2 border-t pt-3">

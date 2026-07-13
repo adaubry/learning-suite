@@ -5,6 +5,7 @@ import * as account from "./account";
 import {
   buildDailyQueue,
   compareOrdreCurriculum,
+  joursAvantExamen,
   type QueueItem,
   type ReviewCardInput,
 } from "@/core/planner/buildDailyQueue";
@@ -58,11 +59,15 @@ async function loadActiveReviewCards(userId: string): Promise<ReviewCardInput[]>
 }
 
 async function loadDeferredToday(date: string) {
-  const rows = await db.query.deferralLog.findMany({ where: eq(deferralLog.date, date) });
-  return new Set(rows.map((r) => `${r.itemType}:${r.itemId}`));
+  return db.query.deferralLog.findMany({ where: eq(deferralLog.date, date) });
 }
 
-async function loadReadyStudyCandidates(userId: string, deferredKeys: Set<string>) {
+// Backlog COMPLET (jamais filtré par les reports d'aujourd'hui ici) : todayQueue
+// a besoin de la liste entière pour distinguer un slot vraiment perdu (une
+// candidate du backlog reportée) d'une carte re-file reportée (qui partage le
+// même itemType "etude" dans DeferralLog mais n'est pas `prete`, donc absente
+// d'ici de toute façon) — Bloc 9.1 fix, USER_FLOW É2.0.
+async function loadReadyStudyCandidates(userId: string) {
   const rows = await db
     .select({
       sectionId: section.id,
@@ -88,7 +93,6 @@ async function loadReadyStudyCandidates(userId: string, deferredKeys: Set<string
   // explicitement) — tri stable (matière, création du chapitre, position dans
   // le chapitre), tiebreaker de dernier rang après importance/examen (P7).
   return rows
-    .filter((r) => !deferredKeys.has(`etude:${r.sectionId}`))
     .sort(compareOrdreCurriculum)
     .map((r, i) => ({ sectionId: r.sectionId, importance: r.importance, subjectId: r.subjectId, ordreCurriculum: i }));
 }
@@ -126,17 +130,33 @@ async function loadStoredOrder(date: string): Promise<string[] | null> {
 }
 
 export async function todayQueue(userId: string, date: string = todayIso()): Promise<QueueItem[]> {
-  const [config, { examDates }, deferredKeys] = await Promise.all([
+  const [config, { examDates }, deferredRows] = await Promise.all([
     account.getPlannerConfig(userId),
     loadExamDates(userId),
     loadDeferredToday(date),
   ]);
+  const deferredKeys = new Set(deferredRows.map((r) => `${r.itemType}:${r.itemId}`));
 
   const reviewCards = (await loadActiveReviewCards(userId)).filter(
     (c) => !deferredKeys.has(`revision:${c.sectionId}`),
   );
-  const newStudyCandidates = await loadReadyStudyCandidates(userId, deferredKeys);
+  const allStudyCandidates = await loadReadyStudyCandidates(userId);
   const refileRows = await db.query.refileItem.findMany({ where: eq(refileItem.date, date) });
+
+  // Slot perdu, jamais remplacé (USER_FLOW É2.0 : « sinon reporter ne coûte rien
+  // et le vivier défile sans travail ») — deux sources, jamais confondues via le
+  // seul itemType "etude" (Bloc 9.2 fix) : (a) une candidate encore dans le vivier
+  // aujourd'hui et reportée normalement — une carte re-file "etude" reportée ne
+  // compte pas, sa section n'est plus `prete` donc absente du vivier ; (b) une
+  // dette d'avance (`avance: true`, S5.advanceFromBacklog) — comptée inconditionnellement,
+  // même une fois la section étudiée et sortie du vivier.
+  const deferredEtude = deferredRows.filter((r) => r.itemType === "etude");
+  const deferredEtudeIds = new Set(deferredEtude.map((r) => r.itemId));
+  const slotsLost = deferredEtude.filter(
+    (r) => r.avance || allStudyCandidates.some((c) => c.sectionId === r.itemId),
+  ).length;
+  const newStudyCandidates = allStudyCandidates.filter((c) => !deferredEtudeIds.has(c.sectionId));
+  const nouvellesParJour = Math.max(0, config.nouvellesParJour - slotsLost);
 
   const raw = buildDailyQueue({
     today: date,
@@ -144,10 +164,63 @@ export async function todayQueue(userId: string, date: string = todayIso()): Pro
     newStudyCandidates,
     refileToday: refileRows.map((r) => ({ itemType: r.itemType, itemId: r.itemId })),
     examDates,
-    nouvellesParJour: config.nouvellesParJour,
+    nouvellesParJour,
   });
 
   return applyManualOrder(raw, await loadStoredOrder(date));
+}
+
+// État vide É2.0 (USER_FLOW) : « Rien à faire aujourd'hui » + prochaine échéance —
+// la ReviewCard active la plus proche, gelées/chapitres-archivés déjà exclus par
+// loadActiveReviewCards (mêmes filtres que todayQueue/horizon).
+export async function nextDeadline(userId: string): Promise<string | null> {
+  const cards = await loadActiveReviewCards(userId);
+  if (cards.length === 0) return null;
+  return cards.map((c) => c.due).sort()[0];
+}
+
+// CTA secondaire de l'état vide É2.0 (USER_FLOW) : la candidate que la file du
+// jour montrerait en premier si le plafond n'était pas atteint — même tri que
+// `nouvelle_etude` dans P7 (importance DESC, proximité d'examen, ordre
+// curriculum), sur les candidates non encore reportées/avancées aujourd'hui.
+export async function nextBacklogCandidate(
+  userId: string,
+  date: string = todayIso(),
+): Promise<{ sectionId: string; titre: string } | null> {
+  const [allStudyCandidates, deferredRows, { examDates }] = await Promise.all([
+    loadReadyStudyCandidates(userId),
+    loadDeferredToday(date),
+    loadExamDates(userId),
+  ]);
+  const excluded = new Set(deferredRows.filter((r) => r.itemType === "etude").map((r) => r.itemId));
+  const [top] = allStudyCandidates
+    .filter((c) => !excluded.has(c.sectionId))
+    .sort(
+      (a, b) =>
+        b.importance - a.importance ||
+        (joursAvantExamen(date, examDates[a.subjectId]) ?? Infinity) -
+          (joursAvantExamen(date, examDates[b.subjectId]) ?? Infinity) ||
+        a.ordreCurriculum - b.ordreCurriculum,
+    );
+  if (!top) return null;
+  const sec = await db.query.section.findFirst({ where: eq(section.id, top.sectionId), columns: { titre: true } });
+  return sec ? { sectionId: top.sectionId, titre: sec.titre } : null;
+}
+
+// Avance une candidate du backlog à aujourd'hui en empruntant un slot de DEMAIN
+// (USER_FLOW É2.0 : « ce qui consomme un slot de demain, pas d'aujourd'hui »).
+// Ne démarre pas l'étude elle-même (S4.start, appelé séparément par l'appelant) —
+// pose seulement la dette ; mono-utilisateur, même doctrine que `defer`/`refile`
+// (pas de userId, pas de vérification de propriété, ADR 6).
+export async function advanceFromBacklog(sectionId: string, date: string = todayIso()) {
+  const tomorrow = new Date(`${date}T00:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  await db.insert(deferralLog).values({
+    date: tomorrow.toISOString().slice(0, 10),
+    itemType: "etude",
+    itemId: sectionId,
+    avance: true,
+  });
 }
 
 export async function horizon(userId: string, date: string = todayIso()) {

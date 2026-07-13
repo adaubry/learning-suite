@@ -1,5 +1,6 @@
 "use server";
 
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/auth";
 import * as planner from "@/services/planner";
@@ -23,4 +24,13 @@ export async function reorderAction(index: number, direction: "up" | "down", for
   [keys[index], keys[target]] = [keys[target], keys[index]];
   await planner.reorder(keys);
   revalidatePath("/");
+}
+
+// État vide É2.0 (USER_FLOW) : avance une candidate du backlog en empruntant un
+// slot de demain, puis démarre l'étude tout de suite (S4.start, via la page focus
+// — même chemin qu'un clic [Commencer] normal).
+export async function advanceFromBacklogAction(sectionId: string) {
+  await requireUserId();
+  await planner.advanceFromBacklog(sectionId);
+  redirect(`/etude/${sectionId}`);
 }

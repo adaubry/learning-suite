@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Planificateur, machines à états & modèle de données
 
-> **Statut** : v0.9
+> **Statut** : v0.11
 > **Rôle** : source de vérité structurelle. Toute proposition de modification du code (humaine ou IA) doit être vérifiée contre ce document. Si elle le contredit, soit elle est rejetée, soit ce document est révisé d'abord — jamais l'inverse.
 > **Dépend de** : FORMAT.md v0.2 · TECH_MAPPING.md v0.2 (stack et délégations) · USER_FLOW.md v0.3 · FUNCTIONS.md v0.3 (services & invariants). **Complété par** : LLM_CONTRACTS.md.
 
@@ -168,11 +168,13 @@ PlannerConfig user_id, nouvelles_par_jour INT DEFAULT 3,
 Subject       id, user_id, nom, semestre, ordre,
               date_examen DATE NULL,     -- pilote tris, compte à rebours, horizon
               statut ENUM(active, archivee),
-              methodologie_titres TEXT NULL   -- surcharge du document global
+              methodologie_titres TEXT NULL,  -- surcharge du document global
+              archived_at TIMESTAMPTZ NULL    -- durée du gel (Bloc 9.1 fix, S6.unfreeze)
 
 Chapter       id, subject_id, titre, markdown TEXT, version INT,
               content_hash, maj TIMESTAMPTZ,
-              statut ENUM(actif, archive)
+              statut ENUM(actif, archive),
+              archived_at TIMESTAMPTZ NULL    -- idem Subject.archived_at
               -- markdown = format de STOCKAGE ; l'édition se fait en WYSIWYG
               --   Tiptap limité aux 3 constructions, sérialisé vers cette colonne
 
@@ -233,8 +235,12 @@ ReviewCard    id, section_id UNIQUE,
               gelee BOOLEAN DEFAULT false
               -- seul champ que S6.freeze/unfreeze possède (FUNCTIONS §7)
 
-DeferralLog   id, date, item_type, item_id, created_at
-              -- reports d'éléments de la file du jour (visibilité de la dette)
+DeferralLog   id, date, item_type, item_id, created_at,
+              avance BOOLEAN DEFAULT false
+              -- reports d'éléments de la file du jour (visibilité de la dette) ;
+              --   avance=true : dette d'avance (S5.advanceFromBacklog, Bloc 9.2
+              --   fix) plutôt qu'un report normal — slot perdu inconditionnellement,
+              --   même une fois la section sortie du vivier
 
 RefileItem    id, date, item_type ENUM(revision, etude), item_id, created_at
               -- re-file intra-journée ; expire en fin de journée
@@ -370,6 +376,8 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.11    | 2026-07-13 | Bloc 9.2 (préalable, audit états vides/erreur É2.0) : ajout de `DeferralLog.avance BOOLEAN DEFAULT false` (migration `0008_swift_stardust.sql`). Deux besoins distincts partageaient jusqu'ici le même `item_type="etude"` sans moyen de les distinguer : (a) un report normal d'une candidate encore dans le vivier (slot du jour perdu, corrigé dans le même bloc — `S5.todayQueue` remplaçait à tort la candidate reportée par la suivante du vivier, contraire à USER_FLOW É2.0 « aucune section ne la remplace ») et (b) une nouvelle mécanique `S5.advanceFromBacklog` (CTA « avancer une étude de demain », USER_FLOW É2.0) qui doit perdre un slot de DEMAIN inconditionnellement, y compris une fois la section étudiée et sortie du vivier — sans ce champ, réutiliser `DeferralLog` pour (b) aurait rouvert le bug de (a). Voir DECISIONS.md.                                                                                                     |
+| 0.10    | 2026-07-13 | Bloc 9.1 fix (S1.archive/S9.archiveSubject) : ajout de `Chapter.archived_at`/`Subject.archived_at TIMESTAMPTZ NULL` — USER_FLOW É6.4 et FUNCTIONS §S6 exigent que `S6.unfreeze` « recalcule les échéances depuis les dates réelles » au désarchivage, ce que le modèle v0.9 (statut seul, sans horodatage) ne permettait pas de calculer. `S1.archive`/`S2.setImportance(1)`/la cascade restent les 3 appelants de `S6.freeze`/`unfreeze` (FUNCTIONS §S6) ; seuls `S1.archive` (via ce fix) et la cascade (déjà câblée Bloc 8.2) le font réellement, `S2.setImportance` reste non construit (DECISIONS.md Bloc 3.3). Supersède la doctrine « pur flip de statut, aucune cascade » du Bloc 9.1 initial. Voir DECISIONS.md. |
 | 0.9     | 2026-07-09 | Bloc 9.1 (S9 réglages) : ajout de `PlannerConfig.tts_active BOOLEAN DEFAULT true` — USER_FLOW P7 exige un réglage de compte « TTS on/off », que `FeynmanChat` (Bloc 7.2) ne portait que comme un `useState` local jamais persisté. Réutilise `PlannerConfig` (une ligne par utilisateur) plutôt qu'une nouvelle table pour un seul booléen. Voir DECISIONS.md. |
 | 0.8     | 2026-07-09 | Bloc 7.2 (L5.feynmanReport) : ajout de `StudyCycle.bilan_feynman JSONB` — le bilan de clôture Feynman est un artefact UNIQUE par cycle (pas une tentative : `study_session.type` n'a pas de valeur "bilan"), un seul propriétaire plutôt que de le loger dans le JSONB `correction` d'un tour. Tranché en récitation (lecture directe du modèle §8 existant : `study_cycle.etat` avait déjà `feynman`/`bilan` dans l'ENUM depuis v0.4, mais aucun champ pour porter le contenu du bilan lui-même). Voir DECISIONS.md.                                                                                                                        |
 | 0.7     | 2026-07-09 | Bloc 6.3 (S5.reorder) : ajout de l'entité `QueueOrder(date PK, order JSONB)` — FUNCTIONS §3/§7 fait de S5 le seul propriétaire d'une « permutation datée, purgée à minuit », absente du modèle §8 v0.6. Une ligne par jour (tableau JSONB ordonné de clés `{kind,id}`) plutôt qu'une ligne par item positionné — la réconciliation avec la file fraîche du jour (P7) est un simple diff de tableau, et le réordonnancement v1 (boutons shadcn) envoie de toute façon l'ordre complet, pas un déplacement incrémental. Mono-utilisateur (pas de `user_id`), même doctrine que `DeferralLog`/`RefileItem`. Tranché avec l'humain (AskUserQuestion). Voir DECISIONS.md.                                                                                                                        |

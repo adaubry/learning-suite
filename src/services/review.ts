@@ -104,7 +104,27 @@ export async function freeze(userId: string, sectionId: string) {
   await db.update(reviewCard).set({ gelee: true }).where(eq(reviewCard.sectionId, sectionId));
 }
 
-export async function unfreeze(userId: string, sectionId: string) {
+// `frozenSince` (Bloc 9.1 fix, USER_FLOW É6.4) : date à laquelle le gel a commencé
+// (Chapter/Subject.archivedAt côté appelant) — décale `due` de la durée réelle
+// écoulée, le reste de l'état FSRS (stability/difficulty/reps/lapses) est intact.
+// Le gel « met l'horloge en pause » ; le dégel la reprend où elle s'était arrêtée,
+// plutôt que de simuler une note qu'aucun humain n'a donnée (ADR 3).
+export async function unfreeze(userId: string, sectionId: string, frozenSince: Date | null = null) {
   await assertSectionOwnership(sectionId, userId);
-  await db.update(reviewCard).set({ gelee: false }).where(eq(reviewCard.sectionId, sectionId));
+  const card = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sectionId) });
+  if (!card) return undefined;
+
+  const shiftDays = frozenSince ? daysBetween(frozenSince, new Date()) : 0;
+  const due = new Date(card.due);
+  due.setUTCDate(due.getUTCDate() + shiftDays);
+  const [updated] = await db
+    .update(reviewCard)
+    .set({ gelee: false, due: due.toISOString().slice(0, 10) })
+    .where(eq(reviewCard.id, card.id))
+    .returning();
+  return updated;
+}
+
+function daysBetween(from: Date, to: Date): number {
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }

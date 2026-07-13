@@ -50,6 +50,20 @@
       "when": 1783622249688,
       "tag": "0006_clumsy_the_stranger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783944516885,
+      "tag": "0007_typical_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783946434849,
+      "tag": "0008_swift_stardust",
+      "breakpoints": true
     }
   ]
 }

@@ -7,9 +7,10 @@ import * as chapterService from "./chapter";
 import * as planner from "./planner";
 
 // @canary PLAN Phase 9 : archiver un chapitre l'exclut de la file du jour (S5, filtre
-// chapter.statut — DECISIONS.md Bloc 9.1 : pur flip de statut, aucune cascade sur
-// ReviewCard) ; désarchiver le fait réapparaître SANS toucher aux échéances ni à
-// l'historique d'étude.
+// chapter.statut) et gèle ses ReviewCards (S6) ; désarchiver le fait réapparaître,
+// dégèle et décale `due` de la durée réelle du gel (USER_FLOW É6.4, DECISIONS.md
+// Bloc 9.1 fix — supersède la version précédente de ce canari : pur flip de statut
+// sans recalcul, jugé insuffisant). L'historique d'étude, lui, reste intact.
 
 const client = postgres(process.env.DATABASE_URL!);
 const createdUserIds: string[] = [];
@@ -93,7 +94,12 @@ describe("chapter · archiveChapter/unarchiveChapter @canary", () => {
 
     const cardApres = await db.query.reviewCard.findFirst({ where: (t, { eq }) => eq(t.sectionId, sec.id) });
     const sessionApres = await db.query.studySession.findFirst({ where: (t, { eq }) => eq(t.sectionId, sec.id) });
-    expect(cardApres).toEqual(cardAvant);
+    expect(cardApres?.gelee).toBe(false);
+    expect((cardApres?.due ?? "") >= (cardAvant?.due ?? "")).toBe(true); // jamais décalé en arrière
+    expect(cardApres?.stability).toBe(cardAvant?.stability);
+    expect(cardApres?.difficulty).toBe(cardAvant?.difficulty);
+    expect(cardApres?.reps).toBe(cardAvant?.reps);
+    expect(cardApres?.lapses).toBe(cardAvant?.lapses);
     expect(sessionApres).toEqual(sessionAvant);
   });
 });

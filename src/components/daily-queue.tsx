@@ -27,21 +27,47 @@ export function DailyQueue({
   keys,
   moveAction,
   deferAction,
+  nextDeadline,
+  backlogCandidate,
+  advanceAction,
 }: {
   queue: QueueItem[];
   infoById: Map<string, QueueSectionInfo>;
   keys: string[];
   moveAction: (index: number, direction: "up" | "down", formData: FormData) => Promise<void>;
   deferAction: (itemType: "etude" | "revision", itemId: string) => Promise<void>;
+  /** Prochaine échéance ISO (S5.nextDeadline), ou null si aucune ReviewCard active (USER_FLOW É2.0). */
+  nextDeadline: string | null;
+  /** Candidate en tête de vivier (S5.nextBacklogCandidate), ou null si le vivier est vide. */
+  backlogCandidate: { sectionId: string; titre: string } | null;
+  /** Avance la candidate à aujourd'hui en empruntant un slot de demain (S5.advanceFromBacklog). */
+  advanceAction: (sectionId: string) => Promise<void>;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const lockSubmit = () => setSubmitting(true);
 
   if (queue.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        Rien à faire aujourd&apos;hui. Reviens demain, ou avance une étude depuis le curriculum.
-      </p>
+      <div className="flex flex-col items-start gap-2 text-sm">
+        <p className="text-muted-foreground">
+          Rien à faire aujourd&apos;hui.{" "}
+          {nextDeadline
+            ? `Prochaine échéance : ${nextDeadline}.`
+            : "Aucune échéance à venir."}
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" nativeButton={false} render={<Link href="/importer" />}>
+            Importer un chapitre
+          </Button>
+          {backlogCandidate && (
+            <form action={advanceAction.bind(null, backlogCandidate.sectionId)}>
+              <Button type="submit" size="sm" variant="outline">
+                Avancer « {backlogCandidate.titre} » (emprunte un slot de demain)
+              </Button>
+            </form>
+          )}
+        </div>
+      </div>
     );
   }
 
