@@ -53,8 +53,9 @@ const rubricQueue = createRubricQueue(
   (sectionId) => createManualRubricAction(undefined, sectionFormData(sectionId)),
 );
 
+const EMPTY_RUBRIC_QUEUE: RubricQueueItem[] = [];
 function useRubricQueueItems() {
-  return useSyncExternalStore(rubricQueue.subscribe, rubricQueue.getSnapshot, () => []);
+  return useSyncExternalStore(rubricQueue.subscribe, rubricQueue.getSnapshot, () => EMPTY_RUBRIC_QUEUE);
 }
 
 const rubricQueueStatusLabel: Record<RubricQueueItem["status"], string> = {
