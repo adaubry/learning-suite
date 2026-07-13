@@ -42,15 +42,15 @@ export function StepMatieres({ subjects }: { subjects: Subject[] }) {
       <form action={action} className="flex flex-col gap-3 rounded border p-4">
         <div className="flex flex-col gap-1">
           <Label htmlFor="nom">Nom</Label>
-          <Input id="nom" name="nom" required placeholder="Droit civil" />
+          <Input id="nom" name="nom" required placeholder="Droit civil" autoComplete="off" />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="semestre">Semestre</Label>
-          <Input id="semestre" name="semestre" required placeholder="S1" />
+          <Input id="semestre" name="semestre" required placeholder="S1" autoComplete="off" />
         </div>
         <div className="flex flex-col gap-1">
           <Label htmlFor="dateExamen">Date d&apos;examen (optionnelle)</Label>
-          <Input id="dateExamen" name="dateExamen" type="date" />
+          <Input id="dateExamen" name="dateExamen" type="date" autoComplete="off" />
         </div>
         <Button type="submit" disabled={pending}>
           {pending ? "Ajout…" : "Ajouter une matière"}

@@ -231,15 +231,15 @@ export function AddSubjectForm() {
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor="nom">Nom</Label>
-          <Input id="nom" name="nom" required placeholder="Droit civil" />
+          <Input id="nom" name="nom" required placeholder="Droit civil" autoComplete="off" />
         </div>
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor="semestre">Semestre</Label>
-          <Input id="semestre" name="semestre" required placeholder="S1" />
+          <Input id="semestre" name="semestre" required placeholder="S1" autoComplete="off" />
         </div>
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor="dateExamen">Date d&apos;examen</Label>
-          <Input id="dateExamen" name="dateExamen" type="date" />
+          <Input id="dateExamen" name="dateExamen" type="date" autoComplete="off" />
         </div>
       </div>
       <Button type="submit" disabled={pending} className="self-start">
@@ -279,15 +279,20 @@ function EditSubjectDialog({ subject }: { subject: Subject }) {
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="flex flex-1 flex-col gap-1">
                 <Label>Nom</Label>
-                <Input name="nom" defaultValue={subject.nom} required />
+                <Input name="nom" defaultValue={subject.nom} required autoComplete="off" />
               </div>
               <div className="flex flex-1 flex-col gap-1">
                 <Label>Semestre</Label>
-                <Input name="semestre" defaultValue={subject.semestre} required />
+                <Input name="semestre" defaultValue={subject.semestre} required autoComplete="off" />
               </div>
               <div className="flex flex-1 flex-col gap-1">
                 <Label>Date d&apos;examen</Label>
-                <Input name="dateExamen" type="date" defaultValue={subject.dateExamen ?? ""} />
+                <Input
+                  name="dateExamen"
+                  type="date"
+                  defaultValue={subject.dateExamen ?? ""}
+                  autoComplete="off"
+                />
               </div>
             </div>
             <div className="flex flex-col gap-1">
