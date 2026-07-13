@@ -8,10 +8,17 @@ import { MarkdownViewer } from "@/components/markdown-viewer";
 import { CourseEditor } from "@/components/course-editor";
 import { AnomalyPanel } from "@/components/anomaly-panel";
 import { ConsequencesDialog } from "@/components/consequences-dialog";
+import { ConfirmDialog, StrongConfirmDialog } from "@/components/confirm-dialog";
 import { parseChapter } from "@/core/parser/parseChapter";
 import { validateDocument, anomalyKey } from "@/core/parser/validateDocument";
 import type { Anomaly } from "@/core/parser/types";
-import { simulateUpdateAction, commitUpdateAction } from "./actions";
+import {
+  simulateUpdateAction,
+  commitUpdateAction,
+  archiveChapterAction,
+  unarchiveChapterAction,
+  deleteChapterAction,
+} from "./actions";
 
 // É6.1 (vue minimale) → É6.2 (éditeur intégré, Bloc 8.3) → É6.3 (ré-import, Bloc 8.4). Les deux
 // portes partagent le même pipeline S1.simulateUpdate/commitUpdate (ARCHITECTURE §7) — seule la
@@ -25,10 +32,12 @@ export function ChapterEditorScreen({
   chapterId,
   titre,
   initialMarkdown,
+  statut,
 }: {
   chapterId: string;
   titre: string;
   initialMarkdown: string;
+  statut: "actif" | "archive";
 }) {
   const [mode, setMode] = useState<Mode>("vue");
   const [markdown, setMarkdown] = useState(initialMarkdown);
@@ -77,7 +86,10 @@ export function ChapterEditorScreen({
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{titre}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">{titre}</h1>
+          {statut === "archive" && <span className="text-xs text-muted-foreground">(archivé)</span>}
+        </div>
         {mode === "vue" && (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => enterMode("reimport")}>
@@ -90,7 +102,45 @@ export function ChapterEditorScreen({
         )}
       </div>
 
-      {mode === "vue" && <MarkdownViewer markdown={initialMarkdown} />}
+      {mode === "vue" && (
+        <>
+          <MarkdownViewer markdown={initialMarkdown} />
+          {/* USER_FLOW É6.4 : l'archivage est toujours proposé avant la suppression. */}
+          <div className="flex items-center gap-2 border-t pt-3">
+            {statut === "actif" ? (
+              <ConfirmDialog
+                trigger={
+                  <Button size="sm" variant="outline">
+                    Archiver le chapitre
+                  </Button>
+                }
+                title="Archiver ce chapitre ?"
+                description="Le chapitre sort de la file du jour et de la génération paresseuse des rubriques. Réversible à tout moment ; tout l'historique est conservé."
+                confirmLabel="Archiver"
+                action={archiveChapterAction.bind(null, chapterId)}
+              />
+            ) : (
+              <form action={unarchiveChapterAction.bind(null, chapterId)}>
+                <Button size="sm" variant="outline" type="submit">
+                  Désarchiver le chapitre
+                </Button>
+              </form>
+            )}
+            <StrongConfirmDialog
+              trigger={
+                <Button size="sm" variant="destructive">
+                  Supprimer le chapitre
+                </Button>
+              }
+              title="Supprimer définitivement ce chapitre ?"
+              description={`Détruit tout l'historique (sections, rubriques, sessions, erreurs). Irréversible. Réservé aux erreurs de manipulation — préfère l'archivage pour une matière terminée.`}
+              confirmWord={titre}
+              confirmLabel="Supprimer définitivement"
+              action={deleteChapterAction.bind(null, chapterId)}
+            />
+          </div>
+        </>
+      )}
 
       {mode !== "vue" && (
         <div className="flex flex-col gap-4">

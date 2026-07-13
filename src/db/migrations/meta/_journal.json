@@ -43,6 +43,13 @@
       "when": 1783598945819,
       "tag": "0005_lowly_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783622249688,
+      "tag": "0006_clumsy_the_stranger",
+      "breakpoints": true
     }
   ]
 }

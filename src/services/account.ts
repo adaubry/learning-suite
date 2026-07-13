@@ -1,9 +1,21 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { subject, plannerConfig, promptConfig } from "@/db/schema";
+import {
+  subject,
+  chapter,
+  section,
+  correctionGuide,
+  reviewCard,
+  studyCycle,
+  studySession,
+  errorEntry,
+  plannerConfig,
+  promptConfig,
+} from "@/db/schema";
+import * as chapterService from "./chapter";
 
-// S9 · AccountService — partiel (FUNCTIONS §3) : CRUD matières, rythme, méthodologie globale.
-// Suppression dure hors scope (archivage seul — É6.4 n'est pas construit).
+// S9 · AccountService (FUNCTIONS §3) : CRUD matières, rythme, méthodologie globale,
+// suppression gardée (Bloc 9.1, réutilise S1.deleteChapter), export complet.
 
 export async function listSubjects(userId: string) {
   return db.query.subject.findMany({
@@ -67,11 +79,28 @@ export const archiveSubject = (userId: string, subjectId: string) =>
 export const unarchiveSubject = (userId: string, subjectId: string) =>
   setSubjectStatut(userId, subjectId, "active");
 
+// delete (FUNCTIONS §3 S9, USER_FLOW É6.4) : suppression gardée — détruit l'historique de
+// chaque chapitre de la matière via S1.deleteChapter (même cascade ordonnée, pas de logique
+// dupliquée), puis la matière elle-même.
+export async function deleteSubject(userId: string, subjectId: string) {
+  const owned = await db.query.subject.findFirst({ where: eq(subject.id, subjectId) });
+  if (!owned || owned.userId !== userId) throw new Error("Matière introuvable.");
+
+  const chapters = await db.query.chapter.findMany({
+    where: eq(chapter.subjectId, subjectId),
+    columns: { id: true },
+  });
+  for (const c of chapters) {
+    await chapterService.deleteChapter(userId, c.id);
+  }
+  await db.delete(subject).where(eq(subject.id, subjectId));
+}
+
 export async function getPlannerConfig(userId: string) {
   const row = await db.query.plannerConfig.findFirst({
     where: eq(plannerConfig.userId, userId),
   });
-  return row ?? { userId, nouvellesParJour: 3 };
+  return row ?? { userId, nouvellesParJour: 3, ttsActive: true };
 }
 
 export async function updatePlannerConfig(userId: string, nouvellesParJour: number) {
@@ -79,6 +108,17 @@ export async function updatePlannerConfig(userId: string, nouvellesParJour: numb
     .insert(plannerConfig)
     .values({ userId, nouvellesParJour })
     .onConflictDoUpdate({ target: plannerConfig.userId, set: { nouvellesParJour } })
+    .returning();
+  return row;
+}
+
+// Réglages P7 (Bloc 9.1, USER_FLOW P7) : TTS on/off, persisté — FeynmanChat (Bloc 7.2) ne
+// portait qu'un `useState` local, jamais un vrai réglage de compte.
+export async function updateTtsActive(userId: string, ttsActive: boolean) {
+  const [row] = await db
+    .insert(plannerConfig)
+    .values({ userId, ttsActive })
+    .onConflictDoUpdate({ target: plannerConfig.userId, set: { ttsActive } })
     .returning();
   return row;
 }
@@ -111,4 +151,64 @@ export async function updateMethodologieGlobale(
     })
     .returning();
   return row;
+}
+
+// exportUserData (FUNCTIONS §3 S9 : « JSON complet, archives et journaux compris ») — inclut
+// les matières/chapitres archivés (aucun filtre de statut) et l'intégralité de auditEvent/
+// promptLog : ces deux tables n'ont pas de user_id (doctrine mono-utilisateur, ADR 6 — même
+// raison que DeferralLog/RefileItem/QueueOrder), il n'y a donc jamais qu'un seul utilisateur
+// dont ces journaux pourraient parler.
+export async function exportUserData(userId: string) {
+  const subjects = await db.query.subject.findMany({ where: eq(subject.userId, userId) });
+  const subjectIds = subjects.map((s) => s.id);
+  const chapters = subjectIds.length
+    ? await db.query.chapter.findMany({ where: inArray(chapter.subjectId, subjectIds) })
+    : [];
+  const chapterIds = chapters.map((c) => c.id);
+  const sections = chapterIds.length
+    ? await db.query.section.findMany({ where: inArray(section.chapterId, chapterIds) })
+    : [];
+  const sectionIds = sections.map((s) => s.id);
+
+  const [correctionGuides, reviewCards, studyCycles, studySessions, errorEntries, plannerCfg] =
+    await Promise.all([
+      sectionIds.length
+        ? db.query.correctionGuide.findMany({ where: inArray(correctionGuide.sectionId, sectionIds) })
+        : [],
+      sectionIds.length
+        ? db.query.reviewCard.findMany({ where: inArray(reviewCard.sectionId, sectionIds) })
+        : [],
+      sectionIds.length
+        ? db.query.studyCycle.findMany({ where: inArray(studyCycle.sectionId, sectionIds) })
+        : [],
+      sectionIds.length
+        ? db.query.studySession.findMany({ where: inArray(studySession.sectionId, sectionIds) })
+        : [],
+      sectionIds.length
+        ? db.query.errorEntry.findMany({ where: inArray(errorEntry.sectionId, sectionIds) })
+        : [],
+      getPlannerConfig(userId),
+    ]);
+
+  const [auditEvents, promptLogs, methodologieGlobale] = await Promise.all([
+    db.query.auditEvent.findMany(),
+    db.query.promptLog.findMany(),
+    getMethodologieGlobale(userId),
+  ]);
+
+  return {
+    exportedAt: new Date().toISOString(),
+    plannerConfig: plannerCfg,
+    methodologieTitresGlobale: methodologieGlobale,
+    subjects,
+    chapters,
+    sections,
+    correctionGuides,
+    reviewCards,
+    studyCycles,
+    studySessions,
+    errorEntries,
+    auditEvents,
+    promptLogs,
+  };
 }

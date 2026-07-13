@@ -91,6 +91,9 @@ export const plannerConfig = pgTable("planner_config", {
     .primaryKey()
     .references(() => authUsers.id),
   nouvellesParJour: integer("nouvelles_par_jour").notNull().default(3),
+  // Réglages P7 (Bloc 9.1, USER_FLOW P7) : TTS on/off — même table de config par
+  // utilisateur que nouvellesParJour, pas de nouvelle table pour un seul booléen.
+  ttsActive: boolean("tts_active").notNull().default(true),
 });
 
 export const subject = pgTable("subject", {

@@ -41,6 +41,7 @@ export function FeynmanChat({
   transcribeAction,
   closeFeynmanAction,
   initialMessages,
+  initialTtsActive = false,
 }: {
   cycleId: string;
   sectionTitre: string;
@@ -55,11 +56,14 @@ export function FeynmanChat({
    *  ça générerait un tour d'ouverture parasite au milieu de l'échange
    *  (incident réel : "Feynman oublie ce que je viens de dire"). */
   initialMessages: FeynmanMessage[];
+  /** Réglage de compte P7 (Bloc 9.1) — valeur par défaut du toggle, ensuite libre pour
+   *  cette session (le toggle lui-même ne réécrit pas le réglage persisté). */
+  initialTtsActive?: boolean;
 }) {
   const [messages, setMessages] = useState<FeynmanMessage[]>(initialMessages);
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(initialTtsActive);
   const [closing, startClosing] = useTransition();
   const openedRef = useRef(false);
 

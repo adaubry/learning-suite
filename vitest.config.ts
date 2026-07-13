@@ -13,5 +13,11 @@ export default defineConfig({
     // son client) ; le nettoyage afterAll dépasse parfois les 10s par défaut
     // sous contention (WSL2 + Docker) — 20s, pas de retry en boucle.
     hookTimeout: 20000,
+    // pool 'threads' (défaut) partage process.env entre fichiers via les worker_threads
+    // Node : deux beforeEach concurrents qui réécrivent LLM_MODEL_TRANSCRIPTION se
+    // marchent dessus, PromptLog se retrouve pollué sous le mauvais model (flake
+    // constaté : transcribeAudio.canary.test.ts, 1 attendu / 3 reçus). 'forks' isole
+    // process.env par processus OS réel.
+    pool: "forks",
   },
 });

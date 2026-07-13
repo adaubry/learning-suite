@@ -20,15 +20,14 @@ import {
 import { signOut } from "../../app/(auth)/actions";
 import type { OpenCycleInfo } from "@/services/session";
 
-// U1 AppShell minimal (FUNCTIONS §6.1) : Réglages n'est pas encore construit
-// (bloc à venir) — item désactivé plutôt que retiré, pour respecter la
-// navigation permanente de USER_FLOW. Erreurs activé (Bloc 5.3, U24).
+// U1 AppShell minimal (FUNCTIONS §6.1) — navigation permanente de USER_FLOW.
+// Réglages activé au Bloc 9.1 (P7).
 
 const NAV_ITEMS = [
   { href: "/", label: "Aujourd'hui", enabled: true },
   { href: "/curriculum", label: "Curriculum", enabled: true },
   { href: "/erreurs", label: "Erreurs", enabled: true },
-  { href: "/reglages", label: "Réglages", enabled: false },
+  { href: "/reglages", label: "Réglages", enabled: true },
 ] as const;
 
 export function AppShell({

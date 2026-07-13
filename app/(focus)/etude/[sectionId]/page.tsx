@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { section } from "@/db/schema";
 import { requireUserId } from "@/lib/auth";
 import * as session from "@/services/session";
+import * as account from "@/services/account";
 import type { FeynmanBilan } from "@/services/session";
 import { BlurtingEditor } from "@/components/blurting-editor";
 import { CorrectionView } from "@/components/correction-view";
@@ -121,7 +122,10 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
   }
 
   if (cycle.etat === "feynman") {
-    const historique = await session.feynmanHistorique(userId, cycle.id);
+    const [historique, plannerConfig] = await Promise.all([
+      session.feynmanHistorique(userId, cycle.id),
+      account.getPlannerConfig(userId),
+    ]);
     return (
       <FeynmanChat
         cycleId={cycle.id}
@@ -129,6 +133,7 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
         transcribeAction={transcribeAction}
         closeFeynmanAction={closeFeynmanAction.bind(null, cycle.id, sectionId)}
         initialMessages={historique}
+        initialTtsActive={plannerConfig.ttsActive}
       />
     );
   }

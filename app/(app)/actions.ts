@@ -77,6 +77,13 @@ export async function unarchiveSubjectAction(formData: FormData) {
   revalidatePath("/curriculum");
 }
 
+// Bloc 9.1 (USER_FLOW É6.4) — suppression gardée d'une matière (StrongConfirmDialog côté écran).
+export async function deleteSubjectAction(subjectId: string) {
+  const userId = await requireUserId();
+  await account.deleteSubject(userId, subjectId);
+  revalidatePath("/curriculum");
+}
+
 export async function updatePlannerConfigAction(_prevState: unknown, formData: FormData) {
   const parsed = plannerConfigInputSchema.safeParse({
     nouvellesParJour: formData.get("nouvellesParJour"),
@@ -99,6 +106,13 @@ export async function updateMethodologieGlobaleAction(_prevState: unknown, formD
   const userId = await requireUserId();
   await account.updateMethodologieGlobale(userId, parsed.data.methodologieTitresGlobale ?? null);
   return { success: true as const };
+}
+
+// Réglages P7 (Bloc 9.1, USER_FLOW P7).
+export async function updateTtsActiveAction(ttsActive: boolean) {
+  const userId = await requireUserId();
+  await account.updateTtsActive(userId, ttsActive);
+  revalidatePath("/reglages");
 }
 
 // Bloc 4.2 (É1.5) : déclenche la rubrique depuis le curriculum, redirige vers

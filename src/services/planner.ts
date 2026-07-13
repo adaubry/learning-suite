@@ -46,7 +46,14 @@ async function loadActiveReviewCards(userId: string): Promise<ReviewCardInput[]>
     .innerJoin(section, eq(reviewCard.sectionId, section.id))
     .innerJoin(chapter, eq(section.chapterId, chapter.id))
     .innerJoin(subject, eq(chapter.subjectId, subject.id))
-    .where(and(eq(subject.userId, userId), eq(subject.statut, "active"), eq(reviewCard.gelee, false)));
+    .where(
+      and(
+        eq(subject.userId, userId),
+        eq(subject.statut, "active"),
+        eq(chapter.statut, "actif"),
+        eq(reviewCard.gelee, false),
+      ),
+    );
   return rows;
 }
 
@@ -68,7 +75,14 @@ async function loadReadyStudyCandidates(userId: string, deferredKeys: Set<string
     .from(section)
     .innerJoin(chapter, eq(section.chapterId, chapter.id))
     .innerJoin(subject, eq(chapter.subjectId, subject.id))
-    .where(and(eq(subject.userId, userId), eq(subject.statut, "active"), eq(section.statut, "prete")));
+    .where(
+      and(
+        eq(subject.userId, userId),
+        eq(subject.statut, "active"),
+        eq(chapter.statut, "actif"),
+        eq(section.statut, "prete"),
+      ),
+    );
 
   // Ordre curriculum : aucun champ dédié en base (chapitres non ordonnés
   // explicitement) — tri stable (matière, création du chapitre, position dans

@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Planificateur, machines à états & modèle de données
 
-> **Statut** : v0.7
+> **Statut** : v0.9
 > **Rôle** : source de vérité structurelle. Toute proposition de modification du code (humaine ou IA) doit être vérifiée contre ce document. Si elle le contredit, soit elle est rejetée, soit ce document est révisé d'abord — jamais l'inverse.
 > **Dépend de** : FORMAT.md v0.2 · TECH_MAPPING.md v0.2 (stack et délégations) · USER_FLOW.md v0.3 · FUNCTIONS.md v0.3 (services & invariants). **Complété par** : LLM_CONTRACTS.md.
 
@@ -162,6 +162,7 @@ Notation : PostgreSQL, ORM Drizzle. Types indicatifs.
 User          id, email, created_at
 
 PlannerConfig user_id, nouvelles_par_jour INT DEFAULT 3,
+              tts_active BOOLEAN DEFAULT true,   -- réglage P7 (Bloc 9.1)
               -- extensible : jours off, plafond de révisions/jour…
 
 Subject       id, user_id, nom, semestre, ordre,
@@ -369,6 +370,7 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.9     | 2026-07-09 | Bloc 9.1 (S9 réglages) : ajout de `PlannerConfig.tts_active BOOLEAN DEFAULT true` — USER_FLOW P7 exige un réglage de compte « TTS on/off », que `FeynmanChat` (Bloc 7.2) ne portait que comme un `useState` local jamais persisté. Réutilise `PlannerConfig` (une ligne par utilisateur) plutôt qu'une nouvelle table pour un seul booléen. Voir DECISIONS.md. |
 | 0.8     | 2026-07-09 | Bloc 7.2 (L5.feynmanReport) : ajout de `StudyCycle.bilan_feynman JSONB` — le bilan de clôture Feynman est un artefact UNIQUE par cycle (pas une tentative : `study_session.type` n'a pas de valeur "bilan"), un seul propriétaire plutôt que de le loger dans le JSONB `correction` d'un tour. Tranché en récitation (lecture directe du modèle §8 existant : `study_cycle.etat` avait déjà `feynman`/`bilan` dans l'ENUM depuis v0.4, mais aucun champ pour porter le contenu du bilan lui-même). Voir DECISIONS.md.                                                                                                                        |
 | 0.7     | 2026-07-09 | Bloc 6.3 (S5.reorder) : ajout de l'entité `QueueOrder(date PK, order JSONB)` — FUNCTIONS §3/§7 fait de S5 le seul propriétaire d'une « permutation datée, purgée à minuit », absente du modèle §8 v0.6. Une ligne par jour (tableau JSONB ordonné de clés `{kind,id}`) plutôt qu'une ligne par item positionné — la réconciliation avec la file fraîche du jour (P7) est un simple diff de tableau, et le réordonnancement v1 (boutons shadcn) envoie de toute façon l'ordre complet, pas un déplacement incrémental. Mono-utilisateur (pas de `user_id`), même doctrine que `DeferralLog`/`RefileItem`. Tranché avec l'humain (AskUserQuestion). Voir DECISIONS.md.                                                                                                                        |
 | 0.6     | 2026-07-09 | Bloc 6.2 (S6.freeze/unfreeze) : ajout de `ReviewCard.gelee BOOLEAN DEFAULT false` — FUNCTIONS §7 fait de S6 « le seul propriétaire du gel », mais le modèle §8 v0.5 n'avait aucun champ pour le porter. Tranché avec l'humain (AskUserQuestion) plutôt qu'une dérivation implicite depuis `section.statut` (aurait recréé l'ambiguïté de propriétaire critiquée en FUNCTIONS §0). `due`/`stability`/`difficulty`/`reps`/`lapses`/`last_review` restent suffisants pour P9 (confirmé : `enable_short_term: false` élimine tout besoin de persister `state`/`learning_steps` ts-fsrs — une carte est toujours New (reps=0) ou Review (reps>0), jamais Learning/Relearning). Voir DECISIONS.md.                                                                                                                                        |

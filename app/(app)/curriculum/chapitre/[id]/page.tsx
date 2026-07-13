@@ -12,5 +12,12 @@ export default async function ChapterPage({ params }: { params: Promise<{ id: st
   const chap = await chapter.getChapterForEdit(userId, chapterId).catch(() => null);
   if (!chap) notFound();
 
-  return <ChapterEditorScreen chapterId={chap.id} titre={chap.titre} initialMarkdown={chap.markdown} />;
+  return (
+    <ChapterEditorScreen
+      chapterId={chap.id}
+      titre={chap.titre}
+      initialMarkdown={chap.markdown}
+      statut={chap.statut}
+    />
+  );
 }

@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { db } from "@/db";
-import { chapter as chapterTable, section, reviewCard, correctionGuide } from "@/db/schema";
+import { chapter as chapterTable, section, reviewCard, correctionGuide, studyCycle, studySession, errorEntry } from "@/db/schema";
 import * as chapter from "./chapter";
 import * as account from "./account";
 import * as guide from "./guide";
@@ -33,6 +33,9 @@ beforeEach(async () => {
 afterAll(async () => {
   for (const id of createdUserIds) {
     await client`delete from audit_event where entite_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
+    await client`delete from error_entry where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
+    await client`delete from study_session where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
+    await client`delete from study_cycle where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
@@ -351,5 +354,102 @@ describe("chapter · S1.simulateUpdate/commitUpdate", () => {
     await expect(
       chapter.commitUpdate(other, chap.id, `${markdown}\n\nModifié.`),
     ).rejects.toThrow("Chapitre introuvable.");
+  });
+});
+
+// Bloc 9.1 — S1.archive/unarchive/deleteChapter (USER_FLOW É6.4).
+describe("chapter · S1.archive/unarchive/deleteChapter", () => {
+  it("archive puis unarchive : simple va-et-vient de statut", async () => {
+    const chap = await chapter.importChapter(userId, {
+      subjectId,
+      titre: "Introduction",
+      markdown: propre,
+      acknowledgedAnomalyKeys: [],
+    });
+    const archived = await chapter.archiveChapter(userId, chap.id);
+    expect(archived?.statut).toBe("archive");
+    const unarchived = await chapter.unarchiveChapter(userId, chap.id);
+    expect(unarchived?.statut).toBe("actif");
+  });
+
+  it("archiveChapter refuse un chapitre d'un autre utilisateur", async () => {
+    const chap = await chapter.importChapter(userId, {
+      subjectId,
+      titre: "Introduction",
+      markdown: propre,
+      acknowledgedAnomalyKeys: [],
+    });
+    const other = await createUser();
+    await expect(chapter.archiveChapter(other, chap.id)).rejects.toThrow("Chapitre introuvable.");
+  });
+
+  it("deleteChapter détruit tout l'historique en cascade (section, rubrique, carte, cycle, session, erreur)", async () => {
+    const titreSection = "Sources du droit des obligations";
+    const chap = await chapter.importChapter(userId, {
+      subjectId,
+      titre: "Introduction",
+      markdown: `# Introduction\n\n## ${titreSection}\n\nTexte.`,
+      acknowledgedAnomalyKeys: [],
+    });
+    const [sec] = await db
+      .insert(section)
+      .values({
+        chapterId: chap.id,
+        chapterVersion: 1,
+        titre: titreSection,
+        ordre: 1,
+        niveauSource: 2,
+        contenu: `## ${titreSection}\n\nTexte.`,
+        importance: 3,
+        statut: "prete",
+      })
+      .returning();
+    const [g] = await db
+      .insert(correctionGuide)
+      .values({ sectionId: sec.id, chapterVersion: 1, contenu: { points: [] }, statut: "valide" })
+      .returning();
+    await db
+      .insert(reviewCard)
+      .values({ sectionId: sec.id, due: new Date().toISOString().slice(0, 10), stability: 1, difficulty: 1 });
+    const [cycle] = await db
+      .insert(studyCycle)
+      .values({ userId, sectionId: sec.id, type: "etude", etat: "clos", closedAt: new Date() })
+      .returning();
+    const [sess] = await db
+      .insert(studySession)
+      .values({
+        cycleId: cycle.id,
+        sectionId: sec.id,
+        guideId: g.id,
+        chapterVersion: 1,
+        type: "blurting",
+        tentative: 1,
+        input: "x",
+        divulgation: "complete",
+      })
+      .returning();
+    await db.insert(errorEntry).values({ subjectId, sectionId: sec.id, sessionId: sess.id, type: "omission", description: "x" });
+
+    await chapter.deleteChapter(userId, chap.id);
+
+    expect(await db.query.chapter.findFirst({ where: eq(chapterTable.id, chap.id) })).toBeUndefined();
+    expect(await db.query.section.findFirst({ where: eq(section.id, sec.id) })).toBeUndefined();
+    expect(await db.query.correctionGuide.findFirst({ where: eq(correctionGuide.id, g.id) })).toBeUndefined();
+    expect(await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) })).toBeUndefined();
+    expect(await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) })).toBeUndefined();
+    expect(await db.query.studySession.findFirst({ where: eq(studySession.id, sess.id) })).toBeUndefined();
+    expect(await db.query.errorEntry.findFirst({ where: eq(errorEntry.sessionId, sess.id) })).toBeUndefined();
+  });
+
+  it("deleteChapter refuse un chapitre d'un autre utilisateur (rien n'est détruit)", async () => {
+    const chap = await chapter.importChapter(userId, {
+      subjectId,
+      titre: "Introduction",
+      markdown: propre,
+      acknowledgedAnomalyKeys: [],
+    });
+    const other = await createUser();
+    await expect(chapter.deleteChapter(other, chap.id)).rejects.toThrow("Chapitre introuvable.");
+    expect(await db.query.chapter.findFirst({ where: eq(chapterTable.id, chap.id) })).toBeDefined();
   });
 });

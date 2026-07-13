@@ -13,7 +13,7 @@ const db = drizzle(client, { schema });
 // auth.users (schéma "auth", stub Supabase) volontairement exclu : possédé par
 // Supabase, hors périmètre de nos migrations (DECISIONS.md).
 const EXPECTED_COLUMNS: Record<string, string[]> = {
-  planner_config: ["user_id", "nouvelles_par_jour"],
+  planner_config: ["user_id", "nouvelles_par_jour", "tts_active"],
   subject: [
     "id",
     "user_id",

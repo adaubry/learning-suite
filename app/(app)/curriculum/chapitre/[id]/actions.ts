@@ -36,3 +36,26 @@ export async function commitUpdateAction(
   revalidatePath("/curriculum");
   redirect(`/curriculum/chapitre/${chapterId}`);
 }
+
+// Adaptateurs minces S1.archive/unarchive/deleteChapter (Bloc 9.1, USER_FLOW É6.1/É6.4).
+
+export async function archiveChapterAction(chapterId: string) {
+  const userId = await requireUserId();
+  await chapter.archiveChapter(userId, chapterId);
+  revalidatePath(`/curriculum/chapitre/${chapterId}`);
+  revalidatePath("/curriculum");
+}
+
+export async function unarchiveChapterAction(chapterId: string) {
+  const userId = await requireUserId();
+  await chapter.unarchiveChapter(userId, chapterId);
+  revalidatePath(`/curriculum/chapitre/${chapterId}`);
+  revalidatePath("/curriculum");
+}
+
+export async function deleteChapterAction(chapterId: string) {
+  const userId = await requireUserId();
+  await chapter.deleteChapter(userId, chapterId);
+  revalidatePath("/curriculum");
+  redirect("/curriculum");
+}

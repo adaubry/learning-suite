@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { StrongConfirmDialog } from "@/components/confirm-dialog";
 import {
   createSubjectAction,
   updateSubjectAction,
   archiveSubjectAction,
   unarchiveSubjectAction,
+  deleteSubjectAction,
   generateRubricAction,
   createManualRubricAction,
 } from "../actions";
@@ -204,12 +206,27 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
             ))}
           </ul>
         )}
-        <form action={subject.statut === "active" ? archiveSubjectAction : unarchiveSubjectAction}>
-          <input type="hidden" name="subjectId" value={subject.id} />
-          <Button type="submit" variant="outline" size="sm">
-            {subject.statut === "active" ? "Archiver" : "Désarchiver"}
-          </Button>
-        </form>
+        <div className="flex items-center gap-2">
+          <form action={subject.statut === "active" ? archiveSubjectAction : unarchiveSubjectAction}>
+            <input type="hidden" name="subjectId" value={subject.id} />
+            <Button type="submit" variant="outline" size="sm">
+              {subject.statut === "active" ? "Archiver" : "Désarchiver"}
+            </Button>
+          </form>
+          {/* USER_FLOW É6.4 : archivage toujours proposé avant la suppression. */}
+          <StrongConfirmDialog
+            trigger={
+              <Button size="sm" variant="destructive">
+                Supprimer
+              </Button>
+            }
+            title={`Supprimer définitivement « ${subject.nom} » ?`}
+            description="Détruit tous les chapitres, sections, rubriques et l'historique d'étude de cette matière. Irréversible — préfère l'archivage pour une matière terminée."
+            confirmWord={subject.nom}
+            confirmLabel="Supprimer définitivement"
+            action={deleteSubjectAction.bind(null, subject.id)}
+          />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { chapter, subject, section, correctionGuide } from "@/db/schema";
+import { chapter, subject, section, correctionGuide, reviewCard, studyCycle, studySession, errorEntry } from "@/db/schema";
 import { parseChapter } from "@/core/parser/parseChapter";
 import { validateDocument, anomalyKey } from "@/core/parser/validateDocument";
 import type { Anomaly } from "@/core/parser/types";
@@ -80,7 +80,7 @@ export async function listChaptersBySubject(subjectId: string) {
 // plus que ce que U3/U4 affichent.
 export async function getChapterForEdit(userId: string, chapterId: string) {
   const { chap } = await assertChapterOwnership(chapterId, userId);
-  return { id: chap.id, titre: chap.titre, markdown: chap.markdown, version: chap.version };
+  return { id: chap.id, titre: chap.titre, markdown: chap.markdown, version: chap.version, statut: chap.statut };
 }
 
 export async function listSectionsByChapter(chapterId: string) {
@@ -279,4 +279,58 @@ export async function commitUpdate(
   }
 
   return { changed: true as const, version: versionSuivante };
+}
+
+// archive/unarchive (FUNCTIONS §3 S1, USER_FLOW É6.4) — pur flip de statut, sans cascade
+// d'écriture : `loadActiveReviewCards`/`loadReadyStudyCandidates` (S5) et le candidat de
+// `lazyScheduler` (S3) filtrent déjà `chapter.statut === 'actif'` (retrofit du Bloc 9.1, même
+// gap que celui corrigé sur `subject` — DECISIONS.md), donc un chapitre archivé disparaît de la
+// file et de la génération paresseuse sans qu'aucune ReviewCard n'ait besoin d'être gelée.
+// Réversible à la lettre (rien n'a été touché en dessous).
+export async function archiveChapter(userId: string, chapterId: string) {
+  await assertChapterOwnership(chapterId, userId);
+  const [updated] = await db
+    .update(chapter)
+    .set({ statut: "archive" })
+    .where(eq(chapter.id, chapterId))
+    .returning();
+  return updated;
+}
+
+export async function unarchiveChapter(userId: string, chapterId: string) {
+  await assertChapterOwnership(chapterId, userId);
+  const [updated] = await db
+    .update(chapter)
+    .set({ statut: "actif" })
+    .where(eq(chapter.id, chapterId))
+    .returning();
+  return updated;
+}
+
+// delete (FUNCTIONS §3 S1, USER_FLOW É6.4) : suppression gardée — « détruit l'historique »,
+// contrairement à la cascade de versionnage qui le préserve toujours. Transaction applicative
+// ordonnée plutôt qu'un `onDelete: cascade` en DDL (récitation Bloc 9.1, tranché avec l'humain) :
+// la destruction reste visible et testée en code, un futur DELETE ailleurs ne peut pas cascader
+// par accident. Ordre imposé par les FK (aucune n'a de cascade) : errorEntry → studySession →
+// studyCycle → reviewCard → correctionGuide → section → chapter.
+export async function deleteChapter(userId: string, chapterId: string) {
+  await assertChapterOwnership(chapterId, userId);
+
+  const sections = await db.query.section.findMany({
+    where: eq(section.chapterId, chapterId),
+    columns: { id: true },
+  });
+  const sectionIds = sections.map((s) => s.id);
+
+  await db.transaction(async (tx) => {
+    if (sectionIds.length > 0) {
+      await tx.delete(errorEntry).where(inArray(errorEntry.sectionId, sectionIds));
+      await tx.delete(studySession).where(inArray(studySession.sectionId, sectionIds));
+      await tx.delete(studyCycle).where(inArray(studyCycle.sectionId, sectionIds));
+      await tx.delete(reviewCard).where(inArray(reviewCard.sectionId, sectionIds));
+      await tx.delete(correctionGuide).where(inArray(correctionGuide.sectionId, sectionIds));
+      await tx.delete(section).where(eq(section.chapterId, chapterId));
+    }
+    await tx.delete(chapter).where(eq(chapter.id, chapterId));
+  });
 }

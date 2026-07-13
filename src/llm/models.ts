@@ -4,7 +4,9 @@
 
 export type AppelLLM = "sectionnement" | "rubrique" | "correction_erreurs" | "feynman" | "transcription";
 
-const ENV_KEY_BY_APPEL: Record<AppelLLM, string> = {
+// Exporté : réutilisé par la zone technique des Réglages (Bloc 9.1, USER_FLOW P7 — « modèle
+// par appel, lecture seule ») pour énumérer les appels sans dupliquer la liste.
+export const ENV_KEY_BY_APPEL: Record<AppelLLM, string> = {
   sectionnement: "LLM_MODEL_SECTIONNEMENT",
   rubrique: "LLM_MODEL_RUBRIQUE",
   correction_erreurs: "LLM_MODEL_CORRECTION_ERREURS",

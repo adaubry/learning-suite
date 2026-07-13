@@ -235,6 +235,7 @@ export async function lazyScheduler(userId: string, date: string = new Date().to
       and(
         eq(subject.userId, userId),
         eq(subject.statut, "active"),
+        eq(chapter.statut, "actif"),
         eq(section.statut, "active"),
         gt(section.importance, 2),
       ),
