@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Mic, Square, Keyboard, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@astryxdesign/core/Button";
+import { TextArea } from "@astryxdesign/core/TextArea";
 
 // U20 PushToTalkRecorder (FUNCTIONS §6.2, USER_FLOW É3.3, PLAN Bloc 7.1) — micro
 // verrouillable (clic = start, clic = stop) → L6 (transcribeAction) → transcript
@@ -131,54 +131,65 @@ export function PushToTalkRecorder({
         <div className="flex items-center gap-3">
           <Button
             type="button"
-            size="icon-lg"
-            variant={status === "recording" ? "destructive" : "default"}
+            size="lg"
+            isIconOnly
+            icon={status === "recording" ? <Square size={18} /> : <Mic size={18} />}
+            variant={status === "recording" ? "destructive" : "primary"}
             onClick={status === "recording" ? stopRecording : startRecording}
-            disabled={status === "transcribing"}
-            aria-label={status === "recording" ? "Arrêter l'enregistrement" : "Enregistrer"}
-          >
-            {status === "recording" ? <Square /> : <Mic />}
-          </Button>
-          <span className="text-sm text-muted-foreground">
+            isDisabled={status === "transcribing"}
+            label={status === "recording" ? "Arrêter l'enregistrement" : "Enregistrer"}
+          />
+          <span className="text-sm text-secondary">
             {status === "recording" && "Enregistrement en cours…"}
             {status === "transcribing" && "Transcription…"}
             {status === "idle" && "Clique pour parler"}
           </span>
-          <Button type="button" variant="ghost" size="sm" className="ml-auto" onClick={() => setKeyboardMode(true)}>
-            <Keyboard className="mr-1 size-4" /> Clavier
-          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            icon={<Keyboard size={16} />}
+            label="Clavier"
+            onClick={() => setKeyboardMode(true)}
+          />
         </div>
       )}
       {keyboardMode && (
-        <Button type="button" variant="ghost" size="sm" className="self-end" onClick={() => setKeyboardMode(false)}>
-          <Mic className="mr-1 size-4" /> Micro
-        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="self-end"
+          icon={<Mic size={16} />}
+          label="Micro"
+          onClick={() => setKeyboardMode(false)}
+        />
       )}
 
       {error && (
-        <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-error">
           <span>Erreur de transcription : {error}</span>
           {audioUrl && <audio src={audioUrl} controls className="h-8" />}
-          <Button type="button" variant="outline" size="sm" onClick={retry}>
-            <RotateCcw className="mr-1 size-4" /> Réessayer
-          </Button>
+          <Button type="button" variant="secondary" size="sm" icon={<RotateCcw size={16} />} label="Réessayer" onClick={retry} />
         </div>
       )}
 
-      <Textarea
+      <TextArea
+        label="Transcript"
+        isLabelHidden
         value={transcript}
-        onChange={(e) => setTranscript(e.target.value)}
+        onChange={setTranscript}
         placeholder="Le transcript apparaît ici — modifiable avant envoi…"
         className="min-h-[15vh]"
       />
       <Button
         type="button"
         className="self-end"
-        disabled={!transcript.trim() || status === "recording" || status === "transcribing"}
+        isDisabled={!transcript.trim() || status === "recording" || status === "transcribing"}
+        label="Envoyer"
         onClick={confirm}
-      >
-        Envoyer
-      </Button>
+      />
     </div>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useState, type ChangeEvent } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { startTransition, useActionState, useEffect, useState } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { FileInput } from "@astryxdesign/core/FileInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { CourseEditor } from "@/components/course-editor";
 import { AnomalyPanel } from "@/components/anomaly-panel";
@@ -82,9 +83,8 @@ export function ChapterEditorScreen({
     startTransition(() => simAction(fd));
   }
 
-  function handleFileUpload(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function handleFileUpload(file: File | File[] | null) {
+    if (!file || Array.isArray(file)) return;
     void file.text().then(setMarkdown);
   }
 
@@ -93,21 +93,15 @@ export function ChapterEditorScreen({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">{titre}</h1>
-          {statut === "archive" && <span className="text-xs text-muted-foreground">(archivé)</span>}
+          {statut === "archive" && <span className="text-xs text-secondary">(archivé)</span>}
         </div>
         {mode === "vue" && (
           <div className="flex gap-2">
             <form action={batchAction}>
-              <Button type="submit" size="sm" variant="outline" disabled={batchPending}>
-                Générer les rubriques en lot
-              </Button>
+              <Button type="submit" size="sm" variant="secondary" label="Générer les rubriques en lot" isDisabled={batchPending} />
             </form>
-            <Button size="sm" variant="outline" onClick={() => enterMode("reimport")}>
-              Ré-importer depuis Google Docs
-            </Button>
-            <Button size="sm" onClick={() => enterMode("edition")}>
-              Modifier dans l&apos;app
-            </Button>
+            <Button size="sm" variant="secondary" label="Ré-importer depuis Google Docs" onClick={() => enterMode("reimport")} />
+            <Button size="sm" label="Modifier dans l'app" onClick={() => enterMode("edition")} />
           </div>
         )}
       </div>
@@ -115,7 +109,7 @@ export function ChapterEditorScreen({
       {mode === "vue" && (
         <>
           {batchState && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-secondary">
               {batchState.total === 0
                 ? "Aucune section active sans rubrique."
                 : batchState.echecs > 0
@@ -125,14 +119,10 @@ export function ChapterEditorScreen({
           )}
           <MarkdownViewer markdown={initialMarkdown} />
           {/* USER_FLOW É6.4 : l'archivage est toujours proposé avant la suppression. */}
-          <div className="flex items-center gap-2 border-t pt-3">
+          <div className="flex items-center gap-2 border-t border-border pt-3">
             {statut === "actif" ? (
               <ConfirmDialog
-                trigger={
-                  <Button size="sm" variant="outline">
-                    Archiver le chapitre
-                  </Button>
-                }
+                trigger={<Button size="sm" variant="secondary" label="Archiver le chapitre" />}
                 title="Archiver ce chapitre ?"
                 description="Le chapitre sort de la file du jour et de la génération paresseuse des rubriques. Réversible à tout moment ; tout l'historique est conservé."
                 confirmLabel="Archiver"
@@ -140,17 +130,11 @@ export function ChapterEditorScreen({
               />
             ) : (
               <form action={unarchiveChapterAction.bind(null, chapterId)}>
-                <Button size="sm" variant="outline" type="submit">
-                  Désarchiver le chapitre
-                </Button>
+                <Button size="sm" variant="secondary" type="submit" label="Désarchiver le chapitre" />
               </form>
             )}
             <StrongConfirmDialog
-              trigger={
-                <Button size="sm" variant="destructive">
-                  Supprimer le chapitre
-                </Button>
-              }
+              trigger={<Button size="sm" variant="destructive" label="Supprimer le chapitre" />}
               title="Supprimer définitivement ce chapitre ?"
               description={`Détruit tout l'historique (sections, rubriques, sessions, erreurs). Irréversible. Réservé aux erreurs de manipulation — préfère l'archivage pour une matière terminée.`}
               confirmWord={titre}
@@ -165,23 +149,32 @@ export function ChapterEditorScreen({
         <div className="flex flex-col gap-4">
           {mode === "edition" ? (
             <>
-              <p className="rounded border border-amber-400 bg-amber-50 p-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-                Pense à reporter cette modification dans ton Google Doc, sinon elle sera écrasée
-                au prochain ré-import.
-              </p>
+              <Banner
+                status="warning"
+                title="Pense à reporter cette modification dans ton Google Doc"
+                description="Sinon elle sera écrasée au prochain ré-import."
+              />
               <CourseEditor initialMarkdown={initialMarkdown} onChange={setMarkdown} />
             </>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-secondary">
                 Google Docs → Fichier → Télécharger → Markdown (.md). Upload du fichier ou
                 collage direct — mêmes règles de validation qu&apos;un import.
               </p>
-              <Input type="file" accept=".md,text/markdown" onChange={handleFileUpload} />
-              <Textarea
+              <FileInput
+                label="Fichier Markdown"
+                isLabelHidden
+                accept=".md,text/markdown"
+                value={null}
+                onChange={handleFileUpload}
+              />
+              <TextArea
+                label="Nouveau contenu Markdown"
+                isLabelHidden
                 rows={16}
                 value={markdown}
-                onChange={(e) => setMarkdown(e.target.value)}
+                onChange={setMarkdown}
                 placeholder="Colle ici le nouveau contenu Markdown exporté depuis Google Docs…"
               />
             </>
@@ -197,27 +190,27 @@ export function ChapterEditorScreen({
           )}
 
           <div className="flex items-center gap-3">
-            <Button variant="ghost" onClick={() => enterMode("vue")}>
-              Annuler
-            </Button>
-            <Button onClick={handleSave} disabled={simulating || !markdown.trim() || !allAcknowledged}>
-              {simulating ? "Analyse…" : mode === "reimport" ? "Analyser le ré-import" : "Sauvegarder"}
-            </Button>
+            <Button variant="ghost" label="Annuler" onClick={() => enterMode("vue")} />
+            <Button
+              label={simulating ? "Analyse…" : mode === "reimport" ? "Analyser le ré-import" : "Sauvegarder"}
+              onClick={handleSave}
+              isDisabled={simulating || !markdown.trim() || !allAcknowledged}
+            />
             {!allAcknowledged && anomalies.length > 0 && (
-              <p className="text-sm text-muted-foreground">Acquitte les anomalies avant de sauvegarder.</p>
+              <p className="text-sm text-secondary">Acquitte les anomalies avant de sauvegarder.</p>
             )}
           </div>
 
-          {simState && "error" in simState && <p className="text-sm text-destructive">{simState.error}</p>}
+          {simState && "error" in simState && <p className="text-sm text-error">{simState.error}</p>}
           {simState?.success && !simState.simulation.changed && (
-            <p className="text-sm text-muted-foreground">Aucun changement.</p>
+            <p className="text-sm text-secondary">Aucun changement.</p>
           )}
           {simState?.success && simState.simulation.changed && (
             <ConsequencesDialog
               trigger={
-                <Button>
-                  {mode === "reimport" ? "Confirmer le ré-import" : "Voir les conséquences et confirmer"}
-                </Button>
+                <Button
+                  label={mode === "reimport" ? "Confirmer le ré-import" : "Voir les conséquences et confirmer"}
+                />
               }
               simulation={simState.simulation}
               action={commitUpdateAction.bind(null, chapterId, simState.markdown, Array.from(acknowledged))}

@@ -2,7 +2,7 @@
 
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import { StarterKit } from "@tiptap/starter-kit";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 import { markdownToTiptapDoc, tiptapDocToMarkdown } from "@/components/course-editor-markdown";
 
 // U4 CourseEditor (FUNCTIONS §6.1, TECH_MAPPING §5) — WYSIWYG façon Google Docs, limité à
@@ -50,51 +50,47 @@ export function CourseEditor({
       key={level}
       type="button"
       size="sm"
+      label={`Titre ${level}`}
       variant={editor.isActive("heading", { level }) ? "secondary" : "ghost"}
       onClick={() => editor.chain().focus().toggleHeading({ level }).run()}
-    >
-      Titre {level}
-    </Button>
+    />
   );
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-1 rounded border p-1">
+      <div className="flex flex-wrap gap-1 rounded border border-border p-1">
         {[1, 2, 3].map((l) => headingButton(l as 1 | 2 | 3))}
         <Button
           type="button"
           size="sm"
+          label="Gras"
           variant={editor.isActive("bold") ? "secondary" : "ghost"}
           onClick={() => editor.chain().focus().toggleBold().run()}
-        >
-          Gras
-        </Button>
+        />
         <Button
           type="button"
           size="sm"
+          label="Italique"
           variant={editor.isActive("italic") ? "secondary" : "ghost"}
           onClick={() => editor.chain().focus().toggleItalic().run()}
-        >
-          Italique
-        </Button>
+        />
         <Button
           type="button"
           size="sm"
+          label="Liste"
           variant={editor.isActive("bulletList") ? "secondary" : "ghost"}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
-        >
-          Liste
-        </Button>
+        />
       </div>
       {/* Tailwind reset dépouille headings/listes de tout style par défaut (pas de plugin
-          Typography — TECH_MAPPING §4.2, UI 100% shadcn/Tailwind) : mêmes classes que
-          MarkdownViewer (U3) réappliquées ici, en sélecteurs descendants faute de contrôler le
-          rendu HTML de ProseMirror nœud par nœud. Sans ça, les titres/listes basculent bien de
-          balise (h1/ul réels, round-trip correct) mais restent visuellement identiques au texte
-          courant — d'où l'impression que « l'éditeur ne marche pas ». */}
+          Typography — TECH_MAPPING §4.2) : mêmes classes que MarkdownViewer (U3) réappliquées
+          ici, en sélecteurs descendants faute de contrôler le rendu HTML de ProseMirror nœud
+          par nœud. Sans ça, les titres/listes basculent bien de balise (h1/ul réels, round-trip
+          correct) mais restent visuellement identiques au texte courant — d'où l'impression que
+          « l'éditeur ne marche pas ». */}
       <EditorContent
         editor={editor}
-        className="min-h-96 rounded border p-3 text-sm
+        className="min-h-96 rounded border border-border p-3 text-sm
           [&_.tiptap]:leading-relaxed [&_.tiptap]:outline-none
           [&_.tiptap_h1]:mt-4 [&_.tiptap_h1]:mb-2 [&_.tiptap_h1]:text-2xl [&_.tiptap_h1]:font-bold
           [&_.tiptap_h2]:mt-4 [&_.tiptap_h2]:mb-2 [&_.tiptap_h2]:text-xl [&_.tiptap_h2]:font-semibold

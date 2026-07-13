@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@astryxdesign/core/Button";
+import { Badge } from "@astryxdesign/core/Badge";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
 import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
 import type { FilteredDiffPoint, FilteredErrorCandidate } from "@/core/correction/presentCorrection";
@@ -36,7 +36,7 @@ export function DiffList({ diff }: { diff: FilteredDiffPoint[] }) {
             <span aria-hidden>{statutIcon[p.statut]}</span>
             <span className="font-medium">{p.intitule}</span>
           </div>
-          {p.explication && <p className="text-sm text-muted-foreground">{p.explication}</p>}
+          {p.explication && <p className="text-sm text-secondary">{p.explication}</p>}
           {p.attendu && <p className="text-sm">{p.attendu}</p>}
         </li>
       ))}
@@ -108,14 +108,14 @@ export function CorrectionView({
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <Badge variant="outline">tentative n°{tentative}</Badge>
+        <Badge variant="neutral" label={`tentative n°${tentative}`} />
       </div>
 
       <p className="text-sm">
         Verdict proposé : <strong>{isRevealed ? "insuffisant" : verdict}</strong>
       </p>
       {!isRevealed && divulgation === "controlee" && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-secondary">
           Les réponses attendues restent masquées tant qu&apos;un nouvel essai est possible.
         </p>
       )}
@@ -153,23 +153,17 @@ export function CorrectionView({
             <>
               <form action={retenterAction} onSubmit={lockSubmit}>
                 <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                <Button type="submit" size="sm" disabled={submitting}>
-                  Retenter plus tard
-                </Button>
+                <Button type="submit" size="sm" isDisabled={submitting} label="Retenter plus tard" />
               </form>
               <form action={revealFormAction} onSubmit={lockSubmit}>
                 <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                <Button type="submit" size="sm" variant="outline" disabled={submitting || revealPending}>
-                  {revealPending ? "…" : "Révéler les réponses"}
-                </Button>
+                <Button type="submit" size="sm" variant="secondary" isDisabled={submitting || revealPending} label={revealPending ? "…" : "Révéler les réponses"} />
               </form>
               {passerFeynmanAction && (
                 <form action={passerFeynmanAction} onSubmit={lockSubmit}>
                   <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
                   <input type="hidden" name="override" value="true" />
-                  <Button type="submit" size="sm" variant="outline" disabled={submitting}>
-                    Passer au Feynman quand même
-                  </Button>
+                  <Button type="submit" size="sm" variant="secondary" isDisabled={submitting} label="Passer au Feynman quand même" />
                 </form>
               )}
             </>
@@ -181,17 +175,13 @@ export function CorrectionView({
               {(importance ?? 0) < 3 && (
                 <form action={terminerAction} onSubmit={lockSubmit}>
                   <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <Button type="submit" size="sm" disabled={submitting}>
-                    Valider sans Feynman
-                  </Button>
+                  <Button type="submit" size="sm" isDisabled={submitting} label="Valider sans Feynman" />
                 </form>
               )}
               {passerFeynmanAction && (
                 <form action={passerFeynmanAction} onSubmit={lockSubmit}>
                   <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <Button type="submit" size="sm" variant={(importance ?? 0) < 3 ? "outline" : "default"} disabled={submitting}>
-                    Passer au Feynman
-                  </Button>
+                  <Button type="submit" size="sm" variant={(importance ?? 0) < 3 ? "secondary" : "primary"} isDisabled={submitting} label="Passer au Feynman" />
                 </form>
               )}
             </>

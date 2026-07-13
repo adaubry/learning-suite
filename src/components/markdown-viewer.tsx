@@ -25,14 +25,14 @@ function renderInline(nodes: RootContent[], key: string): ReactNode {
     if (node.type === "text") return (node as Text).value;
     if (node.type === "strong") {
       return (
-        <strong key={k} className="rounded bg-yellow-200/60 px-0.5 dark:bg-yellow-900/40">
+        <strong key={k} className="rounded bg-yellow-subtle px-0.5">
           {renderInline(node.children as RootContent[], k)}
         </strong>
       );
     }
     if (node.type === "emphasis") {
       return (
-        <em key={k} className="rounded bg-blue-200/40 px-0.5 not-italic text-blue-900 dark:bg-blue-900/30 dark:text-blue-200">
+        <em key={k} className="rounded bg-blue-subtle px-0.5 not-italic text-blue-vivid">
           {renderInline(node.children as RootContent[], k)}
         </em>
       );

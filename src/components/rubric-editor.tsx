@@ -1,10 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { startTransition, useActionState, useRef, useState } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import type { ControlPoint } from "@/llm/schemas/guide";
 
@@ -52,6 +51,7 @@ export function RubricEditor({
     undefined,
   );
   const submitting = pending || regenerating;
+  const formRef = useRef<HTMLFormElement>(null);
 
   function update(i: number, patch: Partial<ControlPoint>) {
     setPoints((ps) => ps.map((p, j) => (j === i ? { ...p, ...patch } : p)));
@@ -65,23 +65,24 @@ export function RubricEditor({
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-      <form action={formAction} className="flex flex-col gap-5">
+      <form ref={formRef} action={formAction} className="flex flex-col gap-5">
         {regenerateAction && (
           <div className="flex flex-col items-end gap-1">
             {regenerateState?.error && (
-              <p className="text-sm text-destructive">
+              <p className="text-sm text-error">
                 {regenerateState.error} — la rédaction manuelle ci-dessous reste disponible.
               </p>
             )}
             <Button
-              type="submit"
-              formAction={regenerateFormAction}
+              type="button"
               size="sm"
               variant="ghost"
-              disabled={submitting}
-            >
-              Relancer (nouvelle génération)
-            </Button>
+              isDisabled={submitting}
+              label="Relancer (nouvelle génération)"
+              onClick={() => {
+                if (formRef.current) startTransition(() => regenerateFormAction(new FormData(formRef.current!)));
+              }}
+            />
           </div>
         )}
         <input type="hidden" name="points" value={JSON.stringify(points)} />
@@ -89,57 +90,34 @@ export function RubricEditor({
           <div key={type} className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">{typeLabel[type]}</h3>
-              <Button type="button" size="sm" variant="outline" onClick={() => add(type)}>
-                Ajouter un point
-              </Button>
+              <Button type="button" size="sm" variant="secondary" label="Ajouter un point" onClick={() => add(type)} />
             </div>
             {points.every((p) => p.type !== type) && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-secondary">
                 Aucun point {typeLabel[type].toLowerCase()}.
               </p>
             )}
             {points.map((p, i) =>
               p.type === type ? (
-                <div key={i} className="flex flex-col gap-2 rounded border p-3">
-                  <Label htmlFor={`intitule-${i}`}>Intitulé</Label>
-                  <Input
-                    id={`intitule-${i}`}
-                    value={p.intitule}
-                    onChange={(e) => update(i, { intitule: e.target.value })}
-                  />
-                  <Label htmlFor={`attendu-${i}`}>Attendu</Label>
-                  <Textarea
-                    id={`attendu-${i}`}
-                    value={p.attendu}
-                    onChange={(e) => update(i, { attendu: e.target.value })}
-                    rows={2}
-                  />
-                  <Label htmlFor={`piege-${i}`}>Piège associé (optionnel)</Label>
-                  <Input
-                    id={`piege-${i}`}
+                <div key={i} className="flex flex-col gap-2 rounded border border-border p-3">
+                  <TextInput label="Intitulé" value={p.intitule} onChange={(v) => update(i, { intitule: v })} />
+                  <TextArea label="Attendu" value={p.attendu} onChange={(v) => update(i, { attendu: v })} rows={2} />
+                  <TextInput
+                    label="Piège associé (optionnel)"
+                    isOptional
                     value={p.piege_associe ?? ""}
-                    onChange={(e) => update(i, { piege_associe: e.target.value || null })}
+                    onChange={(v) => update(i, { piege_associe: v || null })}
                   />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="self-end"
-                    onClick={() => remove(i)}
-                  >
-                    Supprimer
-                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="self-end" label="Supprimer" onClick={() => remove(i)} />
                 </div>
               ) : null,
             )}
           </div>
         ))}
-        <Button type="submit" disabled={submitting}>
-          {pending ? "Validation…" : "Valider la rubrique"}
-        </Button>
-        {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+        <Button type="submit" isDisabled={submitting} label={pending ? "Validation…" : "Valider la rubrique"} />
+        {state?.error && <p className="text-sm text-error">{state.error}</p>}
       </form>
-      <div className="max-h-[80vh] overflow-y-auto rounded border p-4">
+      <div className="max-h-[80vh] overflow-y-auto rounded border border-border p-4">
         <h3 className="mb-2 text-sm font-semibold">{sectionTitre}</h3>
         <MarkdownViewer markdown={sectionContenu} />
       </div>

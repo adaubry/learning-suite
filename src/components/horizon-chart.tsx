@@ -14,19 +14,19 @@ export function HorizonChart({
   const max = Math.max(1, ...horizon.parMatiere.map((m) => m.chargeJ30));
 
   return (
-    <div className="flex flex-col gap-3 rounded border p-4">
+    <div className="flex flex-col gap-3 rounded border border-border p-4">
       <div className="flex gap-6 text-sm">
         <div>
           <div className="text-2xl font-semibold">{horizon.dette}</div>
-          <div className="text-muted-foreground">en retard</div>
+          <div className="text-secondary">en retard</div>
         </div>
         <div>
           <div className="text-2xl font-semibold">{horizon.chargeJ7}</div>
-          <div className="text-muted-foreground">sous 7 jours</div>
+          <div className="text-secondary">sous 7 jours</div>
         </div>
         <div>
           <div className="text-2xl font-semibold">{horizon.chargeJ30}</div>
-          <div className="text-muted-foreground">sous 30 jours</div>
+          <div className="text-secondary">sous 30 jours</div>
         </div>
       </div>
 
@@ -37,18 +37,18 @@ export function HorizonChart({
               <span className="w-32 truncate">{subjectNomById.get(m.subjectId) ?? "Matière"}</span>
               <div className="bg-muted h-3 flex-1 overflow-hidden rounded">
                 <div
-                  className="bg-primary h-full"
+                  className="bg-accent-bg h-full"
                   style={{ width: `${(m.chargeJ30 / max) * 100}%` }}
                 />
               </div>
-              <span className="text-muted-foreground w-10 text-right">{m.chargeJ30}</span>
+              <span className="text-secondary w-10 text-right">{m.chargeJ30}</span>
             </li>
           ))}
         </ul>
       )}
 
       {horizon.examens.length > 0 && (
-        <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
+        <ul className="text-secondary flex flex-col gap-1 text-sm">
           {horizon.examens.map((e) => (
             <li key={e.subjectId}>
               {subjectNomById.get(e.subjectId) ?? "Matière"} — examen dans {e.joursRestants}j

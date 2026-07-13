@@ -16,9 +16,9 @@ const LABEL: Record<DiffSegment["type"], string> = {
 };
 
 const BORDER: Record<DiffSegment["type"], string> = {
-  ajoute: "border-green-400 dark:border-green-700",
-  supprime: "border-red-400 dark:border-red-700",
-  modifie: "border-amber-400 dark:border-amber-700",
+  ajoute: "border-green-ring",
+  supprime: "border-red-ring",
+  modifie: "border-orange-ring",
   inchange: "border-border",
 };
 
@@ -27,11 +27,11 @@ function MotsInline({ mots }: { mots: NonNullable<DiffSegment["mots"]> }) {
     <p className="whitespace-pre-wrap leading-relaxed">
       {mots.map((m, i) =>
         m.added ? (
-          <ins key={i} className="rounded bg-green-200/60 no-underline dark:bg-green-900/40">
+          <ins key={i} className="rounded bg-green-subtle no-underline">
             {m.value}
           </ins>
         ) : m.removed ? (
-          <del key={i} className="rounded bg-red-200/60 dark:bg-red-900/40">
+          <del key={i} className="rounded bg-red-subtle">
             {m.value}
           </del>
         ) : (
@@ -45,7 +45,7 @@ function MotsInline({ mots }: { mots: NonNullable<DiffSegment["mots"]> }) {
 export function DiffViewer({ segments }: { segments: DiffSegment[] }) {
   const pertinents = segments.filter((s) => s.type !== "inchange");
   if (pertinents.length === 0) {
-    return <p className="text-sm text-muted-foreground">Aucun changement de contenu détecté.</p>;
+    return <p className="text-sm text-secondary">Aucun changement de contenu détecté.</p>;
   }
 
   return (
@@ -54,12 +54,12 @@ export function DiffViewer({ segments }: { segments: DiffSegment[] }) {
         <div key={`${s.titre}-${i}`} className={cn("rounded-md border-l-4 bg-muted/30 p-3 text-sm", BORDER[s.type])}>
           <div className="mb-1 flex items-center gap-2">
             <span className="font-medium">{s.titre}</span>
-            <span className="text-xs text-muted-foreground">{LABEL[s.type]}</span>
+            <span className="text-xs text-secondary">{LABEL[s.type]}</span>
           </div>
           {s.type === "modifie" && s.mots && <MotsInline mots={s.mots} />}
           {s.type === "ajoute" && <p className="whitespace-pre-wrap leading-relaxed">{s.nouveauContenu}</p>}
           {s.type === "supprime" && (
-            <p className="whitespace-pre-wrap leading-relaxed text-muted-foreground line-through">{s.ancienContenu}</p>
+            <p className="whitespace-pre-wrap leading-relaxed text-secondary line-through">{s.ancienContenu}</p>
           )}
         </div>
       ))}

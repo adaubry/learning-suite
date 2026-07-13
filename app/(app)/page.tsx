@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { inArray, eq } from "drizzle-orm";
@@ -8,7 +7,7 @@ import { chapter, subject, section } from "@/db/schema";
 import { hasCompletedOnboarding, listSubjects } from "@/services/account";
 import * as planner from "@/services/planner";
 import * as guide from "@/services/guide";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 import { DailyQueue, type QueueSectionInfo } from "@/components/daily-queue";
 import { HorizonChart } from "@/components/horizon-chart";
 import { AttentionBadges } from "@/components/attention-badges";
@@ -39,14 +38,12 @@ export default async function HomePage() {
     return (
       <div className="mx-auto flex max-w-xl flex-col items-center gap-6 py-16 text-center">
         <h1 className="text-2xl font-semibold">Bienvenue</h1>
-        <ol className="flex flex-col gap-2 text-left text-muted-foreground">
+        <ol className="flex flex-col gap-2 text-left text-secondary">
           <li>1. Importer un chapitre depuis Google Docs</li>
           <li>2. Trier ses sections par importance</li>
           <li>3. Étudier — blurting puis Feynman</li>
         </ol>
-        <Button nativeButton={false} render={<Link href="/importer" />}>
-          Importer un chapitre
-        </Button>
+        <Button label="Importer un chapitre" href="/importer" />
       </div>
     );
   }

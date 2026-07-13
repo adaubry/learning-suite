@@ -1,17 +1,10 @@
 "use client";
 
-import type { ReactElement } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { cloneElement, useState, type MouseEvent, type ReactElement } from "react";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { Layout, LayoutContent, LayoutFooter, HStack } from "@astryxdesign/core/Layout";
+import { Button } from "@astryxdesign/core/Button";
+import { Text } from "@astryxdesign/core/Text";
 import { DiffViewer } from "@/components/diff-viewer";
 import type { UpdateSimulation } from "@/services/chapter";
 
@@ -25,33 +18,49 @@ export function ConsequencesDialog({
   simulation,
   action,
 }: {
-  trigger: ReactElement;
+  trigger: ReactElement<{ onClick?: (e: MouseEvent) => void }>;
   simulation: UpdateSimulation;
   action: () => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <AlertDialog>
-      <AlertDialogTrigger render={trigger} />
-      <AlertDialogContent className="max-w-2xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle>
-            Version {simulation.versionActuelle} → {simulation.versionSuivante}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {simulation.intactes} intacte(s) · {simulation.rubriquesInvalidees} rubrique(s) invalidée(s) ·{" "}
-            {simulation.nouvelles} nouvelle(s) à trier · {simulation.archivees} archivée(s)
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="max-h-96 overflow-y-auto">
-          <DiffViewer segments={simulation.diff} />
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <form action={action}>
-            <AlertDialogAction type="submit">Confirmer</AlertDialogAction>
-          </form>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      {cloneElement(trigger, {
+        onClick: (e: MouseEvent) => {
+          trigger.props.onClick?.(e);
+          setOpen(true);
+        },
+      })}
+      <Dialog isOpen={open} onOpenChange={setOpen} width={672} purpose="required">
+        <Layout
+          header={
+            <DialogHeader
+              title={`Version ${simulation.versionActuelle} → ${simulation.versionSuivante}`}
+              onOpenChange={() => setOpen(false)}
+            />
+          }
+          content={
+            <LayoutContent>
+              <Text type="body">
+                {simulation.intactes} intacte(s) · {simulation.rubriquesInvalidees} rubrique(s) invalidée(s) ·{" "}
+                {simulation.nouvelles} nouvelle(s) à trier · {simulation.archivees} archivée(s)
+              </Text>
+              <DiffViewer segments={simulation.diff} />
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter>
+              <HStack gap={2} hAlign="end">
+                <Button label="Annuler" variant="secondary" onClick={() => setOpen(false)} />
+                <form action={action}>
+                  <Button type="submit" label="Confirmer" variant="primary" />
+                </form>
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
+    </>
   );
 }

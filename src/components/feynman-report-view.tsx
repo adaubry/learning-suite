@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
 import type { FeynmanBilan } from "@/services/session";
 
 // U21 FeynmanReportView (FUNCTIONS §6.2, USER_FLOW É3.4) — bilan L5 : par point
@@ -43,7 +43,7 @@ export function FeynmanReportView({
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <Badge variant="outline">Bilan Feynman</Badge>
+        <Badge variant="neutral" label="Bilan Feynman" />
       </div>
 
       <p className="text-sm">
@@ -52,12 +52,12 @@ export function FeynmanReportView({
 
       <ul className="flex flex-col gap-2">
         {bilan.points.map((p, i) => (
-          <li key={i} className="flex flex-col gap-1 rounded border p-3">
+          <li key={i} className="flex flex-col gap-1 rounded border border-border p-3">
             <div className="flex items-center gap-2">
               <span aria-hidden>{STATUT_LABEL[p.statut] ?? p.statut}</span>
               <span className="font-medium">{p.intitule}</span>
             </div>
-            <p className="text-sm text-muted-foreground">{p.commentaire}</p>
+            <p className="text-sm text-secondary">{p.commentaire}</p>
           </li>
         ))}
       </ul>
@@ -87,27 +87,19 @@ export function FeynmanReportView({
       <div className="flex flex-wrap gap-2">
         {bilan.verdict === "acquis" ? (
           <form action={validerAction} onSubmit={lockSubmit}>
-            <Button type="submit" size="sm" disabled={submitting}>
-              Valider la section
-            </Button>
+            <Button type="submit" size="sm" isDisabled={submitting} label="Valider la section" />
           </form>
         ) : (
           <form action={validerAction} onSubmit={lockSubmit}>
             <input type="hidden" name="override" value="true" />
-            <Button type="submit" size="sm" variant="outline" disabled={submitting}>
-              Valider quand même (bilan insuffisant)
-            </Button>
+            <Button type="submit" size="sm" variant="secondary" isDisabled={submitting} label="Valider quand même (bilan insuffisant)" />
           </form>
         )}
         <form action={refaireAction} onSubmit={lockSubmit}>
-          <Button type="submit" size="sm" variant="outline" disabled={submitting}>
-            Refaire un Feynman
-          </Button>
+          <Button type="submit" size="sm" variant="secondary" isDisabled={submitting} label="Refaire un Feynman" />
         </form>
         <form action={revenirAction} onSubmit={lockSubmit}>
-          <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
-            Revenir au blurting
-          </Button>
+          <Button type="submit" size="sm" variant="ghost" isDisabled={submitting} label="Revenir au blurting" />
         </form>
       </div>
     </div>

@@ -4,24 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { PencilIcon, SquarePenIcon, XIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Accordion,
-  AccordionItem,
-  AccordionTrigger,
-  AccordionContent,
-} from "@/components/ui/accordion";
+import { Button } from "@astryxdesign/core/Button";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { DateInput } from "@astryxdesign/core/DateInput";
+import type { ISODateString } from "@astryxdesign/core/Calendar";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { Card, Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
+import { CollapsibleGroup, useCollapsible } from "@astryxdesign/core/Collapsible";
+import { Icon } from "@astryxdesign/core/Icon";
 import { StrongConfirmDialog } from "@/components/confirm-dialog";
 import {
   createRubricQueue,
@@ -93,34 +85,30 @@ export function RubricQueuePanel() {
             <span className="flex-1">
               {rubricQueueKindLabel[item.kind]} — {item.sectionTitre}
             </span>
-            <Badge variant={item.status === "erreur" ? "destructive" : "outline"}>
-              {rubricQueueStatusLabel[item.status]}
-            </Badge>
+            <Badge variant={item.status === "erreur" ? "error" : "neutral"} label={rubricQueueStatusLabel[item.status]} />
             {item.status === "en_attente" && (
               <Button
-                type="button"
                 variant="ghost"
-                size="icon-sm"
+                size="sm"
+                isIconOnly
+                icon={<XIcon size={14} />}
+                label="Annuler"
                 onClick={() => rubricQueue.cancel(item.id)}
-                aria-label="Annuler"
-              >
-                <XIcon />
-              </Button>
+              />
             )}
             {(item.status === "termine" || item.status === "erreur") && (
               <Button
-                type="button"
                 variant="ghost"
-                size="icon-sm"
+                size="sm"
+                isIconOnly
+                icon={<XIcon size={14} />}
+                label="Masquer"
                 onClick={() => rubricQueue.dismiss(item.id)}
-                aria-label="Masquer"
-              >
-                <XIcon />
-              </Button>
+              />
             )}
           </div>
           {item.status === "erreur" && item.error && (
-            <p className="text-xs text-destructive">{item.error}</p>
+            <p className="text-xs text-error">{item.error}</p>
           )}
         </li>
       ))}
@@ -189,35 +177,29 @@ function SectionRow({ section }: { section: Section }) {
     <li className="flex flex-col gap-1 border-l pl-2 py-1 text-sm">
       <div className="flex items-center gap-2">
         <span>{section.titre}</span>
-        <Badge variant="secondary">imp. {section.importance}</Badge>
-        <Badge variant="outline">{sectionStatutLabel[section.statut]}</Badge>
+        <Badge variant="neutral" label={`imp. ${section.importance}`} />
+        <Badge variant="neutral" label={sectionStatutLabel[section.statut]} />
       </div>
       {section.statut === "active" && (
         <div className="flex gap-2">
           <Button
-            type="button"
             size="sm"
-            variant="outline"
-            disabled={submitting}
+            variant="secondary"
+            isDisabled={submitting}
+            label="Générer la rubrique"
             onClick={() => rubricQueue.enqueue(section.id, section.titre, "generer")}
-          >
-            Générer la rubrique
-          </Button>
+          />
           <Button
-            type="button"
             size="sm"
             variant="ghost"
-            disabled={submitting}
+            isDisabled={submitting}
+            label="Rédiger manuellement"
             onClick={() => rubricQueue.enqueue(section.id, section.titre, "manuel")}
-          >
-            Rédiger manuellement
-          </Button>
+          />
         </div>
       )}
       {section.statut === "rubrique_a_valider" && (
-        <Button size="sm" nativeButton={false} render={<Link href={`/section/${section.id}/rubrique`} />}>
-          Valider la rubrique
-        </Button>
+        <Button size="sm" as={Link} href={`/section/${section.id}/rubrique`} label="Valider la rubrique" />
       )}
     </li>
   );
@@ -225,28 +207,98 @@ function SectionRow({ section }: { section: Section }) {
 
 export function AddSubjectForm() {
   const [state, action, pending] = useActionState(createSubjectAction, undefined);
+  const [nom, setNom] = useState("");
+  const [semestre, setSemestre] = useState("");
+  const [dateExamen, setDateExamen] = useState<ISODateString | undefined>(undefined);
 
   return (
     <form action={action} className="flex flex-col gap-3 rounded border p-4">
       <h2 className="text-sm font-semibold">Ajouter une matière</h2>
       <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="flex flex-1 flex-col gap-1">
-          <Label htmlFor="nom">Nom</Label>
-          <Input id="nom" name="nom" required placeholder="Droit civil" autoComplete="off" />
+        <div className="flex-1">
+          <TextInput label="Nom" value={nom} onChange={setNom} htmlName="nom" isRequired placeholder="Droit civil" />
         </div>
-        <div className="flex flex-1 flex-col gap-1">
-          <Label htmlFor="semestre">Semestre</Label>
-          <Input id="semestre" name="semestre" required placeholder="S1" autoComplete="off" />
+        <div className="flex-1">
+          <TextInput
+            label="Semestre"
+            value={semestre}
+            onChange={setSemestre}
+            htmlName="semestre"
+            isRequired
+            placeholder="S1"
+          />
         </div>
-        <div className="flex flex-1 flex-col gap-1">
-          <Label htmlFor="dateExamen">Date d&apos;examen</Label>
-          <Input id="dateExamen" name="dateExamen" type="date" autoComplete="off" />
+        <div className="flex-1">
+          {/* DateInput n'a pas de htmlName natif — la valeur part via le champ caché ci-dessous. */}
+          <DateInput label="Date d'examen" value={dateExamen} onChange={setDateExamen} isOptional />
         </div>
       </div>
-      <Button type="submit" disabled={pending} className="self-start">
-        {pending ? "Ajout…" : "Ajouter"}
-      </Button>
-      {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+      <input type="hidden" name="dateExamen" value={dateExamen ?? ""} />
+      <Button type="submit" isDisabled={pending} label={pending ? "Ajout…" : "Ajouter"} className="self-start" />
+      {state?.error && <p className="text-sm text-error">{state.error}</p>}
+    </form>
+  );
+}
+
+function EditSubjectFields({
+  subject,
+  action,
+  pending,
+  error,
+  setOpen,
+}: {
+  subject: Subject;
+  action: (formData: FormData) => void;
+  pending: boolean;
+  error?: string;
+  setOpen: (open: boolean) => void;
+}) {
+  const [nom, setNom] = useState(subject.nom);
+  const [semestre, setSemestre] = useState(subject.semestre);
+  const [dateExamen, setDateExamen] = useState<ISODateString | undefined>(
+    (subject.dateExamen as ISODateString | null) ?? undefined,
+  );
+  const [methodologieTitres, setMethodologieTitres] = useState(subject.methodologieTitres ?? "");
+
+  return (
+    <form action={action}>
+      <input type="hidden" name="subjectId" value={subject.id} />
+      <input type="hidden" name="dateExamen" value={dateExamen ?? ""} />
+      <Layout
+        header={<DialogHeader title={`Modifier « ${subject.nom} »`} onOpenChange={setOpen} />}
+        content={
+          <LayoutContent>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="flex-1">
+                  <TextInput label="Nom" value={nom} onChange={setNom} htmlName="nom" isRequired />
+                </div>
+                <div className="flex-1">
+                  <TextInput label="Semestre" value={semestre} onChange={setSemestre} htmlName="semestre" isRequired />
+                </div>
+                <div className="flex-1">
+                  <DateInput label="Date d'examen" value={dateExamen} onChange={setDateExamen} isOptional hasClear />
+                </div>
+              </div>
+              <TextArea
+                label="Surcharge méthodologie des titres"
+                value={methodologieTitres}
+                onChange={setMethodologieTitres}
+                htmlName="methodologieTitres"
+                rows={3}
+                isOptional
+                description="Laisser vide pour utiliser la méthodologie globale"
+              />
+              {error && <p className="text-sm text-error">{error}</p>}
+            </div>
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter hasDivider>
+            <Button type="submit" size="sm" isDisabled={pending} label={pending ? "Enregistrement…" : "Enregistrer"} />
+          </LayoutFooter>
+        }
+      />
     </form>
   );
 }
@@ -261,142 +313,108 @@ function EditSubjectDialog({ subject }: { subject: Subject }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button variant="outline" size="sm">
-            <PencilIcon />
-            Modifier
-          </Button>
-        }
+    <>
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={<PencilIcon size={16} />}
+        label="Modifier"
+        onClick={() => setOpen(true)}
       />
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Modifier « {subject.nom} »</DialogTitle>
-        </DialogHeader>
+      <Dialog isOpen={open} onOpenChange={setOpen} purpose="form" width={640}>
         {open && (
-          <form action={action} className="flex flex-col gap-3">
-            <input type="hidden" name="subjectId" value={subject.id} />
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Nom</Label>
-                <Input name="nom" defaultValue={subject.nom} required autoComplete="off" />
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Semestre</Label>
-                <Input name="semestre" defaultValue={subject.semestre} required autoComplete="off" />
-              </div>
-              <div className="flex flex-1 flex-col gap-1">
-                <Label>Date d&apos;examen</Label>
-                <Input
-                  name="dateExamen"
-                  type="date"
-                  defaultValue={subject.dateExamen ?? ""}
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label>Surcharge méthodologie des titres (optionnelle)</Label>
-              <Textarea
-                name="methodologieTitres"
-                rows={3}
-                defaultValue={subject.methodologieTitres ?? ""}
-                placeholder="Laisser vide pour utiliser la méthodologie globale"
-              />
-            </div>
-            <div className="flex items-center gap-3">
-              <Button type="submit" size="sm" disabled={pending}>
-                {pending ? "Enregistrement…" : "Enregistrer"}
-              </Button>
-              {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-            </div>
-          </form>
+          <EditSubjectFields subject={subject} action={action} pending={pending} error={state?.error} setOpen={setOpen} />
         )}
-      </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
+  );
+}
+
+function ChapterItem({ chapter }: { chapter: Chapter }) {
+  const { isOpen, toggle } = useCollapsible({ isCollapsible: { defaultIsOpen: false }, value: chapter.id });
+  const aTraiter = chapter.sections.filter(
+    (s) => s.statut === "active" || s.statut === "rubrique_a_valider",
+  ).length;
+
+  return (
+    <Card padding={0}>
+      <div className="flex items-center gap-1 px-3 py-1">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={isOpen}
+          className="flex flex-1 flex-wrap items-center gap-2 py-1 text-left text-sm font-medium"
+        >
+          <Icon icon="chevronDown" size="sm" className={isOpen ? "" : "-rotate-90"} />
+          {chapter.titre}
+          <Badge variant="neutral" label={`v${chapter.version}`} />
+          {chapter.statut === "archive" && <Badge variant="neutral" label="archivé" />}
+          {aTraiter > 0 && <Badge variant="info" label={`${aTraiter} à traiter`} />}
+          {chapter.sections.length === 0 && (
+            <span className="text-xs font-normal text-secondary">aucune section</span>
+          )}
+        </button>
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<SquarePenIcon size={16} />}
+          label="Ouvrir"
+          as={Link}
+          href={`/curriculum/chapitre/${chapter.id}`}
+        />
+      </div>
+      {isOpen && (
+        <div className="px-3 pb-2">
+          {chapter.sections.length === 0 ? (
+            <p className="text-sm text-secondary">Aucune section.</p>
+          ) : (
+            <ul className="flex flex-col">
+              {chapter.sections.map((s) => (
+                <SectionRow key={s.id} section={s} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 
 export function SubjectCard({ subject, chapters }: { subject: Subject; chapters: Chapter[] }) {
   return (
-    <div className="flex flex-col gap-4 rounded border p-4">
+    <Card>
       <div className="flex items-center gap-2">
         <h3 className="font-semibold">{subject.nom}</h3>
-        <Badge variant="secondary">{subject.semestre}</Badge>
-        {subject.statut === "archivee" && <Badge variant="outline">archivée</Badge>}
+        <Badge variant="neutral" label={subject.semestre} />
+        {subject.statut === "archivee" && <Badge variant="neutral" label="archivée" />}
         <EditSubjectDialog subject={subject} />
       </div>
 
-      <div className="flex flex-col gap-2 border-t pt-3">
+      <div className="mt-3 flex flex-col gap-2 border-t pt-3">
         {chapters.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucun chapitre pour l&apos;instant.</p>
+          <p className="text-sm text-secondary">Aucun chapitre pour l&apos;instant.</p>
         ) : (
-          <Accordion multiple className="flex flex-col gap-2">
-            {chapters.map((c) => {
-              const aTraiter = c.sections.filter(
-                (s) => s.statut === "active" || s.statut === "rubrique_a_valider",
-              ).length;
-              return (
-                <AccordionItem
-                  key={c.id}
-                  value={c.id}
-                  className="rounded-lg border px-3"
-                >
-                  <div className="flex items-center gap-1">
-                    <AccordionTrigger className="flex-1 py-2">
-                      <span className="flex flex-1 flex-wrap items-center gap-2 text-sm font-medium">
-                        {c.titre}
-                        <Badge variant="secondary">v{c.version}</Badge>
-                        {c.statut === "archive" && <Badge variant="outline">archivé</Badge>}
-                        {aTraiter > 0 && <Badge>{aTraiter} à traiter</Badge>}
-                        {c.sections.length === 0 && (
-                          <span className="text-xs font-normal text-muted-foreground">
-                            aucune section
-                          </span>
-                        )}
-                      </span>
-                    </AccordionTrigger>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      nativeButton={false}
-                      render={<Link href={`/curriculum/chapitre/${c.id}`} />}
-                    >
-                      <SquarePenIcon />
-                      Ouvrir
-                    </Button>
-                  </div>
-                  <AccordionContent>
-                    {c.sections.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Aucune section.</p>
-                    ) : (
-                      <ul className="flex flex-col">
-                        {c.sections.map((s) => (
-                          <SectionRow key={s.id} section={s} />
-                        ))}
-                      </ul>
-                    )}
-                  </AccordionContent>
-                </AccordionItem>
-              );
-            })}
-          </Accordion>
+          <CollapsibleGroup type="multiple" defaultValue={[]}>
+            <div className="flex flex-col gap-2">
+              {chapters.map((c) => (
+                <ChapterItem key={c.id} chapter={c} />
+              ))}
+            </div>
+          </CollapsibleGroup>
         )}
         <div className="flex items-center gap-2">
           <form action={subject.statut === "active" ? archiveSubjectAction : unarchiveSubjectAction}>
             <input type="hidden" name="subjectId" value={subject.id} />
-            <Button type="submit" variant="outline" size="sm">
-              {subject.statut === "active" ? "Archiver" : "Désarchiver"}
-            </Button>
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              label={subject.statut === "active" ? "Archiver" : "Désarchiver"}
+            />
           </form>
           {/* USER_FLOW É6.4 : archivage toujours proposé avant la suppression. */}
           <StrongConfirmDialog
-            trigger={
-              <Button size="sm" variant="destructive">
-                Supprimer
-              </Button>
-            }
+            trigger={<Button size="sm" variant="destructive" label="Supprimer" />}
             title={`Supprimer définitivement « ${subject.nom} » ?`}
             description="Détruit tous les chapitres, sections, rubriques et l'historique d'étude de cette matière. Irréversible — préfère l'archivage pour une matière terminée."
             confirmWord={subject.nom}
@@ -405,6 +423,6 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
           />
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

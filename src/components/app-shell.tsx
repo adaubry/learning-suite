@@ -3,25 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { AppShell as AstryxAppShell } from "@astryxdesign/core/AppShell";
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+  SideNav,
+  SideNavHeading,
+  SideNavItem,
+} from "@astryxdesign/core/SideNav";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
 import { signOut } from "../../app/(auth)/actions";
 import type { OpenCycleInfo } from "@/services/session";
 
 // U1 AppShell minimal (FUNCTIONS §6.1) — navigation permanente de USER_FLOW.
-// Réglages activé au Bloc 9.1 (P7).
+// Migré vers Astryx (DECISIONS.md 2026-07-13) : premier écran/surface converti.
 
 const NAV_ITEMS = [
   { href: "/", label: "Aujourd'hui", enabled: true },
@@ -48,60 +42,50 @@ export function AppShell({
     : null;
 
   return (
-    <SidebarProvider>
-      <Sidebar>
-        <SidebarHeader className="px-3 py-2 text-sm font-semibold">
-          Learning Suite
-        </SidebarHeader>
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {NAV_ITEMS.map((item) =>
-                  item.enabled ? (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton
-                        isActive={pathname === item.href}
-                        render={<Link href={item.href} />}
-                      >
-                        {item.label}
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ) : (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton disabled>{item.label}</SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ),
-                )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-        <SidebarFooter>
-          <form action={signOut}>
-            <SidebarMenuButton type="submit">
-              <LogOut />
-              Se déconnecter
-            </SidebarMenuButton>
-          </form>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
-        <header className="flex h-12 items-center border-b px-3">
-          <SidebarTrigger />
-        </header>
-        {openCycle && resumeHref && (
-          <div className="flex flex-wrap items-center gap-3 border-b bg-amber-50 px-4 py-2 text-sm dark:bg-amber-950">
-            <span>
-              Session en cours sur <strong>{openCycle.sectionTitre}</strong> — termine-la ou abandonne-la avant d&apos;en commencer une autre.
-            </span>
-            <Link href={resumeHref} className="ml-auto shrink-0 font-medium underline">
-              Reprendre la session
-            </Link>
-          </div>
-        )}
-        <div className="flex-1 p-6">{children}</div>
-      </SidebarInset>
-    </SidebarProvider>
+    <AstryxAppShell
+      contentPadding={6}
+      banner={
+        openCycle && resumeHref ? (
+          <Banner
+            status="warning"
+            title="Session en cours"
+            description={`${openCycle.sectionTitre} — termine-la ou abandonne-la avant d'en commencer une autre.`}
+            endContent={
+              <Link href={resumeHref} className="font-medium underline whitespace-nowrap">
+                Reprendre la session
+              </Link>
+            }
+          />
+        ) : undefined
+      }
+      sideNav={
+        <SideNav
+          header={<SideNavHeading heading="Learning Suite" />}
+          footer={
+            <form action={signOut}>
+              <Button
+                type="submit"
+                variant="ghost"
+                label="Se déconnecter"
+                icon={<LogOut size={16} />}
+              />
+            </form>
+          }
+        >
+          {NAV_ITEMS.map((item) => (
+            <SideNavItem
+              key={item.href}
+              as={Link}
+              href={item.href}
+              label={item.label}
+              isSelected={pathname === item.href}
+              isDisabled={!item.enabled}
+            />
+          ))}
+        </SideNav>
+      }
+    >
+      {children}
+    </AstryxAppShell>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@astryxdesign/core/Button";
+import { Badge } from "@astryxdesign/core/Badge";
 import type { Anomaly } from "@/core/parser/types";
 import { anomalyKey } from "@/core/parser/validateDocument";
 
@@ -42,7 +42,7 @@ export function AnomalyPanel({
   onAcknowledgeAll: () => void;
 }) {
   if (anomalies.length === 0) {
-    return <p className="text-sm text-muted-foreground">Aucune anomalie détectée.</p>;
+    return <p className="text-sm text-secondary">Aucune anomalie détectée.</p>;
   }
 
   return (
@@ -51,9 +51,7 @@ export function AnomalyPanel({
         <p className="text-sm font-medium">
           {anomalies.length} anomalie{anomalies.length > 1 ? "s" : ""}
         </p>
-        <Button type="button" size="sm" variant="outline" onClick={onAcknowledgeAll}>
-          Acquitter tout
-        </Button>
+        <Button type="button" size="sm" variant="secondary" label="Acquitter tout" onClick={onAcknowledgeAll} />
       </div>
       <ul className="flex flex-col gap-2">
         {anomalies.map((anomaly) => {
@@ -62,26 +60,23 @@ export function AnomalyPanel({
           return (
             <li
               key={key}
-              className="flex items-start justify-between gap-3 rounded border p-2 text-sm"
+              className="flex items-start justify-between gap-3 rounded border border-border p-2 text-sm"
             >
               <button
                 type="button"
                 onClick={() => scrollToAnomaly(anomaly)}
                 className="flex-1 text-left"
               >
-                <Badge variant="secondary" className="mb-1">
-                  {typeLabel[anomaly.type]}
-                </Badge>
-                <p>{anomaly.message}</p>
+                <Badge variant="neutral" label={typeLabel[anomaly.type]} />
+                <p className="mt-1">{anomaly.message}</p>
               </button>
               <Button
                 type="button"
                 size="sm"
-                variant={done ? "secondary" : "outline"}
+                variant={done ? "ghost" : "secondary"}
+                label={done ? "Acquittée" : "Acquitter"}
                 onClick={() => onAcknowledge(key)}
-              >
-                {done ? "Acquittée" : "Acquitter"}
-              </Button>
+              />
             </li>
           );
         })}

@@ -1,19 +1,11 @@
 "use client";
 
-import { useState, type ReactElement } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { cloneElement, useState, type MouseEvent, type ReactElement } from "react";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { Layout, LayoutContent, LayoutFooter, HStack } from "@astryxdesign/core/Layout";
+import { Button } from "@astryxdesign/core/Button";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
 
 // U8 ConfirmDialog (FUNCTIONS §6.1, TECH_MAPPING §U8) — variante LÉGÈRE (confirmation simple,
 // un clic).
@@ -25,7 +17,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirmer",
   onConfirm,
 }: {
-  trigger: ReactElement;
+  trigger: ReactElement<{ onClick?: (e: MouseEvent) => void }>;
   title: string;
   description: string;
   action: () => Promise<void>;
@@ -34,24 +26,37 @@ export function ConfirmDialog({
    *  d'autres actions concurrentes sur la même entité (ex. error-notebook.tsx). */
   onConfirm?: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <AlertDialog>
-      <AlertDialogTrigger render={trigger} />
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <form action={action} onSubmit={onConfirm}>
-            <AlertDialogAction type="submit" variant="destructive">
-              {confirmLabel}
-            </AlertDialogAction>
-          </form>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      {cloneElement(trigger, {
+        onClick: (e: MouseEvent) => {
+          trigger.props.onClick?.(e);
+          setOpen(true);
+        },
+      })}
+      <Dialog isOpen={open} onOpenChange={setOpen} width={400} purpose="required">
+        <Layout
+          header={<DialogHeader title={title} onOpenChange={() => setOpen(false)} />}
+          content={
+            <LayoutContent>
+              <Text type="body">{description}</Text>
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter>
+              <HStack gap={2} hAlign="end">
+                <Button label="Annuler" variant="secondary" onClick={() => setOpen(false)} />
+                <form action={action} onSubmit={onConfirm}>
+                  <Button type="submit" label={confirmLabel} variant="destructive" />
+                </form>
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
+    </>
   );
 }
 
@@ -66,7 +71,7 @@ export function StrongConfirmDialog({
   action,
   confirmLabel = "Supprimer définitivement",
 }: {
-  trigger: ReactElement;
+  trigger: ReactElement<{ onClick?: (e: MouseEvent) => void }>;
   title: string;
   description: string;
   /** Le mot (nom de la matière/du chapitre) que l'utilisateur doit retaper à l'identique. */
@@ -74,32 +79,48 @@ export function StrongConfirmDialog({
   action: () => Promise<void>;
   confirmLabel?: string;
 }) {
+  const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const matches = typed === confirmWord;
 
+  const close = () => {
+    setOpen(false);
+    setTyped("");
+  };
+
   return (
-    <AlertDialog onOpenChange={(open) => !open && setTyped("")}>
-      <AlertDialogTrigger render={trigger} />
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="confirm-word">
-            Retape « {confirmWord} » pour confirmer
-          </Label>
-          <Input id="confirm-word" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
-        </div>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <form action={action}>
-            <AlertDialogAction type="submit" variant="destructive" disabled={!matches}>
-              {confirmLabel}
-            </AlertDialogAction>
-          </form>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <>
+      {cloneElement(trigger, {
+        onClick: (e: MouseEvent) => {
+          trigger.props.onClick?.(e);
+          setOpen(true);
+        },
+      })}
+      <Dialog isOpen={open} onOpenChange={(next) => (next ? setOpen(true) : close())} width={400} purpose="required">
+        <Layout
+          header={<DialogHeader title={title} onOpenChange={close} />}
+          content={
+            <LayoutContent>
+              <Text type="body">{description}</Text>
+              <TextInput
+                label={`Retape « ${confirmWord} » pour confirmer`}
+                value={typed}
+                onChange={setTyped}
+              />
+            </LayoutContent>
+          }
+          footer={
+            <LayoutFooter>
+              <HStack gap={2} hAlign="end">
+                <Button label="Annuler" variant="secondary" onClick={close} />
+                <form action={action}>
+                  <Button type="submit" label={confirmLabel} variant="destructive" isDisabled={!matches} />
+                </form>
+              </HStack>
+            </LayoutFooter>
+          }
+        />
+      </Dialog>
+    </>
   );
 }

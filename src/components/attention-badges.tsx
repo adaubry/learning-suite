@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@astryxdesign/core/Badge";
 import type { AttentionBadge as AttentionBadgeData } from "@/services/planner";
 
 const LABEL: Record<AttentionBadgeData["type"], string> = {
@@ -18,9 +18,7 @@ export function AttentionBadges({ badges }: { badges: AttentionBadgeData[] }) {
     <div className="flex flex-wrap gap-2">
       {badges.map((b) => (
         <Link key={b.type} href="/curriculum">
-          <Badge variant="outline" className="cursor-pointer">
-            {b.count} {LABEL[b.type]}
-          </Badge>
+          <Badge variant="warning" label={`${b.count} ${LABEL[b.type]}`} />
         </Link>
       ))}
     </div>

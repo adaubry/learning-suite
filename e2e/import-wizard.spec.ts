@@ -50,11 +50,13 @@ test("importer un vrai chapitre : upload, rapport, sectionnement, tri", async ({
   await page.getByRole("button", { name: "Ajouter une matière" }).dispatchEvent("click");
   await expect(page.getByText("Droit civil — S1")).toBeVisible();
 
-  await page.getByRole("button", { name: "Suivant" }).dispatchEvent("click");
+  // Suivant/Passer naviguent (Astryx Button href+as=Link, rôle "link" — DECISIONS.md
+  // 2026-07-13/14 migration Astryx) ; Terminer/Ajouter une matière restent des <button> (soumission).
+  await page.getByRole("link", { name: "Suivant" }).dispatchEvent("click");
   await expect(page).toHaveURL(/\/onboarding\?step=2$/);
-  await page.getByRole("button", { name: /passer/i }).dispatchEvent("click");
+  await page.getByRole("link", { name: /passer/i }).dispatchEvent("click");
   await expect(page).toHaveURL(/\/onboarding\?step=3$/);
-  await page.getByRole("button", { name: "Passer" }).dispatchEvent("click");
+  await page.getByRole("link", { name: "Passer" }).dispatchEvent("click");
   await expect(page).toHaveURL(/\/onboarding\?step=4$/);
 
   await page.getByRole("button", { name: "Terminer" }).dispatchEvent("click");

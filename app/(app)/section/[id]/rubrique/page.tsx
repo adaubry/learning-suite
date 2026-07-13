@@ -20,7 +20,7 @@ export default async function RubricPage({ params }: { params: Promise<{ id: str
     return (
       <div className="mx-auto flex max-w-lg flex-col gap-3">
         <h1 className="text-lg font-semibold">{section.titre}</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-secondary">
           Aucune rubrique pour cette section pour l&apos;instant — génère-la depuis le curriculum.
         </p>
       </div>
@@ -31,7 +31,7 @@ export default async function RubricPage({ params }: { params: Promise<{ id: str
     return (
       <div className="mx-auto flex max-w-lg flex-col gap-3">
         <h1 className="text-lg font-semibold">{section.titre}</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-secondary">
           {section.statut === "prete" || section.statut === "validee"
             ? "La rubrique de cette section est déjà validée."
             : "Aucune rubrique à valider pour cette section."}

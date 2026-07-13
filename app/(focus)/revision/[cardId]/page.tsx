@@ -8,7 +8,7 @@ import * as session from "@/services/session";
 import * as review from "@/services/review";
 import { BlurtingEditor } from "@/components/blurting-editor";
 import { CorrectionView } from "@/components/correction-view";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 import { submitRevisionAction, retryCorrectionAction, rateRevisionAction, abandonAction } from "./actions";
 
 // P4 · É4.1/É4.2 (USER_FLOW, ARCHITECTURE §6 Machine C) — atteint depuis la file
@@ -39,7 +39,7 @@ export default async function RevisionPage({ params }: { params: Promise<{ cardI
       return (
         <div className="flex flex-col gap-3">
           <h1 className="text-lg font-semibold">{sec.titre}</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-secondary">
             Une autre session est déjà ouverte{open ? ` (${open.sectionTitre})` : ""} — termine-la ou abandonne-la d&apos;abord.
           </p>
           <Link href={resumeHref} className="self-start text-sm underline">
@@ -51,7 +51,7 @@ export default async function RevisionPage({ params }: { params: Promise<{ cardI
     return (
       <div className="flex flex-col gap-3">
         <h1 className="text-lg font-semibold">{sec.titre}</h1>
-        <p className="text-sm text-muted-foreground">Cette section n&apos;est pas prête à être révisée.</p>
+        <p className="text-sm text-secondary">Cette section n&apos;est pas prête à être révisée.</p>
         <Link href="/" className="self-start text-sm underline">
           Retour à l&apos;accueil
         </Link>
@@ -80,13 +80,11 @@ export default async function RevisionPage({ params }: { params: Promise<{ cardI
       return (
         <div className="flex flex-col gap-3">
           <h1 className="text-lg font-semibold">{sec.titre}</h1>
-          <p className="text-sm text-destructive">
+          <p className="text-sm text-error">
             La correction a échoué. Ta restitution est déjà sauvegardée.
           </p>
           <form action={retryCorrectionAction.bind(null, cycle.id, sectionId)}>
-            <Button type="submit" size="sm">
-              Relancer la correction
-            </Button>
+            <Button type="submit" size="sm" label="Relancer la correction" />
           </form>
         </div>
       );

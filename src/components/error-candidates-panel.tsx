@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
 import type { FilteredErrorCandidate } from "@/core/correction/presentCorrection";
 
 const typeLabel: Record<FilteredErrorCandidate["type"], string> = {
@@ -30,7 +30,7 @@ export function ErrorCandidatesPanel({
   if (candidates.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 rounded border p-3">
+    <div className="flex flex-col gap-2 rounded border border-border p-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Erreurs candidates {readOnly ? "" : "(proposées)"}</h2>
         {!readOnly && (
@@ -38,31 +38,29 @@ export function ErrorCandidatesPanel({
             type="button"
             size="sm"
             variant="ghost"
+            label="Tout accepter"
             onClick={() => candidates.forEach((_, i) => onChange(i, false))}
-          >
-            Tout accepter
-          </Button>
+          />
         )}
       </div>
       <ul className="flex flex-col gap-2">
         {candidates.map((c, i) => (
           <li key={i} className={`flex flex-col gap-1 text-sm ${rejected[i] ? "opacity-50" : ""}`}>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{typeLabel[c.type]}</Badge>
-              {c.idErreurExistante && <Badge variant="secondary">récidive</Badge>}
+              <Badge variant="neutral" label={typeLabel[c.type]} />
+              {c.idErreurExistante && <Badge variant="neutral" label="récidive" />}
               {!readOnly && (
                 <Button
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="ml-auto h-6 px-2 text-xs"
+                  className="ml-auto"
+                  label={rejected[i] ? "Restaurer" : "Supprimer"}
                   onClick={() => onChange(i, !rejected[i])}
-                >
-                  {rejected[i] ? "Restaurer" : "Supprimer"}
-                </Button>
+                />
               )}
             </div>
-            <p className="text-muted-foreground">
+            <p className="text-secondary">
               {c.description ?? "Détail masqué tant qu'un nouvel essai est attendu."}
             </p>
           </li>

@@ -10,7 +10,7 @@ import {
   type MergedDiffPoint,
   type MergedErrorCandidate,
 } from "@/core/correction/presentCorrection";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@astryxdesign/core/Badge";
 import { DiffList } from "@/components/correction-view";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
 
@@ -48,14 +48,14 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{sec.titre}</h1>
-        <Badge variant="outline">tentative n°{sess.tentative}</Badge>
-        {overridden && <Badge variant="secondary">override</Badge>}
+        <Badge variant="neutral" label={`tentative n°${sess.tentative}`} />
+        {overridden && <Badge variant="warning" label="override" />}
       </div>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-secondary">
         Lecture seule — session close, verdict {filtered.verdict}.
       </p>
 
-      <div className="rounded border p-3">
+      <div className="rounded border border-border p-3">
         <h2 className="mb-2 text-sm font-semibold">Restitution soumise</h2>
         <p className="whitespace-pre-wrap text-sm">{sess.input}</p>
       </div>

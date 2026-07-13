@@ -1,10 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { useActionState, useState } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { NumberInput } from "@astryxdesign/core/NumberInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import type { AppelLLM } from "@/llm/models";
 import {
   updatePlannerConfigAction,
@@ -36,71 +35,63 @@ export function ReglagesForm({
     updateMethodologieGlobaleAction,
     undefined,
   );
+  const [rythme, setRythme] = useState(nouvellesParJour);
+  const [methodo, setMethodo] = useState(methodologieGlobale ?? "");
 
   return (
     <div className="flex flex-col gap-6">
-      <form action={rythmeAction} className="flex flex-col gap-2 rounded border p-4">
-        <Label htmlFor="nouvellesParJour">Nouvelles études par jour</Label>
+      <form action={rythmeAction} className="flex flex-col gap-2 rounded border border-border p-4">
         <div className="flex items-center gap-3">
-          <Input
-            id="nouvellesParJour"
-            name="nouvellesParJour"
-            type="number"
+          <NumberInput
+            label="Nouvelles études par jour"
+            htmlName="nouvellesParJour"
             min={1}
             max={10}
-            defaultValue={nouvellesParJour}
-            className="w-24"
+            value={rythme}
+            onChange={setRythme}
           />
-          <Button type="submit" size="sm" disabled={rythmePending}>
-            {rythmePending ? "Enregistrement…" : "Enregistrer"}
-          </Button>
+          <Button type="submit" size="sm" label={rythmePending ? "Enregistrement…" : "Enregistrer"} isDisabled={rythmePending} />
         </div>
-        {rythmeState?.error && <p className="text-sm text-destructive">{rythmeState.error}</p>}
+        {rythmeState?.error && <p className="text-sm text-error">{rythmeState.error}</p>}
       </form>
 
-      <form action={methodoAction} className="flex flex-col gap-2 rounded border p-4">
-        <Label htmlFor="methodologieTitresGlobale">Méthodologie des titres (globale)</Label>
-        <Textarea
-          id="methodologieTitresGlobale"
-          name="methodologieTitresGlobale"
+      <form action={methodoAction} className="flex flex-col gap-2 rounded border border-border p-4">
+        <TextArea
+          label="Méthodologie des titres (globale)"
+          htmlName="methodologieTitresGlobale"
           rows={6}
-          defaultValue={methodologieGlobale ?? ""}
+          value={methodo}
+          onChange={setMethodo}
           placeholder="Les surcharges par matière se gèrent sur la fiche de chaque matière."
         />
-        <Button type="submit" size="sm" disabled={methodoPending} className="self-start">
-          {methodoPending ? "Enregistrement…" : "Enregistrer"}
-        </Button>
-        {methodoState?.error && <p className="text-sm text-destructive">{methodoState.error}</p>}
+        <Button type="submit" size="sm" className="self-start" label={methodoPending ? "Enregistrement…" : "Enregistrer"} isDisabled={methodoPending} />
+        {methodoState?.error && <p className="text-sm text-error">{methodoState.error}</p>}
       </form>
 
-      <div className="flex items-center justify-between rounded border p-4">
+      <div className="flex items-center justify-between rounded border border-border p-4">
         <div>
           <p className="text-sm font-medium">Lecture audio (TTS) en Feynman</p>
-          <p className="text-sm text-muted-foreground">Réglage par défaut, changeable à tout moment.</p>
+          <p className="text-sm text-secondary">Réglage par défaut, changeable à tout moment.</p>
         </div>
         <form action={updateTtsActiveAction.bind(null, !ttsActive)}>
-          <Button type="submit" size="sm" variant="outline">
-            {ttsActive ? "🔊 Activée" : "🔇 Désactivée"}
-          </Button>
+          <Button type="submit" size="sm" variant="secondary" label={ttsActive ? "🔊 Activée" : "🔇 Désactivée"} />
         </form>
       </div>
 
-      <div className="flex items-center justify-between rounded border p-4">
+      <div className="flex items-center justify-between rounded border border-border p-4">
         <div>
           <p className="text-sm font-medium">Export des données</p>
-          <p className="text-sm text-muted-foreground">JSON complet — archives et journaux compris.</p>
+          <p className="text-sm text-secondary">JSON complet — archives et journaux compris.</p>
         </div>
-        <Button size="sm" variant="outline" nativeButton={false} render={<a href="/api/export" />}>
-          Télécharger
-        </Button>
+        <Button size="sm" variant="secondary" label="Télécharger" href="/api/export" />
       </div>
 
-      <div className="rounded border p-4">
+      <div className="rounded border border-border p-4">
         <p className="mb-2 text-sm font-medium">Modèle par appel LLM</p>
         <ul className="flex flex-col gap-1 text-sm">
           {modeles.map(({ appel, modele }) => (
             <li key={appel} className="flex items-center justify-between">
-              <span className="text-muted-foreground">{APPEL_LABEL[appel]}</span>
+              <span className="text-secondary">{APPEL_LABEL[appel]}</span>
               <span className="font-mono text-xs">{modele}</span>
             </li>
           ))}

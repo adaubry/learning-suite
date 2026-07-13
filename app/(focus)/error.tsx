@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 
 // USER_FLOW règle 1/7 : aucun appel LLM ne bloque définitivement un parcours —
 // mécanisme natif (`error.tsx`, ARCHITECTURE §10) plutôt qu'un état d'erreur
@@ -16,16 +16,12 @@ import { Button, buttonVariants } from "@/components/ui/button";
 export default function FocusError({ reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-destructive">
+      <p className="text-sm text-error">
         Une erreur est survenue. Ta restitution, si tu en avais soumis une, est déjà sauvegardée.
       </p>
       <div className="flex gap-2">
-        <Button size="sm" onClick={reset}>
-          Réessayer
-        </Button>
-        <Link href="/" className={buttonVariants({ size: "sm", variant: "outline" })}>
-          Retour à l&apos;accueil
-        </Link>
+        <Button size="sm" label="Réessayer" onClick={reset} />
+        <Button size="sm" variant="secondary" label="Retour à l'accueil" href="/" as={Link} />
       </div>
     </div>
   );

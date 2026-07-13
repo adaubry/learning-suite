@@ -41,7 +41,7 @@ export default async function OnboardingPage({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center gap-8 p-8">
-      <p className="text-xs text-muted-foreground">Étape {currentStep} / 4</p>
+      <p className="text-xs text-secondary">Étape {currentStep} / 4</p>
 
       {currentStep === 1 && <StepMatieres subjects={subjects} />}
 

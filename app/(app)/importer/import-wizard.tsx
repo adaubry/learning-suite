@@ -3,10 +3,11 @@
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@astryxdesign/core/Button";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { FileInput } from "@astryxdesign/core/FileInput";
+import { Selector } from "@astryxdesign/core/Selector";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { AnomalyPanel } from "@/components/anomaly-panel";
 import { TriageList } from "@/components/triage-list";
@@ -86,9 +87,8 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
     router.replace(`/importer?step=${next}`);
   }
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function handleFileUpload(file: File | File[] | null) {
+    if (!file || Array.isArray(file)) return;
     void file.text().then(setMarkdown);
   }
 
@@ -97,51 +97,36 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
   return (
     <div className="flex flex-col gap-6">
       {step === "destination" && (
-        <div className="flex flex-col gap-4 rounded border p-4">
+        <div className="flex flex-col gap-4 rounded border border-border p-4">
           <h2 className="text-sm font-semibold">1. Destination</h2>
           {subjects.length === 0 ? (
             <div className="flex flex-col items-start gap-2">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-secondary">
                 Crée d&apos;abord une matière.
               </p>
-              <Button size="sm" nativeButton={false} render={<Link href="/curriculum" />}>
-                Créer une matière
-              </Button>
+              <Button size="sm" label="Créer une matière" href="/curriculum" as={Link} />
             </div>
           ) : (
             <>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="subjectId">Matière</Label>
-                <select
-                  id="subjectId"
-                  value={subjectId}
-                  onChange={(e) => setSubjectId(e.target.value)}
-                  className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
-                >
-                  {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.nom}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="titre">Titre du chapitre</Label>
-                <Input
-                  id="titre"
-                  value={titre}
-                  onChange={(e) => setTitre(e.target.value)}
-                  placeholder="Introduction au droit des obligations"
-                />
-              </div>
+              <Selector
+                label="Matière"
+                value={subjectId}
+                onChange={setSubjectId}
+                options={subjects.map((s) => ({ value: s.id, label: s.nom }))}
+              />
+              <TextInput
+                label="Titre du chapitre"
+                value={titre}
+                onChange={setTitre}
+                placeholder="Introduction au droit des obligations"
+              />
               <Button
                 type="button"
-                disabled={!subjectId || !titre.trim()}
-                onClick={() => goToStep("import")}
                 className="self-start"
-              >
-                Continuer
-              </Button>
+                label="Continuer"
+                isDisabled={!subjectId || !titre.trim()}
+                onClick={() => goToStep("import")}
+              />
             </>
           )}
         </div>
@@ -153,31 +138,28 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
             analyzeAction(formData);
             goToStep("rapport");
           }}
-          className="flex flex-col gap-4 rounded border p-4"
+          className="flex flex-col gap-4 rounded border border-border p-4"
         >
           <h2 className="text-sm font-semibold">2. Import du Markdown</h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-secondary">
             Google Docs → Fichier → Télécharger → Markdown (.md). Upload du fichier ou collage
             direct.
           </p>
-          <Input type="file" accept=".md,text/markdown" onChange={handleFileUpload} />
-          <Textarea
-            name="markdown"
+          <FileInput label="Fichier Markdown" isLabelHidden accept=".md,text/markdown" value={null} onChange={handleFileUpload} />
+          <TextArea
+            label="Contenu Markdown"
+            isLabelHidden
+            htmlName="markdown"
             rows={12}
             value={markdown}
-            onChange={(e) => setMarkdown(e.target.value)}
+            onChange={setMarkdown}
             placeholder="Colle ici le contenu Markdown exporté depuis Google Docs…"
-            className="max-h-72 overflow-y-auto"
           />
           <div className="flex items-center gap-3">
-            <Button type="button" variant="outline" onClick={() => goToStep("destination")}>
-              Retour
-            </Button>
-            <Button type="submit" disabled={analyzing || !markdown.trim()}>
-              {analyzing ? "Analyse…" : "Analyser"}
-            </Button>
+            <Button type="button" variant="secondary" label="Retour" onClick={() => goToStep("destination")} />
+            <Button type="submit" label={analyzing ? "Analyse…" : "Analyser"} isDisabled={analyzing || !markdown.trim()} />
           </div>
-          {analyzeState?.error && <p className="text-sm text-destructive">{analyzeState.error}</p>}
+          {analyzeState?.error && <p className="text-sm text-error">{analyzeState.error}</p>}
         </form>
       )}
 
@@ -187,20 +169,19 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
             <h2 className="text-sm font-semibold">3. Rapport de validation</h2>
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
-              disabled
-              title="Éditeur WYSIWYG (U4/Tiptap) — Phase 8, pas encore construit : recolle un markdown corrigé à l'étape précédente."
-            >
-              Corriger le texte
-            </Button>
+              isDisabled
+              label="Corriger le texte"
+              tooltip="Éditeur WYSIWYG (U4/Tiptap) — Phase 8, pas encore construit : recolle un markdown corrigé à l'étape précédente."
+            />
           </div>
           {!analyzeState?.success ? (
-            <p className="text-sm text-muted-foreground">Analyse en cours…</p>
+            <p className="text-sm text-secondary">Analyse en cours…</p>
           ) : (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="max-h-[32rem] overflow-y-auto rounded border p-4">
+                <div className="max-h-[32rem] overflow-y-auto rounded border border-border p-4">
                   <MarkdownViewer markdown={markdown} />
                 </div>
                 <div className="max-h-[32rem] overflow-y-auto">
@@ -222,7 +203,7 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
                 </div>
               </div>
 
-              <form action={importAction} className="flex items-center gap-3 border-t pt-4">
+              <form action={importAction} className="flex items-center gap-3 border-t border-border pt-4">
                 <input type="hidden" name="subjectId" value={subjectId} />
                 <input type="hidden" name="titre" value={titre} />
                 <input type="hidden" name="markdown" value={markdown} />
@@ -231,14 +212,10 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
                   name="acknowledgedAnomalyKeys"
                   value={JSON.stringify(Array.from(acknowledged))}
                 />
-                <Button type="button" variant="outline" onClick={() => goToStep("import")}>
-                  Retour
-                </Button>
-                <Button type="submit" disabled={!allAcknowledged || importing}>
-                  {importing ? "Import…" : "Valider l'import"}
-                </Button>
+                <Button type="button" variant="secondary" label="Retour" onClick={() => goToStep("import")} />
+                <Button type="submit" label={importing ? "Import…" : "Valider l'import"} isDisabled={!allAcknowledged || importing} />
                 {importState?.error && (
-                  <p className="text-sm text-destructive">{importState.error}</p>
+                  <p className="text-sm text-error">{importState.error}</p>
                 )}
               </form>
             </>
@@ -247,42 +224,33 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
       )}
 
       {step === "sectionnement" && (
-        <div className="flex flex-col gap-4 rounded border p-4">
+        <div className="flex flex-col gap-4 rounded border border-border p-4">
           <h2 className="text-sm font-semibold">4. Sectionnement</h2>
           {!proposeState && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-secondary">
               Proposition d&apos;un sectionnement pédagogique en cours…
             </p>
           )}
           {proposeState?.error && (
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-destructive">{proposeState.error}</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="self-start"
-                onClick={triggerPropose}
-              >
-                Relancer
-              </Button>
+              <p className="text-sm text-error">{proposeState.error}</p>
+              <Button type="button" variant="secondary" className="self-start" label="Relancer" onClick={triggerPropose} />
             </div>
           )}
           {proposeState?.success && (
             <>
               {proposeState.method === "mecanique" && (
                 <div className="flex flex-col items-start gap-2 rounded bg-muted p-2">
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-secondary">
                     L&apos;IA n&apos;a pas pu proposer de sectionnement : un découpage mécanique par
                     titres a été utilisé. Tu peux le retrier ci-après, ou réessayer l&apos;IA.
                   </p>
-                  <Button type="button" size="sm" variant="outline" onClick={triggerPropose}>
-                    Réessayer avec l&apos;IA
-                  </Button>
+                  <Button type="button" size="sm" variant="secondary" label="Réessayer avec l'IA" onClick={triggerPropose} />
                 </div>
               )}
               <ul className="flex flex-col gap-1 text-sm">
                 {proposeState.sections.map((s) => (
-                  <li key={s.id} className="rounded border px-2 py-1">
+                  <li key={s.id} className="rounded border border-border px-2 py-1">
                     {s.titre}
                   </li>
                 ))}
@@ -290,10 +258,9 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
               <Button
                 type="button"
                 className="self-start"
+                label="Passer au tri"
                 onClick={() => router.replace(`/importer?step=tri&chapterId=${chapterId}`)}
-              >
-                Passer au tri
-              </Button>
+              />
             </>
           )}
         </div>

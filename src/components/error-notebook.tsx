@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { ErreurType } from "@/core/correction/presentCorrection";
 
@@ -70,10 +70,10 @@ export function ErrorNotebook({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2 border-b pb-2">
+      <div className="flex flex-wrap gap-2 border-b border-border pb-2">
         <Link
           href={filterHref(filters, { subjectId: undefined })}
-          className={`text-sm ${!filters.subjectId ? "font-semibold underline" : "text-muted-foreground"}`}
+          className={`text-sm ${!filters.subjectId ? "font-semibold underline" : "text-secondary"}`}
         >
           Toutes les matières
         </Link>
@@ -81,7 +81,7 @@ export function ErrorNotebook({
           <Link
             key={s.id}
             href={filterHref(filters, { subjectId: s.id })}
-            className={`text-sm ${filters.subjectId === s.id ? "font-semibold underline" : "text-muted-foreground"}`}
+            className={`text-sm ${filters.subjectId === s.id ? "font-semibold underline" : "text-secondary"}`}
           >
             {s.nom}
           </Link>
@@ -91,45 +91,53 @@ export function ErrorNotebook({
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex gap-2">
           {(["active", "resolue"] as const).map((statut) => (
-            <Link key={statut} href={filterHref(filters, { statut })}>
-              <Button size="sm" variant={filters.statut === statut ? "default" : "outline"}>
-                {statut === "active" ? "Actives" : "Résolues"}
-              </Button>
-            </Link>
+            <Button
+              key={statut}
+              size="sm"
+              variant={filters.statut === statut ? "primary" : "secondary"}
+              label={statut === "active" ? "Actives" : "Résolues"}
+              href={filterHref(filters, { statut })}
+              as={Link}
+            />
           ))}
         </div>
         <div className="flex flex-wrap gap-1">
-          <Link href={filterHref(filters, { type: undefined })}>
-            <Button size="sm" variant={!filters.type ? "secondary" : "ghost"}>
-              Tous types
-            </Button>
-          </Link>
+          <Button
+            size="sm"
+            variant={!filters.type ? "secondary" : "ghost"}
+            label="Tous types"
+            href={filterHref(filters, { type: undefined })}
+            as={Link}
+          />
           {(Object.keys(typeLabel) as ErreurType[]).map((type) => (
-            <Link key={type} href={filterHref(filters, { type })}>
-              <Button size="sm" variant={filters.type === type ? "secondary" : "ghost"}>
-                {typeLabel[type]}
-              </Button>
-            </Link>
+            <Button
+              key={type}
+              size="sm"
+              variant={filters.type === type ? "secondary" : "ghost"}
+              label={typeLabel[type]}
+              href={filterHref(filters, { type })}
+              as={Link}
+            />
           ))}
         </div>
       </div>
 
       {entries.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-secondary">
           Aucune erreur {filters.statut === "active" ? "active" : "résolue"}
           {filters.subjectId ? " pour cette matière" : ""}.
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
           {entries.map((e) => (
-            <li key={e.id} className="flex flex-col gap-2 rounded border p-3">
+            <li key={e.id} className="flex flex-col gap-2 rounded border border-border p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{typeLabel[e.type]}</Badge>
-                {e.occurrences > 1 && <Badge variant="secondary">récidive ×{e.occurrences}</Badge>}
+                <Badge variant="neutral" label={typeLabel[e.type]} />
+                {e.occurrences > 1 && <Badge variant="neutral" label={`récidive ×${e.occurrences}`} />}
                 <Link href={`/section/${e.sectionId}/rubrique`} className="text-sm underline">
                   {e.sectionTitre}
                 </Link>
-                <span className="text-xs text-muted-foreground">{e.createdAt.toLocaleDateString("fr-FR")}</span>
+                <span className="text-xs text-secondary">{e.createdAt.toLocaleDateString("fr-FR")}</span>
               </div>
 
               <p className="text-sm">{e.description}</p>
@@ -137,36 +145,26 @@ export function ErrorNotebook({
               <div className="flex flex-wrap items-center gap-2">
                 {e.statut === "active" && (
                   <form action={resolveAction.bind(null, e.id)} onSubmit={() => lock(e.id)}>
-                    <Button type="submit" size="sm" variant="outline" disabled={submittingIds.has(e.id)}>
-                      Marquer résolue
-                    </Button>
+                    <Button type="submit" size="sm" variant="secondary" isDisabled={submittingIds.has(e.id)} label="Marquer résolue" />
                   </form>
                 )}
                 <details className="text-sm">
-                  <summary className="cursor-pointer select-none text-muted-foreground">Éditer</summary>
-                  <form
+                  <summary className="cursor-pointer select-none text-secondary">Éditer</summary>
+                  <EditEntryForm
+                    description={e.description}
                     action={editAction.bind(null, e.id)}
                     onSubmit={() => lock(e.id)}
-                    className="mt-2 flex flex-col gap-2"
-                  >
-                    <Textarea name="description" defaultValue={e.description} rows={2} />
-                    <Button type="submit" size="sm" className="self-start" disabled={submittingIds.has(e.id)}>
-                      Enregistrer
-                    </Button>
-                  </form>
+                    disabled={submittingIds.has(e.id)}
+                  />
                 </details>
                 <ConfirmDialog
-                  trigger={
-                    <Button size="sm" variant="ghost" disabled={submittingIds.has(e.id)}>
-                      Supprimer
-                    </Button>
-                  }
+                  trigger={<Button size="sm" variant="ghost" isDisabled={submittingIds.has(e.id)} label="Supprimer" />}
                   title="Supprimer cette erreur ?"
                   description="À utiliser si elle a été créée à tort — cette action est irréversible."
                   action={deleteAction.bind(null, e.id)}
                   onConfirm={() => lock(e.id)}
                 />
-                <Link href={`/session/${e.sessionId}`} className="text-sm text-muted-foreground underline">
+                <Link href={`/session/${e.sessionId}`} className="text-sm text-secondary underline">
                   Voir la session d&apos;origine
                 </Link>
               </div>
@@ -175,5 +173,25 @@ export function ErrorNotebook({
         </ul>
       )}
     </div>
+  );
+}
+
+function EditEntryForm({
+  description,
+  action,
+  onSubmit,
+  disabled,
+}: {
+  description: string;
+  action: (formData: FormData) => Promise<void>;
+  onSubmit: () => void;
+  disabled: boolean;
+}) {
+  const [value, setValue] = useState(description);
+  return (
+    <form action={action} onSubmit={onSubmit} className="mt-2 flex flex-col gap-2">
+      <TextArea label="Description" isLabelHidden htmlName="description" value={value} onChange={setValue} rows={2} />
+      <Button type="submit" size="sm" className="self-start" isDisabled={disabled} label="Enregistrer" />
+    </form>
   );
 }

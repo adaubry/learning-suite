@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@astryxdesign/core/Button";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { TextArea } from "@astryxdesign/core/TextArea";
 import type { TriageOperation } from "@/services/section.schemas";
 
 // U13 TriageList/TriageRow (FUNCTIONS §6.2, USER_FLOW É1.4) — titre éditable inline,
@@ -76,14 +76,13 @@ function ImportanceSelector({
         <Button
           key={n}
           type="button"
-          size="icon-sm"
-          variant={value === n ? "default" : "outline"}
+          size="sm"
+          variant={value === n ? "primary" : "secondary"}
           aria-pressed={value === n}
           onClick={() => onChange(n)}
-          title={n === 1 ? "Hors programme" : n === 5 ? "Très important" : undefined}
-        >
-          {n}
-        </Button>
+          label={String(n)}
+          tooltip={n === 1 ? "Hors programme" : n === 5 ? "Très important" : undefined}
+        />
       ))}
     </div>
   );
@@ -94,32 +93,33 @@ function SplitPicker({ contenu, onSplit }: { contenu: string; onSplit: (cutOffse
   const ref = useRef<HTMLTextAreaElement>(null);
 
   if (!open) {
-    return (
-      <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
-        Scinder
-      </Button>
-    );
+    return <Button type="button" variant="secondary" size="sm" label="Scinder" onClick={() => setOpen(true)} />;
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded border p-2">
-      <p className="text-xs text-muted-foreground">Clique dans le texte au point de coupe souhaité.</p>
-      <Textarea ref={ref} readOnly rows={6} defaultValue={contenu} className="font-mono text-xs" />
+    <div className="flex flex-col gap-2 rounded border border-border p-2">
+      <p className="text-xs text-secondary">Clique dans le texte au point de coupe souhaité.</p>
+      <TextArea
+        ref={ref}
+        label="Contenu"
+        isLabelHidden
+        value={contenu}
+        onChange={() => {}}
+        rows={6}
+        className="font-mono text-xs"
+      />
       <div className="flex gap-2">
         <Button
           type="button"
           size="sm"
+          label="Scinder ici"
           onClick={() => {
             const cut = ref.current?.selectionStart ?? 0;
             if (cut > 0 && cut < contenu.length) onSplit(cut);
             setOpen(false);
           }}
-        >
-          Scinder ici
-        </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
-          Annuler
-        </Button>
+        />
+        <Button type="button" variant="secondary" size="sm" label="Annuler" onClick={() => setOpen(false)} />
       </div>
     </div>
   );
@@ -143,22 +143,20 @@ function TriageRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <li className="flex flex-col gap-2 rounded border p-3">
+    <li className="flex flex-col gap-2 rounded border border-border p-3">
       <div className="flex flex-wrap items-center gap-3">
-        <Input
+        <TextInput
+          label="Titre de la section"
+          isLabelHidden
           value={row.titre}
-          onChange={(e) => onRename(e.target.value)}
+          onChange={onRename}
           className="min-w-48 flex-1"
         />
         <ImportanceSelector value={row.importance} onChange={onImportance} />
-        <Button type="button" variant="outline" size="sm" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? "Masquer l'aperçu" : "Aperçu"}
-        </Button>
+        <Button type="button" variant="secondary" size="sm" label={expanded ? "Masquer l'aperçu" : "Aperçu"} onClick={() => setExpanded((v) => !v)} />
         {row.kind === "keep" && (
           <>
-            <Button type="button" variant="outline" size="sm" disabled={!canMerge} onClick={onMerge}>
-              Fusionner avec la précédente
-            </Button>
+            <Button type="button" variant="secondary" size="sm" isDisabled={!canMerge} label="Fusionner avec la précédente" onClick={onMerge} />
             <SplitPicker contenu={row.contenu} onSplit={onSplit} />
           </>
         )}
@@ -249,7 +247,7 @@ export function TriageList({
       <input type="hidden" name="chapterId" value={chapterId} />
       <input type="hidden" name="operations" value={JSON.stringify(toOperations(rows))} />
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex items-center justify-between text-sm text-secondary">
         <span>
           {rows.length} sections · {exclues} exclues (importance 1)
         </span>
@@ -269,10 +267,8 @@ export function TriageList({
         ))}
       </ul>
 
-      {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-      <Button type="submit" disabled={pending} className="self-start">
-        {pending ? "Enregistrement…" : "Terminer le tri"}
-      </Button>
+      {state?.error && <p className="text-sm text-error">{state.error}</p>}
+      <Button type="submit" isDisabled={pending} className="self-start" label={pending ? "Enregistrement…" : "Terminer le tri"} />
     </form>
   );
 }

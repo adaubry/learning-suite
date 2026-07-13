@@ -8,7 +8,7 @@ import Link from "next/link";
 export function FocusShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-4 py-8">
-      <Link href="/" className="self-start text-sm text-muted-foreground hover:underline">
+      <Link href="/" className="self-start text-sm text-secondary hover:underline">
         ← Quitter
       </Link>
       {children}

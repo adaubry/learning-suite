@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 import type { Note } from "@/core/fsrs/fsrsCore";
 
 // U18 FsrsRatingBar (FUNCTIONS §6.2, USER_FLOW É4.2) — Again/Hard/Good/Easy avec
@@ -40,7 +40,7 @@ export function FsrsRatingBar({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-secondary">
         Verdict proposé (aide, non contraignant) : <strong>{verdict}</strong>
       </p>
       <div className="flex flex-wrap gap-2">
@@ -49,12 +49,13 @@ export function FsrsRatingBar({
             <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
             <Button
               type="submit"
-              variant={note === "again" ? "outline" : "secondary"}
+              label={LABELS[note]}
+              variant={note === "again" ? "destructive" : "secondary"}
               className="h-auto flex-col gap-0.5 py-2"
-              disabled={submitting}
+              isDisabled={submitting}
             >
               <span>{LABELS[note]}</span>
-              <span className="text-xs font-normal text-muted-foreground">
+              <span className="text-xs font-normal text-secondary">
                 {formatEcheance(preview[note].due, today)}
               </span>
             </Button>

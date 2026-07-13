@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ChevronUpIcon, ChevronDownIcon } from "lucide-react";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
 import type { QueueItem } from "@/core/planner/buildDailyQueue";
 
 export interface QueueSectionInfo {
@@ -49,21 +50,22 @@ export function DailyQueue({
   if (queue.length === 0) {
     return (
       <div className="flex flex-col items-start gap-2 text-sm">
-        <p className="text-muted-foreground">
+        <p className="text-secondary">
           Rien à faire aujourd&apos;hui.{" "}
           {nextDeadline
             ? `Prochaine échéance : ${nextDeadline}.`
             : "Aucune échéance à venir."}
         </p>
         <div className="flex gap-2">
-          <Button size="sm" nativeButton={false} render={<Link href="/importer" />}>
-            Importer un chapitre
-          </Button>
+          <Button size="sm" label="Importer un chapitre" href="/importer" as={Link} />
           {backlogCandidate && (
             <form action={advanceAction.bind(null, backlogCandidate.sectionId)}>
-              <Button type="submit" size="sm" variant="outline">
-                Avancer « {backlogCandidate.titre} » (emprunte un slot de demain)
-              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                variant="secondary"
+                label={`Avancer « ${backlogCandidate.titre} » (emprunte un slot de demain)`}
+              />
             </form>
           )}
         </div>
@@ -80,51 +82,49 @@ export function DailyQueue({
         const commencerHref = itemType === "etude" ? `/etude/${sectionId}` : `/revision/${sectionId}`;
 
         return (
-          <li key={keys[index]} className="flex items-center gap-3 rounded border p-3">
+          <li key={keys[index]} className="flex items-center gap-3 rounded border border-border p-3">
             <div className="flex flex-col gap-1">
               {(
                 [
-                  { direction: "up" as const, label: "Monter", arrow: "↑", disabled: index === 0 },
-                  { direction: "down" as const, label: "Descendre", arrow: "↓", disabled: index === queue.length - 1 },
+                  { direction: "up" as const, label: "Monter", icon: <ChevronUpIcon size={16} />, disabled: index === 0 },
+                  { direction: "down" as const, label: "Descendre", icon: <ChevronDownIcon size={16} />, disabled: index === queue.length - 1 },
                 ]
               ).map((move) => (
                 <form key={move.direction} action={moveAction.bind(null, index, move.direction)} onSubmit={lockSubmit}>
                   <input type="hidden" name="keys" value={JSON.stringify(keys)} />
                   <Button
                     type="submit"
-                    size="icon-lg"
+                    size="lg"
                     variant="ghost"
-                    disabled={move.disabled || submitting}
-                    aria-label={move.label}
-                  >
-                    {move.arrow}
-                  </Button>
+                    isIconOnly
+                    icon={move.icon}
+                    isDisabled={move.disabled || submitting}
+                    label={move.label}
+                  />
                 </form>
               ))}
             </div>
 
             <div className="flex flex-1 flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                {item.kind === "revision" && <Badge variant="outline">Révision{item.retardJours > 0 ? ` — ${item.retardJours}j de retard` : ""}</Badge>}
-                {item.kind === "nouvelle_etude" && <Badge variant="outline">Nouvelle étude</Badge>}
-                {item.kind === "re_file" && <Badge variant="secondary">À repasser aujourd&apos;hui</Badge>}
-                {info && <span className="text-muted-foreground">{info.subjectNom}</span>}
-                {"importance" in item && <Badge variant="secondary">imp. {item.importance}</Badge>}
+                {item.kind === "revision" && (
+                  <Badge variant="neutral" label={`Révision${item.retardJours > 0 ? ` — ${item.retardJours}j de retard` : ""}`} />
+                )}
+                {item.kind === "nouvelle_etude" && <Badge variant="neutral" label="Nouvelle étude" />}
+                {item.kind === "re_file" && <Badge variant="neutral" label="À repasser aujourd'hui" />}
+                {info && <span className="text-secondary">{info.subjectNom}</span>}
+                {"importance" in item && <Badge variant="neutral" label={`imp. ${item.importance}`} />}
                 {"joursAvantExamen" in item && item.joursAvantExamen !== null && item.joursAvantExamen < 30 && (
-                  <Badge variant="destructive">examen dans {item.joursAvantExamen}j</Badge>
+                  <Badge variant="warning" label={`examen dans ${item.joursAvantExamen}j`} />
                 )}
               </div>
               <span>{info?.titre ?? "Section"}</span>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button size="sm" nativeButton={false} render={<Link href={commencerHref} />}>
-                Commencer
-              </Button>
+              <Button size="sm" label="Commencer" href={commencerHref} as={Link} />
               <form action={deferAction.bind(null, itemType, sectionId)} onSubmit={lockSubmit}>
-                <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
-                  Reporter
-                </Button>
+                <Button type="submit" size="sm" variant="ghost" isDisabled={submitting} label="Reporter" />
               </form>
             </div>
           </li>

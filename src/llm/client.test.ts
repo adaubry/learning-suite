@@ -131,7 +131,7 @@ describe("streamCompletion", () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockStreamResponse(["Bon", "jour"]));
 
     const text = await collect(
-      streamCompletion({ appel: "feynman", promptVersion: "v1", promptFile: "feynman_turn", context: {} }),
+      streamCompletion({ appel: "feynman", promptVersion: "v2", promptFile: "feynman_turn", context: {} }),
     );
 
     expect(text).toBe("Bonjour");
@@ -145,7 +145,7 @@ describe("streamCompletion", () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockStreamResponse([]));
 
     await expect(
-      collect(streamCompletion({ appel: "feynman", promptVersion: "v1", promptFile: "feynman_turn", context: {} })),
+      collect(streamCompletion({ appel: "feynman", promptVersion: "v2", promptFile: "feynman_turn", context: {} })),
     ).rejects.toThrow(LLMValidationError);
   });
 
@@ -157,7 +157,7 @@ describe("streamCompletion", () => {
     });
 
     await expect(
-      collect(streamCompletion({ appel: "feynman", promptVersion: "v1", promptFile: "feynman_turn", context: {} })),
+      collect(streamCompletion({ appel: "feynman", promptVersion: "v2", promptFile: "feynman_turn", context: {} })),
     ).rejects.toThrow(/boom/);
     expect(fetch).toHaveBeenCalledTimes(1);
   });

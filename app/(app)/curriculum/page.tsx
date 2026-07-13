@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 import { listSubjects } from "@/services/account";
 import { listChaptersBySubject, listSectionsByChapter } from "@/services/chapter";
 import { AddSubjectForm, RubricQueuePanel, SubjectCard } from "./curriculum-ui";
@@ -38,9 +37,7 @@ export default async function CurriculumPage() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Curriculum</h1>
-        <Button size="sm" nativeButton={false} render={<Link href="/importer" />}>
-          Importer un chapitre
-        </Button>
+        <Button size="sm" label="Importer un chapitre" href="/importer" />
       </div>
 
       <RubricQueuePanel />
@@ -48,7 +45,7 @@ export default async function CurriculumPage() {
       <AddSubjectForm />
 
       {subjects.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Aucune matière pour l&apos;instant.</p>
+        <p className="text-sm text-secondary">Aucune matière pour l&apos;instant.</p>
       ) : (
         <div className="flex flex-col gap-4">
           {subjectsWithChapters.map(({ subject, chapters }) => (

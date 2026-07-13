@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
 import { PushToTalkRecorder } from "@/components/push-to-talk-recorder";
 
 // U19 FeynmanChat (FUNCTIONS §6.2, USER_FLOW É3.3, PLAN Bloc 7.2) — bulles,
@@ -112,10 +112,9 @@ export function FeynmanChat({
           variant="ghost"
           size="sm"
           className="ml-auto"
+          label={ttsEnabled ? "🔊 Lecture activée" : "🔇 Lecture désactivée"}
           onClick={() => setTtsEnabled((v) => !v)}
-        >
-          {ttsEnabled ? "🔊 Lecture activée" : "🔇 Lecture désactivée"}
-        </Button>
+        />
       </div>
 
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto">
@@ -123,7 +122,7 @@ export function FeynmanChat({
           <div
             key={i}
             className={`max-w-[80%] rounded-lg p-3 text-sm ${
-              m.role === "ia" ? "self-start bg-muted" : "self-end bg-primary text-primary-foreground"
+              m.role === "ia" ? "self-start bg-muted" : "self-end bg-accent-bg text-on-accent"
             }`}
           >
             {m.texte}
@@ -134,19 +133,18 @@ export function FeynmanChat({
         )}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-error">{error}</p>}
 
       <PushToTalkRecorder cycleId={cycleId} transcribeAction={transcribeAction} onConfirm={handleConfirm} />
 
       <Button
         type="button"
-        variant="outline"
+        variant="secondary"
         className="self-end"
-        disabled={closing || streaming !== null}
+        isDisabled={closing || streaming !== null}
+        label={closing ? "…" : "Clore et demander le bilan"}
         onClick={() => startClosing(() => closeFeynmanAction())}
-      >
-        {closing ? "…" : "Clore et demander le bilan"}
-      </Button>
+      />
     </div>
   );
 }
