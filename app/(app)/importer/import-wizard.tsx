@@ -167,6 +167,7 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
             value={markdown}
             onChange={(e) => setMarkdown(e.target.value)}
             placeholder="Colle ici le contenu Markdown exporté depuis Google Docs…"
+            className="max-h-72 overflow-y-auto"
           />
           <div className="flex items-center gap-3">
             <Button type="button" variant="outline" onClick={() => goToStep("destination")}>

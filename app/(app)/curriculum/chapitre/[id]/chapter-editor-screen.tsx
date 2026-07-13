@@ -123,14 +123,7 @@ export function ChapterEditorScreen({
                   : `${batchState.total} rubrique(s) générée(s), à valider.`}
             </p>
           )}
-          <details className="rounded border">
-            <summary className="cursor-pointer p-3 text-sm font-medium select-none">
-              Voir le contenu du chapitre
-            </summary>
-            <div className="max-h-[32rem] overflow-y-auto border-t p-3">
-              <MarkdownViewer markdown={initialMarkdown} />
-            </div>
-          </details>
+          <MarkdownViewer markdown={initialMarkdown} />
           {/* USER_FLOW É6.4 : l'archivage est toujours proposé avant la suppression. */}
           <div className="flex items-center gap-2 border-t pt-3">
             {statut === "actif" ? (
