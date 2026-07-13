@@ -23,7 +23,7 @@ Les documents de `src/docs/` gouvernent le code, jamais l'inverse :
 3. **USER_FLOW.md** — écrans, transitions, états vides/erreur
 4. **FUNCTIONS.md** — briques P (cœurs purs) / S (services) / L (LLM) / U (UI), registre des invariants (§7)
 5. **TECH_MAPPING.md** — délégations : natif > librairies listées > maison
-6. **PLAN.md** — ordre de construction ; **DECISIONS.md** — arbitrages en cours de route
+6. **DECISIONS.md** — arbitrages en cours de route (actif). *PLAN.md est clos* (historique de construction du MVP, Phase 9 close, Phase 10 volontairement abandonnée — voir DECISIONS.md) : il ne gouverne plus les sessions ni l'ordre de travail.
 
 **Règle absolue** : toute contradiction entre une demande, le code existant et un document doit être **signalée avant d'agir** — jamais résolue silencieusement. Si l'implémentation exige de dévier d'un document, la déviation se décide avec l'humain et se consigne (DECISIONS.md + version du document concerné).
 
@@ -49,13 +49,13 @@ Les documents de `src/docs/` gouvernent le code, jamais l'inverse :
 
 - TypeScript strict ; unions discriminées pour les états ; pas de `any` non justifié.
 - Vocabulaire du domaine en français dans les types et la DB (`Section`, `rubrique`, `blurting`…) — cohérent avec les documents ; code utilitaire en anglais si plus naturel.
-- Un commit par bloc du PLAN, message : `feat(bloc X.Y): ... [P1, S2]` avec les IDs touchés. Hors bloc (setup, docs, config) : préfixe conventionnel `type: message` (`feat`, `fix`, `docs`, `chore`, `refactor`), une ligne, à l'impératif. Pas d'outillage (commitlint/husky) — la convention se respecte, elle ne se fait pas policer par un hook.
-- `npm run check` (typecheck + lint + tests) DOIT être vert avant de déclarer un bloc terminé ; `npm run test:canary` vert en permanence ; `npm run evals` après toute modification de prompt.
+- Un commit par tâche/fonctionnalité cohérente, préfixe conventionnel `type: message` (`feat`, `fix`, `docs`, `chore`, `refactor`), une ligne, à l'impératif, IDs FUNCTIONS touchés entre crochets si pertinent (`[S4, U15]`). Pas d'outillage (commitlint/husky) — la convention se respecte, elle ne se fait pas policer par un hook.
+- `npm run check` (typecheck + lint + tests) DOIT être vert avant de déclarer une tâche terminée ; `npm run test:canary` vert en permanence ; `npm run evals` après toute modification de prompt.
 
-## 5. Definition of done d'un bloc
+## 5. Definition of done d'une tâche
 
-1. Fonctions du bloc implémentées **une par une**, chacune avec ses tests avant la suivante.
-2. `npm run check` et `test:canary` verts ; nouveaux canaris du bloc (PLAN.md) posés.
+1. Fonctions implémentées **une par une**, chacune avec ses tests avant la suivante.
+2. `npm run check` et `test:canary` verts ; nouveaux canaris posés si la tâche touche un invariant critique (FUNCTIONS §7).
 3. Aucun écran livré sans état vide ET état d'erreur LLM (relance + voie de secours — USER_FLOW règle 7).
 4. Écarts, doutes et arbitrages listés explicitement à l'humain ; DECISIONS.md mis à jour si arbitrage.
 

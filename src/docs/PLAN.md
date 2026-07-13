@@ -1,7 +1,7 @@
 # PLAN.md — Plan de construction du MVP (un ingénieur + Claude Code)
 
-> **Statut** : v0.2
-> **Rôle** : plan de bataille phase par phase, du repo vide au MVP utilisé quotidiennement. Chaque phase = des **blocs de fonctions** (références P/S/L/U de FUNCTIONS.md v0.3) livrés fonction par fonction, avec tests automatisés, **canaris anti-hallucination**, test navigateur, correction, puis critères de sortie. On ne passe JAMAIS à la phase suivante avec un critère de sortie non rempli.
+> **Statut : CLOS** (2026-07-13). Phase 9 terminée et confirmée (voir DECISIONS.md). **Phase 10 volontairement abandonnée** — arbitrage humain, consigné dans DECISIONS.md. Ce document devient un historique de construction ; il ne gouverne plus les sessions ni la boucle par bloc décrite en §0 (protocole remplacé par CLAUDE.md §1 — travail par tâche, sans découpage bloc/plan). Conservé pour mémoire des phases 0–9.
+> **Rôle (historique)** : plan de bataille phase par phase, du repo vide au MVP utilisé quotidiennement. Chaque phase = des **blocs de fonctions** (références P/S/L/U de FUNCTIONS.md v0.3) livrés fonction par fonction, avec tests automatisés, **canaris anti-hallucination**, test navigateur, correction, puis critères de sortie. On ne passe JAMAIS à la phase suivante avec un critère de sortie non rempli.
 > **Dépend de** : tous les documents de conception (FORMAT v0.2, ARCHITECTURE v0.3, USER_FLOW v0.3, FUNCTIONS v0.3, TECH_MAPPING v0.2).
 
 ---
@@ -190,3 +190,4 @@ Deux inversions délibérées par rapport à l'ordre « naturel » : le **Planif
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0.1     | 2026-07-02 | Création — 11 phases, boucle par bloc avec canaris de compréhension et de régression                                                                                                                                                                                                                       |
 | 0.2     | 2026-07-02 | Bloc 0.2 détaillé suite à review : mécanique exacte du harnais — deux exécuteurs (Vitest/Playwright), trois familles (ordinaires, canaris déterministes par suffixe `.canary.`, canaris LLM dans evals), quatre commandes ; `test:canary` = agrégateur des deux exécuteurs, LLM toujours mocké hors evals. |
+| 0.3     | 2026-07-13 | **Clôture du plan.** Phase 9 confirmée ; Phase 10 (consolidation evals, itération prompts, mise en service formelle) volontairement abandonnée par l'humain — voir DECISIONS.md. Document gelé, rôle de gouvernance de session transféré à CLAUDE.md §1 (protocole par tâche, sans bloc). |
