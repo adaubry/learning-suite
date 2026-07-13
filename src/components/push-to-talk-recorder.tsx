@@ -131,7 +131,7 @@ export function PushToTalkRecorder({
         <div className="flex items-center gap-3">
           <Button
             type="button"
-            size="icon"
+            size="icon-lg"
             variant={status === "recording" ? "destructive" : "default"}
             onClick={status === "recording" ? stopRecording : startRecording}
             disabled={status === "transcribing"}

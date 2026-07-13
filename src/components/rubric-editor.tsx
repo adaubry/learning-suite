@@ -64,7 +64,7 @@ export function RubricEditor({
   }
 
   return (
-    <div className="grid grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
       <form action={formAction} className="flex flex-col gap-5">
         {regenerateAction && (
           <div className="flex flex-col items-end gap-1">

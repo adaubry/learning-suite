@@ -115,7 +115,7 @@ export function AddSubjectForm() {
   return (
     <form action={action} className="flex flex-col gap-3 rounded border p-4">
       <h2 className="text-sm font-semibold">Ajouter une matière</h2>
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
         <div className="flex flex-1 flex-col gap-1">
           <Label htmlFor="nom">Nom</Label>
           <Input id="nom" name="nom" required placeholder="Droit civil" />
@@ -150,7 +150,7 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
 
       <form action={action} className="flex flex-col gap-3">
         <input type="hidden" name="subjectId" value={subject.id} />
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <div className="flex flex-1 flex-col gap-1">
             <Label>Nom</Label>
             <Input name="nom" defaultValue={subject.nom} required />

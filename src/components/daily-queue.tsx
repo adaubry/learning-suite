@@ -92,7 +92,7 @@ export function DailyQueue({
                   <input type="hidden" name="keys" value={JSON.stringify(keys)} />
                   <Button
                     type="submit"
-                    size="icon"
+                    size="icon-lg"
                     variant="ghost"
                     disabled={move.disabled || submitting}
                     aria-label={move.label}
