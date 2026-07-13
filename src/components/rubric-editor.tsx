@@ -73,11 +73,15 @@ export function RubricEditor({
                 {regenerateState.error} — la rédaction manuelle ci-dessous reste disponible.
               </p>
             )}
-            <form action={regenerateFormAction}>
-              <Button type="submit" size="sm" variant="ghost" disabled={submitting}>
-                Relancer (nouvelle génération)
-              </Button>
-            </form>
+            <Button
+              type="submit"
+              formAction={regenerateFormAction}
+              size="sm"
+              variant="ghost"
+              disabled={submitting}
+            >
+              Relancer (nouvelle génération)
+            </Button>
           </div>
         )}
         <input type="hidden" name="points" value={JSON.stringify(points)} />

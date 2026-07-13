@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { listSubjects } from "@/services/account";
 import { listChaptersBySubject, listSectionsByChapter } from "@/services/chapter";
-import { AddSubjectForm, SubjectCard } from "./curriculum-ui";
+import { AddSubjectForm, RubricQueuePanel, SubjectCard } from "./curriculum-ui";
 
 // P6 É6.0 — U22 CurriculumTree minimal : matières + chapitres + sections.
 // Le tri des sections (S2/L1/U13, Phase 3) n'existe toujours pas : les
@@ -42,6 +42,8 @@ export default async function CurriculumPage() {
           Importer un chapitre
         </Button>
       </div>
+
+      <RubricQueuePanel />
 
       <AddSubjectForm />
 

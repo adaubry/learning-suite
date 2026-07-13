@@ -115,8 +115,13 @@ export async function updateTtsActiveAction(ttsActive: boolean) {
   revalidatePath("/reglages");
 }
 
-// Bloc 4.2 (É1.5) : déclenche la rubrique depuis le curriculum, redirige vers
-// l'écran de validation U14 (S3 possède l'invariant, l'action reste un adaptateur mince).
+// Bloc 4.2 (É1.5) : déclenche la rubrique depuis le curriculum (S3 possède
+// l'invariant, l'action reste un adaptateur mince). Ne redirige plus vers
+// l'écran de validation U14 : seul appelant restant, la file de génération de
+// /curriculum (rubric-generation-queue.ts) peut traiter plusieurs sections à
+// la suite sans être éjectée de la page au premier succès — la validation
+// reste à un clic (`[Valider la rubrique]`, déjà rendu par SectionRow une fois
+// le statut passé à `rubrique_a_valider`).
 export async function generateRubricAction(_prevState: unknown, formData: FormData) {
   const sectionId = formData.get("sectionId");
   if (typeof sectionId !== "string" || !sectionId) return { error: "Section introuvable." };
@@ -127,7 +132,6 @@ export async function generateRubricAction(_prevState: unknown, formData: FormDa
     return { error: e instanceof Error ? e.message : "Erreur lors de la génération." };
   }
   revalidatePath("/curriculum");
-  redirect(`/section/${sectionId}/rubrique`);
 }
 
 export async function createManualRubricAction(_prevState: unknown, formData: FormData) {
@@ -140,7 +144,6 @@ export async function createManualRubricAction(_prevState: unknown, formData: Fo
     return { error: e instanceof Error ? e.message : "Erreur." };
   }
   revalidatePath("/curriculum");
-  redirect(`/section/${sectionId}/rubrique`);
 }
 
 // Clôture l'onboarding (É0.2 étape 4) : garantit la ligne PlannerConfig même
