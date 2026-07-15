@@ -56,7 +56,7 @@ export function DailyQueue({
             ? `Prochaine échéance : ${nextDeadline}.`
             : "Aucune échéance à venir."}
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button size="sm" label="Importer un chapitre" href="/importer" as={Link} />
           {backlogCandidate && (
             <form action={advanceAction.bind(null, backlogCandidate.sectionId)}>
@@ -83,7 +83,7 @@ export function DailyQueue({
         const commencerHref = `/etude/${sectionId}`;
 
         return (
-          <li key={keys[index]} className="flex items-center gap-3 rounded border border-border p-3">
+          <li key={keys[index]} className="flex flex-wrap items-center gap-3 rounded border border-border p-3">
             <div className="flex flex-col gap-1">
               {(
                 [
@@ -122,7 +122,7 @@ export function DailyQueue({
               <span>{info?.titre ?? "Section"}</span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" label="Commencer" href={commencerHref} as={Link} />
               <form action={deferAction.bind(null, itemType, sectionId)} onSubmit={lockSubmit}>
                 <Button type="submit" size="sm" variant="ghost" isDisabled={submitting} label="Reporter" />
