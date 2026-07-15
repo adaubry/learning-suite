@@ -21,8 +21,7 @@ const statutIcon: Record<MergedDiffPoint["statut"], string> = {
   deforme: "⚠️",
 };
 
-// Exporté : réutilisé par la vue session lecture seule (/session/[id], U24) et
-// par la relecture ciblée de LectureView (U25).
+// Exporté : réutilisé par la vue session lecture seule (/session/[id], U24).
 export function DiffList({ diff }: { diff: MergedDiffPoint[] }) {
   return (
     <ul className="flex flex-col gap-2">

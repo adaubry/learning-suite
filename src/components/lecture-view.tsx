@@ -4,10 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Badge } from "@astryxdesign/core/Badge";
 import { MarkdownViewer } from "@/components/markdown-viewer";
-import { DiffList } from "@/components/correction-view";
 import { GapPuzzle } from "@/components/gap-puzzle";
 import { ScrollToBottomButton } from "@/components/scroll-to-bottom-button";
-import type { MergedDiffPoint } from "@/core/correction/verdict";
 
 // U25 LectureView (FUNCTIONS §6.2, USER_FLOW É3.1, REVAMP v2 2026-07-15 ;
 // minuteur DECISIONS.md 2026-07-15 « Retour sur lecture structurelle ») —
@@ -73,15 +71,14 @@ function useCalibrationGapPuzzle() {
 export function LectureView({
   sectionTitre,
   contenu,
-  diff,
+  relecture,
   action,
   abandonAction,
 }: {
   sectionTitre: string;
   contenu: string;
-  /** Relecture ciblée (2ᵉ passe) : diff de la correction précédente en vis-à-vis
-   *  (§2.7 REVAMP.md, déjà en divulgation complète). Absent en lecture initiale. */
-  diff?: MergedDiffPoint[];
+  /** Relecture ciblée (2ᵉ passe, avant blurting_2) vs lecture initiale — cosmétique (badge). */
+  relecture?: boolean;
   action: () => Promise<void>;
   abandonAction: () => Promise<void>;
 }) {
@@ -113,18 +110,11 @@ export function LectureView({
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <Badge variant="neutral" label={diff ? "Relecture ciblée" : "Lecture"} />
+        <Badge variant="neutral" label={relecture ? "Relecture ciblée" : "Lecture"} />
       </div>
 
-      <div className={diff ? "grid flex-1 grid-cols-1 gap-4 md:grid-cols-2" : "flex flex-1 flex-col"}>
-        <div className="overflow-y-auto">
-          <MarkdownViewer markdown={contenu} className="font-serif" />
-        </div>
-        {diff && (
-          <div className="overflow-y-auto">
-            <DiffList diff={diff} />
-          </div>
-        )}
+      <div className="flex flex-1 flex-col overflow-y-auto">
+        <MarkdownViewer markdown={contenu} className="font-serif" />
       </div>
 
       <div className="flex flex-wrap gap-2">

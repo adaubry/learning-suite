@@ -75,12 +75,12 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
   }
 
   if (cycle.etat === "lecture") {
-    const { diff } = await session.lectureContext(userId, cycle.id);
+    const { tentative } = await session.lectureContext(userId, cycle.id);
     return (
       <LectureView
         sectionTitre={sec.titre}
         contenu={sec.contenu}
-        diff={diff ?? undefined}
+        relecture={tentative === 2}
         action={terminerLectureAction.bind(null, cycle.id, sectionId)}
         abandonAction={abandonAction.bind(null, cycle.id)}
       />
