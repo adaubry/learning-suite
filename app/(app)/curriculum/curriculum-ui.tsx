@@ -511,6 +511,7 @@ function ChapterItem({ chapter }: { chapter: Chapter }) {
         gap={2}
         align="center"
         justify="between"
+        wrap="wrap"
         paddingInline={3}
         paddingBlock={1}
       >
@@ -577,7 +578,7 @@ export function SubjectCard({
 }) {
   return (
     <Card>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-semibold">{subject.nom}</h3>
         <Badge variant="neutral" label={subject.semestre} />
         {subject.statut === "archivee" && (
@@ -600,7 +601,7 @@ export function SubjectCard({
             </div>
           </CollapsibleGroup>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <form
             action={
               subject.statut === "active"

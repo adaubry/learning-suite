@@ -91,13 +91,13 @@ export function ChapterEditorScreen({
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold">{titre}</h1>
           {statut === "archive" && <span className="text-xs text-secondary">(archivé)</span>}
         </div>
         {mode === "vue" && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <form action={batchAction}>
               <Button type="submit" size="sm" variant="secondary" label="Générer les rubriques en lot" isDisabled={batchPending} />
             </form>
@@ -120,7 +120,7 @@ export function ChapterEditorScreen({
           )}
           <MarkdownViewer markdown={initialMarkdown} className="font-serif" />
           {/* USER_FLOW É6.4 : l'archivage est toujours proposé avant la suppression. */}
-          <div className="flex items-center gap-2 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
             {statut === "actif" ? (
               <ConfirmDialog
                 trigger={<Button size="sm" variant="secondary" label="Archiver le chapitre" />}
@@ -191,7 +191,7 @@ export function ChapterEditorScreen({
             />
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button variant="ghost" label="Annuler" onClick={() => enterMode("vue")} />
             <Button
               label={simulating ? "Analyse…" : mode === "reimport" ? "Analyser le ré-import" : "Sauvegarder"}
