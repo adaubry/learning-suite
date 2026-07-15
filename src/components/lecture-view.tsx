@@ -6,6 +6,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { DiffList } from "@/components/correction-view";
 import { GapPuzzle } from "@/components/gap-puzzle";
+import { ScrollToBottomButton } from "@/components/scroll-to-bottom-button";
 import type { MergedDiffPoint } from "@/core/correction/verdict";
 
 // U25 LectureView (FUNCTIONS §6.2, USER_FLOW É3.1, REVAMP v2 2026-07-15 ;
@@ -117,7 +118,7 @@ export function LectureView({
 
       <div className={diff ? "grid flex-1 grid-cols-1 gap-4 md:grid-cols-2" : "flex flex-1 flex-col"}>
         <div className="overflow-y-auto">
-          <MarkdownViewer markdown={contenu} />
+          <MarkdownViewer markdown={contenu} className="font-serif" />
         </div>
         {diff && (
           <div className="overflow-y-auto">
@@ -132,6 +133,7 @@ export function LectureView({
           <Button type="submit" variant="ghost" size="sm" label="Abandonner" />
         </form>
       </div>
+      <ScrollToBottomButton />
     </div>
   );
 }

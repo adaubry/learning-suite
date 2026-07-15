@@ -18,6 +18,7 @@
    Tailwind `font-mono` — seule police du projet non fournie par le thème Astryx. */
 @theme inline {
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-eb-garamond);
 }
 
 /* Migration Astryx (DECISIONS.md 2026-07-13) : les tokens de couleur shadcn

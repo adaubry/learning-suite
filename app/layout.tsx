@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Poppins, Crimson_Text } from "next/font/google";
+import { Geist_Mono, Poppins, Crimson_Text, EB_Garamond } from "next/font/google";
 import { Theme } from "@astryxdesign/core/theme";
 import { y2kTheme } from "@astryxdesign/theme-y2k/built";
 import "@astryxdesign/theme-y2k/theme.css";
@@ -27,6 +27,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// EB Garamond : réservée à l'affichage en lecture seule du texte de cours
+// (LectureView/U25, vue chapitre de ChapterEditorScreen) — mappée sur
+// l'utilitaire Tailwind `font-serif` dans globals.css.
+const ebGaramond = EB_Garamond({
+  variable: "--font-eb-garamond",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "Learning Suite",
   description: "Apprentissage du droit : blurting, Feynman, révision espacée.",
@@ -40,7 +48,7 @@ export default function RootLayout({
   return (
     <html
       lang="fr"
-      className={`${poppins.variable} ${crimsonText.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${poppins.variable} ${crimsonText.variable} ${geistMono.variable} ${ebGaramond.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <Theme theme={y2kTheme} mode="system">

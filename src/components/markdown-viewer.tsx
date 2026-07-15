@@ -55,21 +55,21 @@ const headingClass: Record<number, string> = {
   6: "text-sm font-medium",
 };
 
-function renderBlock(node: RootContent, key: string): ReactNode {
+function renderBlock(node: RootContent, key: string, fontClassName?: string): ReactNode {
   const { start, end } = offsets(node);
   const anchorProps = { "data-md-start": start, "data-md-end": end };
 
   if (node.type === "heading") {
     const Tag = headingTag[node.depth - 1];
     return (
-      <Tag key={key} className={headingClass[node.depth]} {...anchorProps}>
+      <Tag key={key} className={cn(headingClass[node.depth], fontClassName)} {...anchorProps}>
         {renderInline(node.children as RootContent[], key)}
       </Tag>
     );
   }
   if (node.type === "paragraph") {
     return (
-      <p key={key} className="leading-relaxed" {...anchorProps}>
+      <p key={key} className={cn("leading-relaxed", fontClassName)} {...anchorProps}>
         {renderInline((node as Paragraph).children as RootContent[], key)}
       </p>
     );
@@ -80,7 +80,9 @@ function renderBlock(node: RootContent, key: string): ReactNode {
       <Tag key={key} className={cn("ml-6", node.ordered ? "list-decimal" : "list-disc")} {...anchorProps}>
         {node.children.map((item, i) => (
           <li key={`${key}-${i}`}>
-            {item.children.map((child, j) => renderBlock(child as RootContent, `${key}-${i}-${j}`))}
+            {item.children.map((child, j) =>
+              renderBlock(child as RootContent, `${key}-${i}-${j}`, fontClassName),
+            )}
           </li>
         ))}
       </Tag>
@@ -97,13 +99,13 @@ function renderBlock(node: RootContent, key: string): ReactNode {
   return null;
 }
 
-export function MarkdownViewer({ markdown }: { markdown: string }) {
+export function MarkdownViewer({ markdown, className }: { markdown: string; className?: string }) {
   const root = processor.parse(markdown) as Root;
   return (
-    <div className="max-w-none space-y-3 text-sm">
+    <div className={cn("max-w-none space-y-3 text-sm", className)}>
       {root.children
         .filter((node) => node.type !== "yaml")
-        .map((node, i) => renderBlock(node, `b${i}`))}
+        .map((node, i) => renderBlock(node, `b${i}`, className))}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { FileInput } from "@astryxdesign/core/FileInput";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { CourseEditor } from "@/components/course-editor";
+import { ScrollToBottomButton } from "@/components/scroll-to-bottom-button";
 import { AnomalyPanel } from "@/components/anomaly-panel";
 import { ConsequencesDialog } from "@/components/consequences-dialog";
 import { ConfirmDialog, StrongConfirmDialog } from "@/components/confirm-dialog";
@@ -117,7 +118,7 @@ export function ChapterEditorScreen({
                   : `${batchState.total} rubrique(s) générée(s), à valider.`}
             </p>
           )}
-          <MarkdownViewer markdown={initialMarkdown} />
+          <MarkdownViewer markdown={initialMarkdown} className="font-serif" />
           {/* USER_FLOW É6.4 : l'archivage est toujours proposé avant la suppression. */}
           <div className="flex items-center gap-2 border-t border-border pt-3">
             {statut === "actif" ? (
@@ -155,6 +156,7 @@ export function ChapterEditorScreen({
                 description="Sinon elle sera écrasée au prochain ré-import."
               />
               <CourseEditor initialMarkdown={initialMarkdown} onChange={setMarkdown} />
+              <ScrollToBottomButton />
             </>
           ) : (
             <>
