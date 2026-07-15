@@ -271,8 +271,22 @@ export async function start(userId: string, sectionId: string) {
   // `lecture` désormais, qu'il s'agisse d'une première étude ou d'une
   // répétition due (`type` ne pilote plus aucune branche, c'est un label pur —
   // badge, tri du Planificateur ADR 8).
-  const [cycle] = await db.insert(studyCycle).values({ userId, sectionId, type, etat: "lecture" }).returning();
-  return cycle;
+  try {
+    const [cycle] = await db.insert(studyCycle).values({ userId, sectionId, type, etat: "lecture" }).returning();
+    return cycle;
+  } catch (e) {
+    // Fenêtre de course entre la lecture ci-dessus et cet INSERT (deux devices
+    // qui démarrent une session au même instant) : la lecture seule ne suffit
+    // pas à l'empêcher (TOCTOU), seul l'index unique partiel
+    // (study_cycle_one_open_per_user, schema.ts) est atomique. Sans ce garde,
+    // l'appelant perdant reçoit une DrizzleQueryError brute au lieu du
+    // SessionAlreadyOpenError attendu — reproduit empiriquement via deux
+    // session.start() concurrentes sur le Docker local.
+    if ((e as { cause?: { code?: string } }).cause?.code === "23505") {
+      throw new SessionAlreadyOpenError();
+    }
+    throw e;
+  }
 }
 
 // terminerLecture (REVAMP v2, FUNCTIONS §3 S4) : transition SEULE `lecture →

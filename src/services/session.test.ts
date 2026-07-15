@@ -195,6 +195,27 @@ describe("session · S4 start", () => {
     await expect(session.start(userId, secB.id)).rejects.toThrow(session.SessionAlreadyOpenError);
   });
 
+  it("deux session.start() vraiment concurrentes (2 devices) : une seule gagne, l'autre reçoit SessionAlreadyOpenError, jamais une erreur DB brute", async () => {
+    // Promise.all (pas de await séquentiel) : les deux lectures peuvent passer
+    // avant que l'un des deux INSERT ne committe — seul l'index unique partiel
+    // (study_cycle_one_open_per_user) protège ce chemin, la vérification
+    // applicative seule (read-then-write) ne suffit pas (TOCTOU).
+    const secA = await createReadySection();
+    const secB = await createReadySection();
+    const results = await Promise.allSettled([session.start(userId, secA.id), session.start(userId, secB.id)]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(session.SessionAlreadyOpenError);
+
+    const openCycles = await db.query.studyCycle.findMany({
+      where: (c, { and, eq, isNull }) => and(eq(c.userId, userId), isNull(c.closedAt)),
+    });
+    expect(openCycles).toHaveLength(1);
+  });
+
   it("section en_revision : ouvre un cycle de type revision, en lecture comme toute répétition (fusion Machine B/C, 2026-07-15)", async () => {
     const sec = await createRevisionSection();
     const cycle = await session.start(userId, sec.id);
