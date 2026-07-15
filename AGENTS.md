@@ -34,7 +34,7 @@ Les documents de `src/docs/` gouvernent le code, jamais l'inverse :
 3. **Aucun appel OpenRouter hors de `src/llm/client.ts` (L0).** Clé API strictement serveur. Toute sortie LLM validée par un schéma zod de `src/llm/schemas/`.
 4. **Aucun prompt inline.** Les prompts vivent dans `/prompts/*.vN.md`, versionnés ; toute modification s'accompagne d'une entrée dans PROMPTS_CHANGELOG.md et d'un passage des evals.
 5. **Ne jamais modifier un test tagué `@canary`** ni assouplir une assertion pour « faire passer » — un canari rouge invalide la modification, pas le test. Le déplacement/renommage d'un canari requiert une autorisation humaine explicite.
-6. **Ne jamais réimplémenter un invariant.** Chaque invariant a UN propriétaire (FUNCTIONS §7) : session unique ouverte → SessionService ; rubrique valide requise → GuideService + contrainte DB ; gel des ReviewCards → ReviewService ; divulgation contrôlée → P10 côté serveur (les contenus masqués ne transitent JAMAIS vers le client) ; journalisation → AuditService.
+6. **Ne jamais réimplémenter un invariant.** Chaque invariant a UN propriétaire (FUNCTIONS §7) : session unique ouverte → SessionService ; rubrique valide requise → GuideService + contrainte DB ; gel des ReviewCards → ReviewService ; divulgation toujours complète en étude et révision (P10/`presentCorrection` supprimée — REVAMP.md v0.3, DECISIONS.md 2026-07-15, plus aucun contenu masqué à protéger) ; journalisation → AuditService.
 7. **Hors périmètre v1, refus par défaut** (ARCHITECTURE §12) : multi-utilisateur, génération de cas pratiques, audio temps réel, mobile natif, stats avancées, import PDF. Le proposer = scope creep.
 
 ## 3. Architecture — rappels opposables

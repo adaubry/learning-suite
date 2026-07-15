@@ -111,6 +111,7 @@ describe("chapter · S1.commitUpdate @canary", () => {
     await guide.validate(userId, g.id, [point()]);
 
     const cycle = await session.start(userId, sourcesSec.id);
+    await session.terminerLecture(userId, cycle.id); // REVAMP v2 : un cycle d'étude démarre en lecture, pas blurting
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({
         diff: [{ point_index: 1, statut: "manquant", explication: "Explication secrète" }],

@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { errorEntry, studySession, chapter, subject } from "@/db/schema";
 import { assertSectionOwnership } from "./guide";
-import type { MergedErrorCandidate, ErreurType } from "@/core/correction/presentCorrection";
+import type { MergedErrorCandidate, ErreurType } from "@/core/correction/verdict";
 
 // S7 · ErrorService (FUNCTIONS §3, §7) : le carnet. `activeFor`/`activeForSection`
 // (Bloc 5.1) servent les ContextBuilders L2/L3. Bloc 5.3 ajoute commitCandidates

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."study_cycle_etat" ADD VALUE 'lecture' BEFORE 'blurting';

@@ -4,7 +4,9 @@ import { buildFeynmanTurnContext } from "./feynmanTurn";
 // @canary L0/L4 : le ContextBuilder n'envoie ni plus ni moins que le contrat
 // ARCHITECTURE §9 ligne 5 — pas d'id de point/erreur/rubrique qui fuite.
 
-const EXPECTED_KEYS = ["points", "contenuSection", "erreursActives", "historique", "dernierTranscript"].sort();
+// REVAMP v2 (2026-07-15) ajoute `brouillon` au contrat : contexte élargi, pas un
+// canary anti-hallucination gelé — mis à jour ici avec le reste de l'étape.
+const EXPECTED_KEYS = ["points", "contenuSection", "erreursActives", "historique", "dernierTranscript", "brouillon"].sort();
 
 describe("buildFeynmanTurnContext", () => {
   it("n'expose exactement que les clés du contrat", () => {
@@ -14,6 +16,7 @@ describe("buildFeynmanTurnContext", () => {
       erreursActives: [{ type: "confusion", description: "x" }],
       historique: [{ role: "ia", texte: "Explique la notion." }],
       dernierTranscript: "Voici mon explication.",
+      brouillon: "Mon brouillon de blurting.",
     });
 
     expect(Object.keys(context).sort()).toEqual(EXPECTED_KEYS);
@@ -34,6 +37,7 @@ describe("buildFeynmanTurnContext", () => {
       erreursActives: [erreurBrute],
       historique: [],
       dernierTranscript: "…",
+      brouillon: "Brouillon.",
     });
 
     expect(context.points).toEqual([{ intitule: "Point", attendu: "Attendu", piegeAssocie: "Piège" }]);

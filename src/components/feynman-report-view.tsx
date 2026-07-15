@@ -3,16 +3,21 @@
 import { useState } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
+import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
 import type { FeynmanBilan } from "@/services/session";
+import type { Note } from "@/core/fsrs/fsrsCore";
 
-// U21 FeynmanReportView (FUNCTIONS §6.2, USER_FLOW É3.4) — bilan L5 : par point
+// U21 FeynmanReportView (FUNCTIONS §6.2, USER_FLOW É3.5) — bilan L5 : par point
 // de contrôle {démontré/récité/non abordé}, points solides, lacunes, verdict
-// proposé, actions (valider / refaire / revenir au blurting). Formulaires
-// natifs (pas de client JS requis pour la soumission elle-même) : la
-// « confirmation explicite » d'un bilan insuffisant (USER_FLOW É3.4) est un
-// bouton distinct, pas une case à cocher.
+// proposé, actions (refaire / revenir au blurting). Depuis la fusion Machine
+// B/C (2026-07-15) : `[Valider la section]` est remplacé par U18 FsrsRatingBar
+// — l'auto-note FSRS devient la condition nécessaire à la clôture de TOUT
+// cycle (1ʳᵉ étude ou Nᵉ révision), jamais le verdict LLM (ADR 3). Sur un bilan
+// insuffisant, la confirmation explicite (USER_FLOW É3.5) reste requise :
+// `validerAction` reçoit déjà l'information via son binding côté page (override
+// pré-calculé depuis `bilan.verdict`), le choix de la note EST cette confirmation.
 //
-// Les trois actions mutent le MÊME cycle (valider/refaire/revenir) — sans
+// Les trois actions mutent le MÊME cycle (noter/refaire/revenir) — sans
 // drapeau partagé, cliquer deux boutons en succession rapide envoie deux
 // mutations concurrentes ; l'une gagne, l'autre plante sur le garde d'état de
 // S4 (même classe d'incident que correction-view.tsx, constaté en usage).
@@ -26,13 +31,15 @@ const STATUT_LABEL: Record<string, string> = {
 export function FeynmanReportView({
   sectionTitre,
   bilan,
+  ratingPreview,
   validerAction,
   refaireAction,
   revenirAction,
 }: {
   sectionTitre: string;
   bilan: FeynmanBilan;
-  validerAction: (formData: FormData) => Promise<void>;
+  ratingPreview: Record<Note, { due: string }>;
+  validerAction: (note: Note, formData: FormData) => Promise<void>;
   refaireAction: () => Promise<void>;
   revenirAction: () => Promise<void>;
 }) {
@@ -84,17 +91,20 @@ export function FeynmanReportView({
         </div>
       )}
 
+      {bilan.verdict !== "acquis" && (
+        <p className="text-xs text-secondary">
+          Bilan insuffisant : choisir une note ci-dessous valide quand même la section (confirmation journalisée).
+        </p>
+      )}
+      <FsrsRatingBar
+        verdict={bilan.verdict}
+        preview={ratingPreview}
+        rateAction={validerAction}
+        disabled={submitting}
+        onSubmit={lockSubmit}
+      />
+
       <div className="flex flex-wrap gap-2">
-        {bilan.verdict === "acquis" ? (
-          <form action={validerAction} onSubmit={lockSubmit}>
-            <Button type="submit" size="sm" isDisabled={submitting} label="Valider la section" />
-          </form>
-        ) : (
-          <form action={validerAction} onSubmit={lockSubmit}>
-            <input type="hidden" name="override" value="true" />
-            <Button type="submit" size="sm" variant="secondary" isDisabled={submitting} label="Valider quand même (bilan insuffisant)" />
-          </form>
-        )}
         <form action={refaireAction} onSubmit={lockSubmit}>
           <Button type="submit" size="sm" variant="secondary" isDisabled={submitting} label="Refaire un Feynman" />
         </form>

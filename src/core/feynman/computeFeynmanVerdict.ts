@@ -2,7 +2,7 @@
 // les points CRITIQUES démontrés » — récité seul ne suffit pas pour un critique
 // (l'exigence supplémentaire du Feynman est l'explication, pas la restitution).
 // Calculé en code plutôt que retourné par le LLM, même doctrine que
-// core/correction/presentCorrection.computeVerdict (DECISIONS.md bloc 5.1).
+// core/correction/verdict.computeVerdict (DECISIONS.md bloc 5.1).
 
 export type PointType = "critique" | "important" | "secondaire";
 export type BilanPointStatut = "demontre" | "recite" | "non_aborde";

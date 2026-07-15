@@ -79,7 +79,8 @@ export function DailyQueue({
         const sectionId = item.kind === "re_file" ? item.itemId : item.sectionId;
         const info = infoById.get(sectionId);
         const itemType = item.kind === "re_file" ? item.itemType : item.kind === "revision" ? "revision" : "etude";
-        const commencerHref = itemType === "etude" ? `/etude/${sectionId}` : `/revision/${sectionId}`;
+        // Fusion Machine B/C (2026-07-15) : même route pour étude et révision.
+        const commencerHref = `/etude/${sectionId}`;
 
         return (
           <li key={keys[index]} className="flex items-center gap-3 rounded border border-border p-3">

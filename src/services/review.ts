@@ -86,17 +86,35 @@ export async function rate(userId: string, sectionId: string, note: Note) {
   return updated;
 }
 
+// createOrRate (fusion Machine B/C, 2026-07-15, DECISIONS.md) : seul point d'entrée
+// désormais appelé par S4.validateSection — plus de rateRevision séparée, toute
+// clôture de cycle (1ère validation ou Nᵉ répétition) passe ici. Compose
+// createCard+rate tels quels (canaris review.canary.test.ts intacts) : une carte
+// neuve ne doit jamais rester exposée sans note réelle appliquée par-dessus (son
+// `due` par défaut, via createEmptyCard, serait "maintenant").
+export async function createOrRate(userId: string, sectionId: string, note: Note) {
+  try {
+    await createCard(userId, sectionId);
+  } catch (e) {
+    if (!(e instanceof ReviewCardAlreadyExistsError)) throw e;
+  }
+  return rate(userId, sectionId, note);
+}
+
 // Idempotent : geler une carte déjà gelée (ou dégeler une carte déjà dégelée,
 // ou une section sans ReviewCard) est un no-op silencieux — trois appelants
 // (S1.archive, S2.setImportance(1), la cascade) n'ont pas à vérifier l'état
 // avant d'appeler.
 // Simulation sans effet de bord des 4 notes (U18 FsrsRatingBar, Bloc 6.4) — la
-// même fonction pure P9 que `rate` utilise, juste sans écriture en base.
+// même fonction pure P9 que `rate` utilise, juste sans écriture en base. Depuis
+// la fusion Machine B/C (2026-07-15) : fonctionne aussi SANS ReviewCard
+// existante (1ʳᵉ validation d'une section — le bilan Feynman y est désormais
+// obligatoire) en simulant depuis un état neuf, comme `createOrRate` le ferait.
 export async function preview(userId: string, sectionId: string): Promise<Record<Note, CardState>> {
   await assertSectionOwnership(sectionId, userId);
   const card = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sectionId) });
-  if (!card) throw new NoReviewCardError();
-  return previewIntervals(toState(card), new Date());
+  const state = card ? toState(card) : createInitialState(new Date());
+  return previewIntervals(state, new Date());
 }
 
 export async function freeze(userId: string, sectionId: string) {

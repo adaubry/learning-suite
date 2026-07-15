@@ -1,4 +1,4 @@
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { studyCycle, studySession, correctionGuide, section, reviewCard, chapter } from "@/db/schema";
 import { assertSectionOwnership } from "./guide";
@@ -15,23 +15,20 @@ import { feynmanTurn as feynmanTurnLLM } from "@/llm/feynmanTurn";
 import { buildFeynmanBilanContext } from "@/llm/context/feynmanBilan";
 import { feynmanReport as feynmanReportLLM } from "@/llm/feynmanReport";
 import { computeFeynmanVerdict } from "@/core/feynman/computeFeynmanVerdict";
-import {
-  computeVerdict,
-  presentCorrection,
-  type MergedDiffPoint,
-  type MergedErrorCandidate,
-  type FilteredCorrection,
-} from "@/core/correction/presentCorrection";
+import { computeVerdict, type MergedDiffPoint, type MergedErrorCandidate } from "@/core/correction/verdict";
 import type { GuideOutput, ControlPoint } from "@/llm/schemas/guide";
 import type { Note } from "@/core/fsrs/fsrsCore";
 import type { EmphasisSegment } from "@/core/parser/types";
 
-// S4 · SessionService (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2 + 6.4 + 7.1 + 7.2) :
-// start / submitBlurting / resolveOutcome (retenter, reveler) / abandon /
-// validateSection / rateRevision / transcribe (L6, Bloc 7.1) / beginFeynman,
-// openingTurn, feynmanTurn, closeFeynman, beginRestartFeynman, returnToBlurting
-// (L4/L5, Bloc 7.2 — restriction « Feynman requis si importance ≥ 3 » rétablie
-// dans validateSection).
+// S4 · SessionService (FUNCTIONS §3, §7 ; PLAN Bloc 5.1 + 6.2 + 6.4 + 7.1 + 7.2 ;
+// REVAMP v2 2026-07-15 ; fusion Machine B/C 2026-07-15, DECISIONS.md) : start
+// (TOUT cycle démarre en `lecture`, étude ou révision) / terminerLecture /
+// lectureContext / submitBlurting (2 passes max, uniforme) / resolveOutcome
+// (relire, boucle vers lecture) / abandon / validateSection (Feynman
+// obligatoire toute importance 2 à 5 + auto-note FSRS obligatoire pour clore,
+// S6.createOrRate — remplace `rateRevision`, supprimée) / transcribe (L6,
+// Bloc 7.1) / beginFeynman (inconditionnel), openingTurn, feynmanTurn (brouillon
+// injecté), closeFeynman, beginRestartFeynman, returnToBlurting (L4/L5).
 
 export class SectionNotReadyError extends Error {
   constructor() {
@@ -98,6 +95,17 @@ async function activeErreursForFeynman(sectionId: string, subjectId: string) {
 // (chacune : { input: transcript étudiant (vide pour le tour d'ouverture),
 // correction: { relance: string } }) — ordre chronologique, une session = au
 // plus une paire {étudiant?, ia}.
+// REVAMP v2 (2026-07-15) : dernier brouillon de blurting soumis pour ce cycle,
+// injecté dans le contexte Feynman (§9 ligne 5) — les relances se construisent
+// comme un développement progressif de ce texte, pas une exploration libre.
+async function loadLatestBlurtingInput(cycleId: string): Promise<string> {
+  const rows = await db.query.studySession.findMany({
+    where: and(eq(studySession.cycleId, cycleId), eq(studySession.type, "blurting")),
+    orderBy: (s, { desc }) => [desc(s.createdAt)],
+  });
+  return rows[0]?.input ?? "";
+}
+
 async function loadFeynmanTours(cycleId: string): Promise<FeynmanTour[]> {
   const sessions = await db.query.studySession.findMany({
     where: and(eq(studySession.cycleId, cycleId), eq(studySession.type, "feynman")),
@@ -160,19 +168,17 @@ type ErreursActives = Awaited<ReturnType<typeof errorService.activeForSection>>;
 
 // Cœur partagé par submitBlurting (première tentative) et retryCorrection (échec
 // LLM rejoué sans re-saisie, USER_FLOW É3.2) : appelle L3, résout point_index/
-// recidive_index vers les vraies données, calcule le verdict, persiste, applique
-// P10. `sessionId` désigne la ligne DÉJÀ sauvegardée (input toujours en base
-// avant cet appel — FUNCTIONS §7) ; cette fonction ne fait qu'un UPDATE dessus.
-// `cycleType` tranche `retryAttendu` (P10.DivulgationContext) : en révision, la
-// divulgation est complète d'emblée quel que soit le verdict (ARCHITECTURE §6,
-// P10 ne fait qu'appliquer ce que S4 décide).
+// recidive_index vers les vraies données, calcule le verdict, persiste. Divulgation
+// toujours complète (REVAMP v2, 2026-07-15 : `presentCorrection`/P10 supprimé,
+// plus aucun filtrage à appliquer — déjà écrite "complete" à l'insert, cf.
+// submitBlurting). `sessionId` désigne la ligne DÉJÀ sauvegardée (input toujours
+// en base avant cet appel — FUNCTIONS §7) ; cette fonction ne fait qu'un UPDATE dessus.
 async function runCorrection(
   sessionId: string,
   input: string,
   tentative: number,
   points: ControlPoint[],
   erreursActives: ErreursActives,
-  cycleType: "etude" | "revision",
 ) {
   const context = buildCorrectionContext({
     points,
@@ -197,19 +203,14 @@ async function runCorrection(
   }));
 
   const verdict = computeVerdict(diff);
-  const retryAttendu = cycleType === "etude" && verdict === "insuffisant";
-  const divulgation = retryAttendu ? "controlee" : "complete";
 
   const [updated] = await db
     .update(studySession)
-    .set({ correction: { diff, erreursCandidates }, verdictLlm: verdict, verdictFinal: verdict, divulgation })
+    .set({ correction: { diff, erreursCandidates }, verdictLlm: verdict, verdictFinal: verdict })
     .where(eq(studySession.id, sessionId))
     .returning();
 
-  // P10 appliqué ici, côté serveur exclusivement : les champs masqués ne sont
-  // jamais construits pour le client (ARCHITECTURE §7).
-  const filtered = presentCorrection({ diff, erreursCandidates }, { verdict, retryAttendu });
-  return { cycleId: updated.cycleId, sessionId, tentative, ...filtered };
+  return { cycleId: updated.cycleId, sessionId, tentative, verdict, diff, erreursCandidates };
 }
 
 // Vérifie la rubrique via S3 (section `prete`/`en_revision` ⇒ rubrique valide,
@@ -266,8 +267,42 @@ export async function start(userId: string, sectionId: string) {
     if (!card || card.gelee) throw new SectionNotReadyError();
   }
 
-  const [cycle] = await db.insert(studyCycle).values({ userId, sectionId, type, etat: "blurting" }).returning();
+  // Fusion Machine B/C (2026-07-15, DECISIONS.md) : TOUT cycle démarre en
+  // `lecture` désormais, qu'il s'agisse d'une première étude ou d'une
+  // répétition due (`type` ne pilote plus aucune branche, c'est un label pur —
+  // badge, tri du Planificateur ADR 8).
+  const [cycle] = await db.insert(studyCycle).values({ userId, sectionId, type, etat: "lecture" }).returning();
   return cycle;
+}
+
+// terminerLecture (REVAMP v2, FUNCTIONS §3 S4) : transition SEULE `lecture →
+// blurting`, même patron que beginFeynman — appelée depuis les deux écrans de
+// lecture (initiale et relecture ciblée), un seul point d'entrée. La lecture
+// est structurelle (pas de minuteur) : ce garde d'état est ce qui empêche de
+// sauter l'étape, pas une contrainte de durée.
+export async function terminerLecture(userId: string, cycleId: string): Promise<void> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "lecture") throw new WrongCycleStateError("Cette session n'est pas en lecture.");
+  await db.update(studyCycle).set({ etat: "blurting" }).where(eq(studyCycle.id, cycleId));
+}
+
+export type LectureContext =
+  | { tentative: 1; diff: null }
+  | { tentative: 2; diff: MergedDiffPoint[] };
+
+// lectureContext (REVAMP v2) : ce qu'il faut pour rendre l'écran de lecture —
+// la tentative à venir (1 = lecture initiale, texte seul ; 2 = relecture
+// ciblée, texte + diff de la correction_1 en vis-à-vis, §2.7 REVAMP.md).
+export async function lectureContext(userId: string, cycleId: string): Promise<LectureContext> {
+  const cycle = await loadOwnedOpenCycle(userId, cycleId);
+  if (cycle.etat !== "lecture") throw new WrongCycleStateError("Cette session n'est pas en lecture.");
+
+  const tentative = await nextTentative(cycleId);
+  if (tentative === 1) return { tentative, diff: null };
+
+  const latest = await loadLatestSession(cycleId);
+  const { diff } = latest!.correction as { diff: MergedDiffPoint[] };
+  return { tentative: 2, diff };
 }
 
 // Sauvegarde AVANT tout appel LLM (FUNCTIONS §7) : la tentative est persistée
@@ -283,6 +318,13 @@ export async function submitBlurting(userId: string, cycleId: string, blurtingTe
   const points = (guide.contenu as GuideOutput).points;
 
   const tentative = await nextTentative(cycleId);
+  // REVAMP v2 (2026-07-15, rupture B) + fusion Machine B/C (2026-07-15) :
+  // exactement 2 passes de blurting max, la 2ᵉ immédiate dans la même séance
+  // (jamais de re-file) — s'applique désormais uniformément, plus de
+  // distinction étude/révision (`cycle.type` n'est qu'un label).
+  if (tentative > 2) {
+    throw new WrongCycleStateError("Deux tentatives de blurting maximum.");
+  }
 
   // ARCHITECTURE §9 ligne 3+4 : erreurs actives DE LA SECTION (pas de la matière,
   // contrairement à L2) — détection de récidive sur ce périmètre précis.
@@ -298,13 +340,16 @@ export async function submitBlurting(userId: string, cycleId: string, blurtingTe
       type: "blurting",
       tentative,
       input: blurtingText,
-      divulgation: "controlee",
+      // Divulgation toujours complète (REVAMP v2) : littéral, plus de logique
+      // conditionnelle — la colonne reste pour la fidélité des lignes v1
+      // historiques (ARCHITECTURE §8), jamais relue en logique désormais.
+      divulgation: "complete",
     })
     .returning();
 
   await db.update(studyCycle).set({ etat: "correction" }).where(eq(studyCycle.id, cycleId));
 
-  return runCorrection(savedSession.id, blurtingText, tentative, points, erreursActives, cycle.type);
+  return runCorrection(savedSession.id, blurtingText, tentative, points, erreursActives);
 }
 
 // USER_FLOW É3.2 : « le blurting est TOUJOURS sauvegardé d'abord ; [Relancer la
@@ -325,16 +370,24 @@ export async function retryCorrection(userId: string, cycleId: string) {
 
   const erreursActives = await errorService.activeForSection(cycle.sectionId);
 
-  return runCorrection(latest.id, latest.input, latest.tentative, points, erreursActives, cycle.type);
+  return runCorrection(latest.id, latest.input, latest.tentative, points, erreursActives);
 }
 
 export type CurrentCorrection =
   | { status: "pending"; cycleId: string; sessionId: string; tentative: number }
-  | ({ status: "ready"; cycleId: string; sessionId: string; tentative: number } & FilteredCorrection);
+  | {
+      status: "ready";
+      cycleId: string;
+      sessionId: string;
+      tentative: number;
+      verdict: "acquis" | "insuffisant";
+      diff: MergedDiffPoint[];
+      erreursCandidates: MergedErrorCandidate[];
+    };
 
 // Re-sert une correction déjà persistée (reprise d'un rechargement de l'écran) —
-// aucun appel LLM ici, seulement une ré-application de P10 sur le JSON déjà en
-// base, avec la divulgation déjà tranchée (`StudySession.divulgation`).
+// aucun appel LLM ici, seulement une relecture du JSON déjà en base (divulgation
+// toujours complète, REVAMP v2 : plus de filtrage à ré-appliquer).
 export async function getCurrentCorrection(userId: string, cycleId: string): Promise<CurrentCorrection> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction pour ce cycle.");
@@ -350,72 +403,40 @@ export async function getCurrentCorrection(userId: string, cycleId: string): Pro
     diff: MergedDiffPoint[];
     erreursCandidates: MergedErrorCandidate[];
   };
-  const filtered = presentCorrection(
-    { diff, erreursCandidates },
-    { verdict: latest.verdictFinal!, retryAttendu: latest.divulgation === "controlee" },
-  );
-  return { status: "ready", cycleId, sessionId: latest.id, tentative: latest.tentative, ...filtered };
+  return { status: "ready", cycleId, sessionId: latest.id, tentative: latest.tentative, verdict: latest.verdictFinal!, diff, erreursCandidates };
 }
 
-export type ResolveOutcome = "retenter" | "reveler";
-
-export type ResolveOutcomeResult =
-  | { outcome: "retenter" }
-  | ({ outcome: "reveler" } & FilteredCorrection);
-
-// 2 branches ce bloc (retenter, reveler) — "passer au Feynman" attend Phase 7
-// (L4/L5), "valider sans Feynman" attend Phase 6 (S6.createCard). RefileItem
-// écrit directement par S4 : S5 n'existe pas encore, la donnée précède l'écran
-// (PLAN Bloc 5.2 ; DECISIONS.md bloc 5.1 — propriété migrera vers S5.refile).
-//
-// Les deux branches font boucler le cycle vers `blurting` (la prochaine tentative
-// attend la re-file, jamais un retry immédiat) — mais `reveler` doit d'abord
-// montrer les réponses : renvoyer la vue complètement divulguée ICI évite de la
-// re-lire ensuite via getCurrentCorrection, qui exigerait `etat: correction` déjà
-// quitté à ce point.
+// resolveOutcome (REVAMP v2, 2026-07-15, rupture B) : [Relire, puis refaire un
+// blurting] depuis l'écran de correction — n'est acceptée qu'à la 1ʳᵉ tentative
+// (pas de 3ᵉ passe, cf. submitBlurting) ; boucle vers `lecture` (relecture
+// ciblée, pas directement `blurting`), IMMÉDIATEMENT dans la même séance —
+// aucun appel à `plannerService.refile`, jamais de re-file/délai en étude.
+// Le verdict n'y conditionne plus rien (informatif, ARCHITECTURE §5) : cette
+// issue est disponible quel que soit le verdict. La branche `reveler` disparaît
+// (divulgation déjà complète, rien à révéler) ; `[Abandonner]` depuis cet écran
+// est un appel direct à `abandon`, pas une branche ici.
 export async function resolveOutcome(
   userId: string,
   cycleId: string,
-  outcome: ResolveOutcome,
   rejectedCandidateIndexes: number[] = [],
-): Promise<ResolveOutcomeResult> {
+): Promise<void> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à résoudre.");
 
   const latest = await loadLatestSession(cycleId);
   if (!latest || latest.correction === null) throw new WrongCycleStateError("Aucune correction disponible.");
-  if (latest.verdictFinal !== "insuffisant") {
-    throw new WrongCycleStateError("Cette issue ne s'applique qu'à un verdict insuffisant.");
+  if (latest.tentative !== 1) {
+    throw new WrongCycleStateError("Une seule relecture est possible : la 2ᵉ tentative est déjà atteinte.");
   }
 
-  // USER_FLOW É3.2 « Règle de commit » : quitter l'écran (ici : retenter/révéler)
+  // USER_FLOW É3.3 « Règle de commit » : quitter l'écran (ici : relire/refaire)
   // commit les candidates — acceptées explicitement ou non statuées, jamais les
   // rejetées (S7.commitCandidates, Bloc 5.3).
   await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
 
-  let result: ResolveOutcomeResult = { outcome: "retenter" };
-
-  if (outcome === "reveler") {
-    await db.update(studySession).set({ divulgation: "complete" }).where(eq(studySession.id, latest.id));
-    await auditService.logEvent("revelation_correction", "study_session", latest.id);
-
-    const { diff, erreursCandidates } = latest.correction as {
-      diff: MergedDiffPoint[];
-      erreursCandidates: MergedErrorCandidate[];
-    };
-    const filtered = presentCorrection({ diff, erreursCandidates }, { verdict: latest.verdictFinal, retryAttendu: false });
-    result = { outcome: "reveler", ...filtered };
-  }
-
-  // jamais de retry immédiat (ARCHITECTURE §5) : le prochain blurting attend la
-  // re-file intra-journée, jamais la soumission courante.
-  await plannerService.refile("etude", cycle.sectionId);
-
-  // boucle vers blurting_en_cours (machine B) : le cycle reste ouvert, seule une
-  // nouvelle tentative (tentative n+1) peut le refermer.
-  await db.update(studyCycle).set({ etat: "blurting" }).where(eq(studyCycle.id, cycleId));
-
-  return result;
+  // boucle vers lecture_2 (relecture ciblée) : le cycle reste ouvert, seule une
+  // nouvelle tentative (tentative n+1) peut le faire progresser.
+  await db.update(studyCycle).set({ etat: "lecture" }).where(eq(studyCycle.id, cycleId));
 }
 
 export async function abandon(userId: string, cycleId: string) {
@@ -424,32 +445,25 @@ export async function abandon(userId: string, cycleId: string) {
   return { ok: true as const };
 }
 
-// beginFeynman (FUNCTIONS §3 S4 « feynman » ; USER_FLOW É3.2 [Passer au Feynman] /
-// [Passer au Feynman quand même] ; PLAN Bloc 7.2) : quitte l'écran de correction
-// vers le dialogue — même « Règle de commit » que les autres sorties d'É3.2
-// (retenter/révéler/terminer), donc commit des candidates ICI (jamais rejoué
-// ensuite sur cette même session, doctrine S7.commitCandidates). Verdict
-// insuffisant ⇒ override obligatoire, journalisé (`override_verdict`, distinct de
-// `validation_sur_insuffisant` qui couvre le bilan à la clôture, É3.4). Guard +
-// transition SEULE (pas de génération) : appelée depuis un Server Action classique
-// (redirect), pas depuis la route de streaming — laisse le tour d'ouverture
-// streamer séparément une fois sur l'écran Feynman (openingTurn), pour un vrai
-// streaming dès la première relance (pas seulement les suivantes).
-export async function beginFeynman(
-  userId: string,
-  cycleId: string,
-  rejectedCandidateIndexes: number[] = [],
-  override = false,
-): Promise<void> {
+// beginFeynman (FUNCTIONS §3 S4 « feynman » ; USER_FLOW É3.3 [Passer au Feynman] ;
+// PLAN Bloc 7.2, REVAMP v2 2026-07-15 rupture C) : quitte l'écran de correction
+// vers le dialogue — même « Règle de commit » que les autres sorties d'É3.3
+// (relire+refaire/terminer), donc commit des candidates ICI (jamais rejoué
+// ensuite sur cette même session, doctrine S7.commitCandidates). Transition
+// INCONDITIONNELLE, quel que soit le verdict : plus de garde, plus d'override,
+// plus de journalisation à ce point (le verdict informe, il ne bloque plus
+// rien — ARCHITECTURE §5). Guard + transition SEULE (pas de génération) :
+// appelée depuis un Server Action classique (redirect), pas depuis la route de
+// streaming — laisse le tour d'ouverture streamer séparément une fois sur
+// l'écran Feynman (openingTurn), pour un vrai streaming dès la première
+// relance (pas seulement les suivantes).
+export async function beginFeynman(userId: string, cycleId: string, rejectedCandidateIndexes: number[] = []): Promise<void> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à quitter vers le Feynman.");
 
   const latest = await loadLatestSession(cycleId);
   if (!latest || latest.correction === null) throw new WrongCycleStateError("Aucune correction disponible.");
-  if (latest.verdictFinal === "insuffisant") {
-    if (!override) throw new WrongCycleStateError("Verdict insuffisant : confirmation explicite requise.");
-    await auditService.logEvent("override_verdict", "study_session", latest.id);
-  }
+
   await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
 
   await db.update(studyCycle).set({ etat: "feynman" }).where(eq(studyCycle.id, cycleId));
@@ -483,9 +497,10 @@ export async function* feynmanTurn(userId: string, cycleId: string, transcript: 
   const sec = await db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) });
   if (!sec) throw new SectionNotReadyError();
   const subjectId = await subjectIdForSection(cycle.sectionId);
-  const [erreursActives, historique] = await Promise.all([
+  const [erreursActives, historique, brouillon] = await Promise.all([
     activeErreursForFeynman(cycle.sectionId, subjectId),
     loadFeynmanTours(cycleId),
+    loadLatestBlurtingInput(cycleId),
   ]);
 
   const context = buildFeynmanTurnContext({
@@ -494,6 +509,7 @@ export async function* feynmanTurn(userId: string, cycleId: string, transcript: 
     erreursActives: erreursActives.map((e) => ({ type: e.type, description: e.description })),
     historique,
     dernierTranscript: transcript,
+    brouillon,
   });
   yield* streamAndPersistTurn(cycleId, cycle.sectionId, guide.id, sec.chapterVersion, transcript, context);
 }
@@ -560,61 +576,44 @@ export async function returnToBlurting(userId: string, cycleId: string) {
   return { ok: true as const };
 }
 
-// validateSection (FUNCTIONS §3 S4 ; PLAN Bloc 6.2 + 7.2, remplace le raccourci
-// terminerSessionTemporaire — DECISIONS.md bloc 5.1) : décision utilisateur →
-// section `validee`, ReviewCard créée (S6.createCard) → section `en_revision`
-// (Machine A, ARCHITECTURE §4), cycle refermé. Feynman requis si importance ≥ 3
-// (bypass temporaire du Bloc 6.2 levé, ARCHITECTURE §5 Machine B) : deux chemins
-// — `etat: correction` (sans Feynman, importance < 3 seulement, verdict blurting
-// acquis) ou `etat: bilan` (après Feynman, verdict du bilan acquis, ou insuffisant
-// avec confirmation explicite journalisée `validation_sur_insuffisant`, USER_FLOW
-// É3.4). Le commit des erreurs candidates du BLURTING est déjà fait par
-// beginFeynman en entrant en Feynman (jamais rejoué ici sur le chemin bilan —
-// doctrine S7.commitCandidates : jamais deux fois sur la même session).
-export async function validateSection(
-  userId: string,
-  cycleId: string,
-  rejectedCandidateIndexes: number[] = [],
-  override = false,
-) {
+// validateSection (FUNCTIONS §3 S4 ; PLAN Bloc 6.2 + 7.2, REVAMP v2 2026-07-15
+// rupture E ; fusion Machine B/C 2026-07-15, DECISIONS.md) : décision utilisateur
+// → section `validee`/`en_revision`, cycle refermé. Feynman obligatoire pour
+// toute importance 2 à 5, `etat: bilan` requis. Bilan insuffisant ⇒ confirmation
+// explicite journalisée `validation_sur_insuffisant` (inchangé — seul le garde
+// sur le verdict de *blurting* a disparu avec REVAMP v2, pas celui du *bilan*).
+// **Auto-note FSRS désormais obligatoire pour clore** (remplace `rateRevision`,
+// supprimée) : `S6.createOrRate` crée la ReviewCard si c'est la 1ʳᵉ validation de
+// la section, sinon note l'existante (historique FSRS — stability/difficulty/
+// lapses — jamais réinitialisé) ; un seul chemin, quelle que soit la Nᵉ fois.
+// `Again` ⇒ re-file intra-journée (assumé malgré le coût désormais plus élevé
+// d'un cycle complet à rejouer) ; le mécanisme v1 « 2 Again consécutifs ⇒ retour
+// prete » disparaît — il n'existait que pour retomber sur une version allégée
+// du cycle (Machine C), qui n'existe plus.
+export async function validateSection(userId: string, cycleId: string, note: Note, override = false) {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   const sec = await db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) });
   if (!sec) throw new SectionNotReadyError();
 
-  if (cycle.etat === "bilan") {
-    const bilan = cycle.bilanFeynman as FeynmanBilan | null;
-    if (!bilan) throw new WrongCycleStateError("Aucun bilan Feynman disponible.");
-    if (bilan.verdict !== "acquis") {
-      if (!override) {
-        throw new WrongCycleStateError("Bilan insuffisant : confirmation explicite requise pour valider.");
-      }
-      await auditService.logEvent("validation_sur_insuffisant", "study_cycle", cycleId);
+  if (cycle.etat !== "bilan") {
+    throw new WrongCycleStateError("Le bilan Feynman est requis pour valider la section.");
+  }
+  const bilan = cycle.bilanFeynman as FeynmanBilan | null;
+  if (!bilan) throw new WrongCycleStateError("Aucun bilan Feynman disponible.");
+  if (bilan.verdict !== "acquis") {
+    if (!override) {
+      throw new WrongCycleStateError("Bilan insuffisant : confirmation explicite requise pour valider.");
     }
-  } else {
-    if (sec.importance >= 3) {
-      throw new WrongCycleStateError("Feynman requis pour valider une section d'importance ≥ 3.");
-    }
-    const latest = await loadLatestSession(cycleId);
-    if (!latest || latest.verdictFinal !== "acquis") {
-      throw new WrongCycleStateError("validateSection exige un verdict final acquis.");
-    }
-    // Même règle de commit qu'à la sortie via resolveOutcome (USER_FLOW É3.2).
-    await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
+    await auditService.logEvent("validation_sur_insuffisant", "study_cycle", cycleId);
   }
 
   await db.update(section).set({ statut: "validee" }).where(eq(section.id, cycle.sectionId));
-
-  // Une ReviewCard peut déjà exister : section repassée `prete` après 2×Again
-  // (Machine C) puis re-étudiée avec succès. Décision tranchée avec l'humain
-  // (récitation Bloc 6.4) : on conserve la carte existante (historique FSRS —
-  // stability/difficulty/lapses — jamais réinitialisé), on ne fait qu'ignorer
-  // l'erreur d'unicité plutôt que la lever à l'appelant.
-  try {
-    await reviewService.createCard(userId, cycle.sectionId);
-  } catch (e) {
-    if (!(e instanceof reviewService.ReviewCardAlreadyExistsError)) throw e;
-  }
+  await reviewService.createOrRate(userId, cycle.sectionId, note);
   await db.update(section).set({ statut: "en_revision" }).where(eq(section.id, cycle.sectionId));
+
+  if (note === "again") {
+    await plannerService.refile(cycle.type, cycle.sectionId);
+  }
 
   await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
   return { ok: true as const };
@@ -634,60 +633,4 @@ export async function transcribe(userId: string, cycleId: string, audioBase64: s
   const context = buildTranscriptionContext({ section: { titre: sec.titre, segmentsGras } });
 
   return transcribeAudio(context, audioBase64, audioFormat);
-}
-
-// rateRevision (FUNCTIONS §3 S4 ; ARCHITECTURE §6 Machine C ; PLAN Bloc 6.4) :
-// auto-note utilisateur → S6.rate (jamais le verdict LLM, ADR 3) ; Again ⇒
-// re-file intra-journée (S5.refile) ; 2ᵉ Again CONSÉCUTIF (la révision
-// précédente de cette section était elle aussi notée Again) ⇒ section `prete`,
-// retour en étude complète (Machine A). Contrairement à l'étude, une révision
-// ne boucle jamais sur le même cycle (pas de retry — divulgation déjà complète
-// dès la correction) : chaque révision ferme son propre StudyCycle.
-export async function rateRevision(
-  userId: string,
-  cycleId: string,
-  note: Note,
-  rejectedCandidateIndexes: number[] = [],
-) {
-  const cycle = await loadOwnedOpenCycle(userId, cycleId);
-  if (cycle.type !== "revision") {
-    throw new WrongCycleStateError("rateRevision ne s'applique qu'à un cycle de révision.");
-  }
-  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à noter.");
-
-  const latest = await loadLatestSession(cycleId);
-  if (!latest || latest.correction === null) throw new WrongCycleStateError("Aucune correction disponible.");
-
-  await errorService.commitCandidates(userId, latest.id, rejectedCandidateIndexes);
-  await db.update(studySession).set({ noteFsrs: note }).where(eq(studySession.id, latest.id));
-  await reviewService.rate(userId, cycle.sectionId, note);
-
-  let secondConsecutiveAgain = false;
-  if (note === "again") {
-    const previousCycle = await db.query.studyCycle.findFirst({
-      where: and(
-        eq(studyCycle.userId, userId),
-        eq(studyCycle.sectionId, cycle.sectionId),
-        eq(studyCycle.type, "revision"),
-        ne(studyCycle.id, cycleId),
-      ),
-      orderBy: (c, { desc }) => [desc(c.closedAt)],
-    });
-    const previousSession =
-      previousCycle &&
-      (await db.query.studySession.findFirst({
-        where: eq(studySession.cycleId, previousCycle.id),
-        orderBy: (s, { desc }) => [desc(s.createdAt)],
-      }));
-    secondConsecutiveAgain = previousSession?.noteFsrs === "again";
-  }
-
-  if (secondConsecutiveAgain) {
-    await db.update(section).set({ statut: "prete" }).where(eq(section.id, cycle.sectionId));
-  } else if (note === "again") {
-    await plannerService.refile("revision", cycle.sectionId);
-  }
-
-  await db.update(studyCycle).set({ closedAt: new Date(), etat: "clos" }).where(eq(studyCycle.id, cycleId));
-  return { ok: true as const };
 }

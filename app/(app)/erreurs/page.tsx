@@ -5,7 +5,7 @@ import { requireUserId } from "@/lib/auth";
 import { listSubjects } from "@/services/account";
 import * as errorService from "@/services/error";
 import { ErrorNotebook, type NotebookFilters } from "@/components/error-notebook";
-import type { ErreurType } from "@/core/correction/presentCorrection";
+import type { ErreurType } from "@/core/correction/verdict";
 import { resolveErrorAction, editErrorAction, deleteErrorAction } from "./actions";
 
 const ERREUR_TYPES = ["omission", "deformation", "confusion", "imprecision"] as const;

@@ -34,10 +34,19 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await client`delete from queue_order`;
-  await client`delete from refile_item`;
-  await client`delete from deferral_log`;
+  // Dates explicitement écrites dans queue_order par ce fichier (reorder + purge
+  // de l'ordre manuel) — table mono-utilisateur sans owner, scopée par date plutôt
+  // que par un `delete from` sans condition (corrompait des tests d'autres fichiers
+  // tournant en parallèle sur la même Postgres réelle, incident constaté).
+  await client`delete from queue_order where date in ('2026-07-08', '2026-07-10', '2026-07-12')`;
   for (const id of createdUserIds) {
+    // ponytail: refile_item/deferral_log sont mono-utilisateur (pas de user_id) —
+    // un `delete from` sans condition wipe aussi les lignes d'AUTRES fichiers de
+    // test tournant en parallèle sur la même Postgres réelle (incident constaté :
+    // corrompait le canary session.canary.test.ts). Scopé ici via les sections de
+    // CET utilisateur de test, même patron que les autres tables ci-dessous.
+    await client`delete from refile_item where item_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
+    await client`delete from deferral_log where item_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
     await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;

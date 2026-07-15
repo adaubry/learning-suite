@@ -46,6 +46,7 @@ export const correctionGuideStatutEnum = pgEnum("correction_guide_statut", [
 export const studyCycleTypeEnum = pgEnum("study_cycle_type", ["etude", "revision"]);
 export const studyCycleEtatEnum = pgEnum("study_cycle_etat", [
   "rubrique_a_valider",
+  "lecture",
   "blurting",
   "correction",
   "feynman",

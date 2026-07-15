@@ -1,33 +1,29 @@
 "use client";
 
-import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Badge } from "@astryxdesign/core/Badge";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
-import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
-import type { FilteredDiffPoint, FilteredErrorCandidate } from "@/core/correction/presentCorrection";
-import type { ResolveOutcomeResult } from "@/services/session";
-import type { Note } from "@/core/fsrs/fsrsCore";
+import type { MergedDiffPoint, MergedErrorCandidate } from "@/core/correction/verdict";
 
-// U16 CorrectionView (FUNCTIONS §6.2, USER_FLOW É3.2/É4.2) — rend exactement ce
-// que P10 a laissé passer : par construction, ce composant ne peut pas révéler
-// ce que le serveur n'a pas envoyé (aucun champ masqué n'existe côté client tant
-// que `revelerAction` n'a pas répondu). Boutons d'issue selon le contexte :
-// étude insuffisant → retenter/révéler/passer au Feynman quand même (override) ;
-// étude acquis → valider sans Feynman (importance < 3 seulement) et/ou passer au
-// Feynman (Bloc 7.2) ; révision (`mode="revision"`) → U18 FsrsRatingBar à la
-// place, la divulgation étant déjà complète d'emblée côté serveur (ARCHITECTURE
-// §6, aucune branche retenter/révéler n'a de sens ici).
+// U16 CorrectionView (FUNCTIONS §6.2, USER_FLOW É3.3, REVAMP v2 2026-07-15 +
+// fusion Machine B/C 2026-07-15) — diff toujours affiché en entier (divulgation
+// toujours complète, P10 supprimé) ; verdict proposé purement informatif, ne
+// conditionne plus les boutons. Boutons d'issue selon la TENTATIVE : n°1 →
+// relire+refaire / Feynman / abandonner ; n°2 (dernière possible) → Feynman /
+// abandonner. Seul écran de correction depuis la fusion Machine B/C — étude ET
+// révision y passent identiquement (U18 FsrsRatingBar a déménagé sur le bilan,
+// É3.5, condition de clôture de tout cycle plutôt qu'alternative ici).
 
-const statutIcon: Record<FilteredDiffPoint["statut"], string> = {
+const statutIcon: Record<MergedDiffPoint["statut"], string> = {
   couvert: "✅",
   manquant: "❌",
   deforme: "⚠️",
 };
 
-// Exporté : réutilisé par la vue session lecture seule (/session/[id], U24).
-export function DiffList({ diff }: { diff: FilteredDiffPoint[] }) {
+// Exporté : réutilisé par la vue session lecture seule (/session/[id], U24) et
+// par la relecture ciblée de LectureView (U25).
+export function DiffList({ diff }: { diff: MergedDiffPoint[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {diff.map((p, i) => (
@@ -50,57 +46,29 @@ export function CorrectionView({
   verdict,
   diff,
   erreursCandidates,
-  divulgation,
-  mode = "etude",
-  importance,
-  retenterAction,
-  revelerAction,
-  terminerAction,
+  relireAction,
+  abandonAction,
   passerFeynmanAction,
-  ratingPreview,
-  rateAction,
 }: {
   sectionTitre: string;
   tentative: number;
   verdict: "acquis" | "insuffisant";
-  diff: FilteredDiffPoint[];
-  erreursCandidates: FilteredErrorCandidate[];
-  divulgation: "controlee" | "complete";
-  /** Étude (défaut) : retenter/révéler/terminer. Révision : U18 à la place (aucune
-   *  branche retenter/révéler n'a de sens, divulgation déjà complète — ARCHITECTURE §6). */
-  mode?: "etude" | "revision";
-  /** Feynman requis si ≥ 3 (terminerAction alors masqué, seul passerFeynmanAction
-   *  mène à la validation) ; optionnel si 2 (les deux boutons cohabitent, USER_FLOW É3.2). */
-  importance?: number;
-  retenterAction?: (formData: FormData) => Promise<void>;
-  revelerAction?: (prevState: unknown, formData: FormData) => Promise<ResolveOutcomeResult>;
-  terminerAction?: (formData: FormData) => Promise<void>;
+  diff: MergedDiffPoint[];
+  erreursCandidates: MergedErrorCandidate[];
+  /** Disponible seulement à la tentative 1 (pas de 3ᵉ passe). */
+  relireAction?: (formData: FormData) => Promise<void>;
+  abandonAction?: () => Promise<void>;
   passerFeynmanAction?: (formData: FormData) => Promise<void>;
-  ratingPreview?: Record<Note, { due: string }>;
-  rateAction?: (note: Note, formData: FormData) => Promise<void>;
 }) {
-  // `useActionState` ne peut pas être appelé conditionnellement : en mode
-  // révision, `revelerAction` n'est jamais fourni ni jamais invoqué (aucun
-  // bouton révéler n'est rendu plus bas) — le stub ne sert qu'à satisfaire le hook.
-  const [revealed, revealFormAction, revealPending] = useActionState(
-    revelerAction ?? (async () => ({ outcome: "retenter" as const })),
-    undefined,
-  );
-  const isRevealed = revealed?.outcome === "reveler";
-
-  // Retenter/révéler/passer au Feynman/terminer sont des <form> INDÉPENDANTS —
-  // sans ce drapeau partagé, cliquer deux boutons en succession rapide envoie
-  // deux mutations concurrentes sur le même cycle (l'une gagne, l'autre plante
-  // sur le garde d'état : incident réel constaté en usage, "Aucune correction à
-  // quitter vers le Feynman" après un double-clic révéler+Feynman). `onSubmit`
-  // se déclenche avant l'action, donc ce re-render désactive les boutons frères
-  // avant qu'un second clic ne puisse partir.
+  // Les boutons d'issue sont des <form> INDÉPENDANTS — sans ce drapeau partagé,
+  // cliquer deux boutons en succession rapide envoie deux mutations concurrentes
+  // sur le même cycle (l'une gagne, l'autre plante sur le garde d'état : incident
+  // réel constaté en usage sur cet écran).
   const [submitting, setSubmitting] = useState(false);
   const lockSubmit = () => setSubmitting(true);
 
-  // USER_FLOW É3.2 « Règle de commit » : les index rejetés sont sérialisés dans un
-  // champ caché, dupliqué dans les 3 formulaires de sortie (retenter/révéler/
-  // terminer) — chacun commit via S7.commitCandidates côté serveur.
+  // USER_FLOW É3.3 « Règle de commit » : les index rejetés sont sérialisés dans un
+  // champ caché, dupliqué dans les formulaires de sortie qui committent (relire/Feynman).
   const [rejected, setRejected] = useState<boolean[]>(() => erreursCandidates.map(() => false));
   const rejectedIndexesField = JSON.stringify(rejected.flatMap((r, i) => (r ? [i] : [])));
 
@@ -112,82 +80,41 @@ export function CorrectionView({
       </div>
 
       <p className="text-sm">
-        Verdict proposé : <strong>{isRevealed ? "insuffisant" : verdict}</strong>
+        Verdict proposé : <strong>{verdict}</strong>
       </p>
-      {!isRevealed && divulgation === "controlee" && (
-        <p className="text-xs text-secondary">
-          Les réponses attendues restent masquées tant qu&apos;un nouvel essai est possible.
-        </p>
-      )}
 
-      <DiffList diff={isRevealed ? revealed.diff : diff} />
-      {isRevealed ? (
-        <ErrorCandidatesPanel
-          candidates={revealed.erreursCandidates}
-          rejected={revealed.erreursCandidates.map(() => false)}
-          onChange={() => {}}
-          readOnly
-        />
-      ) : (
-        <ErrorCandidatesPanel
-          candidates={erreursCandidates}
-          rejected={rejected}
-          onChange={(i, r) => setRejected((prev) => prev.map((p, pi) => (pi === i ? r : p)))}
-        />
-      )}
+      <DiffList diff={diff} />
+      <ErrorCandidatesPanel
+        candidates={erreursCandidates}
+        rejected={rejected}
+        onChange={(i, r) => setRejected((prev) => prev.map((p, pi) => (pi === i ? r : p)))}
+      />
 
-      {mode === "revision" ? (
-        <FsrsRatingBar
-          verdict={verdict}
-          preview={ratingPreview!}
-          rejectedIndexesField={rejectedIndexesField}
-          rateAction={rateAction!}
-        />
-      ) : isRevealed ? (
-        <Link href="/" className="self-start text-sm underline">
-          Retour à l&apos;accueil
-        </Link>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {verdict === "insuffisant" && (
-            <>
-              <form action={retenterAction} onSubmit={lockSubmit}>
-                <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                <Button type="submit" size="sm" isDisabled={submitting} label="Retenter plus tard" />
-              </form>
-              <form action={revealFormAction} onSubmit={lockSubmit}>
-                <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                <Button type="submit" size="sm" variant="secondary" isDisabled={submitting || revealPending} label={revealPending ? "…" : "Révéler les réponses"} />
-              </form>
-              {passerFeynmanAction && (
-                <form action={passerFeynmanAction} onSubmit={lockSubmit}>
-                  <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <input type="hidden" name="override" value="true" />
-                  <Button type="submit" size="sm" variant="secondary" isDisabled={submitting} label="Passer au Feynman quand même" />
-                </form>
-              )}
-            </>
-          )}
-          {verdict === "acquis" && (
-            <>
-              {/* Feynman requis dès l'importance ≥ 3 (USER_FLOW É3.2) : pas de
-                  validation directe, seul [Passer au Feynman] mène plus loin. */}
-              {(importance ?? 0) < 3 && (
-                <form action={terminerAction} onSubmit={lockSubmit}>
-                  <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <Button type="submit" size="sm" isDisabled={submitting} label="Valider sans Feynman" />
-                </form>
-              )}
-              {passerFeynmanAction && (
-                <form action={passerFeynmanAction} onSubmit={lockSubmit}>
-                  <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-                  <Button type="submit" size="sm" variant={(importance ?? 0) < 3 ? "secondary" : "primary"} isDisabled={submitting} label="Passer au Feynman" />
-                </form>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {tentative === 1 && relireAction && (
+          <form action={relireAction} onSubmit={lockSubmit}>
+            <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
+            <Button type="submit" size="sm" isDisabled={submitting} label="Relire, puis refaire un blurting" />
+          </form>
+        )}
+        {passerFeynmanAction && (
+          <form action={passerFeynmanAction} onSubmit={lockSubmit}>
+            <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
+            <Button
+              type="submit"
+              size="sm"
+              variant={tentative === 1 ? "secondary" : "primary"}
+              isDisabled={submitting}
+              label="Passer au Feynman"
+            />
+          </form>
+        )}
+        {abandonAction && (
+          <form action={abandonAction} onSubmit={lockSubmit}>
+            <Button type="submit" variant="ghost" size="sm" isDisabled={submitting} label="Abandonner" />
+          </form>
+        )}
+      </div>
     </div>
   );
 }

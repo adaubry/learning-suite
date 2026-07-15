@@ -5,10 +5,13 @@ import { Button } from "@astryxdesign/core/Button";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { Badge } from "@astryxdesign/core/Badge";
 
-// U15 BlurtingEditor (FUNCTIONS §6.2, USER_FLOW É3.1) — zone plein écran, chrono
+// U15 BlurtingEditor (FUNCTIONS §6.2, USER_FLOW É3.2) — zone plein écran, chrono
 // discret, Markdown accepté. Garantie « aucun accès au cours » tenue par
 // composition : ce composant ne reçoit JAMAIS le contenu du chapitre en props,
-// seulement un titre. Étude ET révision (USER_FLOW É4.1 : même composant).
+// seulement un titre. Étude ET révision (USER_FLOW É3.2 : même composant).
+//
+// Instruction adaptée à la tentative en étude (REVAMP v2, 2026-07-15) : n°1 =
+// grandes lignes (après lecture_1), n°2 = détail (après relecture ciblée).
 //
 // « Abandonner » vit ICI (pas en sibling dans page.tsx) pour partager le verrou
 // de soumission : les deux mutent le même StudyCycle (soumettre → correction,
@@ -38,7 +41,7 @@ export function BlurtingEditor({
   sectionTitre: string;
   tentative: number;
   type?: "etude" | "revision";
-  /** USER_FLOW É4.1 : badge « Révision — Xᵉ rappel » (X = ReviewCard.reps + 1). */
+  /** USER_FLOW É3.2 : badge « Révision — Xᵉ rappel » (X = ReviewCard.reps + 1). */
   rappelNumero?: number;
   action: (prevState: unknown, formData: FormData) => Promise<{ error?: string } | undefined>;
   abandonAction?: () => Promise<void>;
@@ -48,6 +51,13 @@ export function BlurtingEditor({
   const [abandoning, setAbandoning] = useState(false);
   const submitting = pending || abandoning;
   const [blurting, setBlurting] = useState("");
+
+  const instruction =
+    type === "etude"
+      ? tentative === 1
+        ? "Écris les grandes lignes, comme un plan — sans regarder le cours…"
+        : "Développe maintenant en détail, à partir de ta relecture — sans regarder le cours…"
+      : "Écris tout ce dont tu te souviens, sans regarder le cours…";
 
   return (
     <div className="flex flex-1 flex-col gap-4">
@@ -68,7 +78,7 @@ export function BlurtingEditor({
           isRequired
           value={blurting}
           onChange={setBlurting}
-          placeholder="Écris tout ce dont tu te souviens, sans regarder le cours…"
+          placeholder={instruction}
           className="min-h-[50vh] flex-1"
           hasAutoFocus
         />

@@ -6,7 +6,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import type { ErreurType } from "@/core/correction/presentCorrection";
+import type { ErreurType } from "@/core/correction/verdict";
 
 const typeLabel: Record<ErreurType, string> = {
   omission: "Omission",

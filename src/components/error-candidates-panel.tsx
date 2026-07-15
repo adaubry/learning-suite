@@ -1,8 +1,8 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
-import type { FilteredErrorCandidate } from "@/core/correction/presentCorrection";
+import type { MergedErrorCandidate } from "@/core/correction/verdict";
 
-const typeLabel: Record<FilteredErrorCandidate["type"], string> = {
+const typeLabel: Record<MergedErrorCandidate["type"], string> = {
   omission: "Omission",
   deformation: "Déformation",
   confusion: "Confusion",
@@ -21,7 +21,7 @@ export function ErrorCandidatesPanel({
   onChange,
   readOnly = false,
 }: {
-  candidates: FilteredErrorCandidate[];
+  candidates: MergedErrorCandidate[];
   rejected: boolean[];
   onChange: (index: number, rejected: boolean) => void;
   /** Correction déjà résolue (ex. après révélation) : candidates déjà committées, aucune action possible. */
@@ -60,9 +60,7 @@ export function ErrorCandidatesPanel({
                 />
               )}
             </div>
-            <p className="text-secondary">
-              {c.description ?? "Détail masqué tant qu'un nouvel essai est attendu."}
-            </p>
+            <p className="text-secondary">{c.description}</p>
           </li>
         ))}
       </ul>

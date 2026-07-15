@@ -35,11 +35,9 @@ export function AppShell({
   openCycle: OpenCycleInfo | null;
 }) {
   const pathname = usePathname();
-  const resumeHref = openCycle
-    ? openCycle.type === "etude"
-      ? `/etude/${openCycle.sectionId}`
-      : `/revision/${openCycle.sectionId}`
-    : null;
+  // Fusion Machine B/C (2026-07-15) : un seul écran désormais, quel que soit
+  // `openCycle.type` (label cosmétique — étude/révision partagent la même route).
+  const resumeHref = openCycle ? `/etude/${openCycle.sectionId}` : null;
 
   return (
     <AstryxAppShell

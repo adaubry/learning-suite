@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Planificateur, machines à états & modèle de données
 
-> **Statut** : v0.11
+> **Statut** : v0.13
 > **Rôle** : source de vérité structurelle. Toute proposition de modification du code (humaine ou IA) doit être vérifiée contre ce document. Si elle le contredit, soit elle est rejetée, soit ce document est révisé d'abord — jamais l'inverse.
 > **Dépend de** : FORMAT.md v0.2 · TECH_MAPPING.md v0.2 (stack et délégations) · USER_FLOW.md v0.3 · FUNCTIONS.md v0.3 (services & invariants). **Complété par** : LLM_CONTRACTS.md.
 
@@ -98,44 +98,59 @@ en_revision ──(révision en échec répété, machine C)──▶ prete   [r
 - Changer l'importance d'une section déjà planifiée re-trie la file, ne détruit rien.
 - Passer une section à 1 la retire du Planificateur ; repasser à ≥ 2 la réintègre (rubrique et historique conservés s'ils existent).
 
-## 5. Machine B — Cycle d'étude d'une section `prete`
+## 5. Machine B — Cycle d'étude ET de révision d'une section
+
+> **v2 (REVAMP.md, 2026-07-15, DECISIONS.md)** : la lecture du cours est désormais un état du cycle lui-même (plus une hypothèse hors-système), le blurting se fait en exactement 2 passes max dans la même séance (jamais de re-file/délai en étude), la divulgation est toujours complète, et le Feynman est le seul chemin de sortie, pour toute importance 2 à 5.
+> **v3 (DECISIONS.md, 2026-07-15, post-hoc)** : Machine C (révision, ex-§6) est **fusionnée ici** — toute répétition d'une section, qu'elle n'ait jamais été étudiée (`prete`) ou qu'elle soit due en révision (`en_revision`), traverse désormais exactement ce même cycle. Plus de version « allégée » (simple blurting noté) réservée à la révision : l'auto-note FSRS, qui la pilotait, est désormais posée à la clôture du bilan Feynman ci-dessous, quelle que soit la « Nᵉ fois ». `StudyCycle.type` (etude/revision) survit comme LABEL pur (badge, tri du Planificateur §3/ADR 8), sans plus piloter aucune branche de ce cycle.
 
 ```
-                    ┌──────────────────────────────────────┐
-                    ▼                                      │
-  debut ──▶ blurting_en_cours ──(soumission)──▶ correction_blurting
-                                                     │ (LLM 3+4 : verdict proposé
-                                                     │  + erreurs → carnet)
-                    ┌────────── verdict:insuffisant ◀─┤
-                    │  (retry, tentative n+1)          │ verdict:acquis
-                    │                                  ▼
-                    │                        feynman_en_cours (push-to-talk,
-                    │                                  │       tours multiples, LLM 5)
-                    │                                  │ (clôture par l'utilisateur)
-                    │                                  ▼
-                    └──────── verdict:insuffisant ◀─ bilan_feynman
-                              (retour blurting OU            │ verdict:acquis
-                               nouveau feynman, au            ▼
-                               choix de l'utilisateur)   confirmation_utilisateur
-                                                             │ (bouton "valider")
-                                                             ▼
-                                                section → validee → Planificateur
+debut ──▶ lecture_1 (texte complet de la section)
+             │ [Je suis prêt, je blurte] (structurel, pas de minuteur)
+             ▼
+        blurting_1 (grandes lignes — aucun accès au cours, U15)
+             │ soumission
+             ▼
+        correction_1 (LLM 3+4 : verdict proposé, divulgation TOUJOURS complète)
+             │
+             ├── [Passer au Feynman] (toujours disponible) ─────────────────────┐
+             ├── [Relire, puis refaire un blurting] (si tentative == 1) ───┐    │
+             └── [Abandonner] (ferme le cycle)                            │    │
+                                                                            ▼    │
+             lecture_2 (texte de la section + diff de correction_1 en vis-à-vis) │
+                 │ [Je suis prêt, je blurte]                                     │
+                 ▼                                                              │
+             blurting_2 (détail — aucun accès au cours)                         │
+                 │ soumission                                                    │
+                 ▼                                                              │
+             correction_2 (divulgation complète, PAS de 3ᵉ passe)               │
+                 │ seul choix : [Passer au Feynman] ──────────────────────────────┘
+                 ▼
+             feynman_en_cours (push-to-talk, tours multiples, LLM 5,
+                                 contexte enrichi du brouillon de blurting —
+                                 OBLIGATOIRE pour toute importance 2 à 5)
+                 │ clôture utilisateur
+                 ▼
+             bilan_feynman (LLM 5, ancré rubrique)
+                 │ auto-note FSRS OBLIGATOIRE : Again/Hard/Good/Easy
+                 │ (condition nécessaire à la clôture — jamais le verdict LLM, ADR 3)
+                 ▼
+             validation → section validee/en_revision → S6.createOrRate → Planificateur
 ```
 
 Règles de verdict et de cycle :
 
-- **Le LLM propose, l'utilisateur dispose.** Verdict `acquis / insuffisant` calculé contre la rubrique (seuil : aucun point de contrôle _critique_ manquant). Override utilisateur possible dans les deux sens, journalisé (AuditService).
-- **Divulgation contrôlée (côté serveur, P10)** : tant qu'un re-essai est attendu, la correction ne montre que les intitulés des points manquants/déformés, jamais les contenus attendus — qui ne transitent pas vers le client. Révéler est un choix explicite qui clôt la tentative.
-- **Jamais de retry immédiat** : un blurting insuffisant repart par la re-file intra-journée, au plus tôt.
+- **Le LLM propose, l'utilisateur dispose.** Verdict `acquis / insuffisant` calculé contre la rubrique (seuil : aucun point de contrôle _critique_ manquant). Il informe, il ne bloque plus rien : aucun override, aucune confirmation, aucune trace d'audit sur ce point (doctrine renforcée, pas abandonnée).
+- **Divulgation toujours complète**, dès la première correction — le blurting n'est plus un test à protéger par un masquage, c'est une étape d'un rituel piloté par l'étudiant. (`presentCorrection`/P10 supprimé, plus aucun appelant avec masquage à opérer.)
+- **Exactement 2 passes de blurting maximum**, la 2ᵉ **immédiate**, dans la même séance, précédée d'une relecture ciblée (`lecture_2`) — jamais de re-file/délai intra-journée pour ce motif.
 - Chaque tentative est une `StudySession` immuable.
-- Le Feynman est une conversation multi-tours (audio transcrit tour par tour, transcript éditable avant envoi, audio détruit sitôt confirmé) close explicitement par l'utilisateur, suivie d'un bilan structuré unique **ancré sur la rubrique** (démontré avec explication / récité / non abordé).
-- **Feynman requis pour l'importance ≥ 3 ; optionnel pour l'importance 2** (validation possible après blurting acquis).
+- Le Feynman est une conversation multi-tours (audio transcrit tour par tour, transcript éditable avant envoi, audio détruit sitôt confirmé) close explicitement par l'utilisateur, suivie d'un bilan structuré unique **ancré sur la rubrique** (démontré avec explication / récité / non abordé) ; ses relances (LLM 5, par tour) se construisent comme un développement progressif du dernier brouillon de blurting soumis, pas une exploration libre de la rubrique.
+- **Feynman obligatoire pour toute importance 2 à 5** — aucune validation directe depuis la correction, une seule voie de sortie.
+- **La clôture exige une auto-note FSRS** (Again/Hard/Good/Easy) — jamais le verdict LLM (ADR 3). `S6.createOrRate` crée la `ReviewCard` si c'est la 1ʳᵉ validation de la section, sinon note l'existante ; dans les deux cas la note est appliquée immédiatement (une carte neuve ne reste jamais exposée sans note — son échéance par défaut serait « maintenant »). `Again` ⇒ re-file intra-journée (assumé malgré le coût désormais plus élevé d'un cycle complet à rejouer, DECISIONS.md 2026-07-15) ; le mécanisme v1 « 2 Again consécutifs ⇒ retour `prete` » disparaît — il n'existait que pour retomber sur une version allégée du cycle, qui n'existe plus (toute répétition EST déjà la version complète).
+- **`[Abandonner]`** est la seule échappatoire si l'étudiant ne veut pas continuer (disponible en lecture, blurting et correction) : ferme le cycle proprement (aucune `StudySession` supprimée — ADR 6 — mais rien de visible ni comptabilisé pour la prochaine tentative, `S4.abandon` réutilisée telle quelle).
 
-## 6. Machine C — Révision (sous l'autorité du Planificateur)
+## 6. ~~Machine C — Révision~~ (fusionnée dans Machine B, 2026-07-15)
 
-- Une révision = un **blurting de rappel** (même interface, corrigé contre la même rubrique, LLM 3+4). Pas de Feynman en révision (v1).
-- Après correction, l'utilisateur note : **Again / Hard / Good / Easy**. C'est cette auto-note — pas le verdict LLM — qui alimente FSRS ; le verdict sert d'aide à l'auto-évaluation.
-- `Again` ⇒ re-file intra-journée (la carte revient en fin de file du jour même) ; **deux `Again` consécutifs** ⇒ la section retourne en `prete` (ré-étude complète via machine B, re-priorisée par le Planificateur).
+Machine C n'existe plus comme machine distincte. Avant la fusion, une révision était un simple blurting de rappel noté FSRS, sans lecture ni Feynman — la version la MOINS complète du produit alimentait pourtant seule l'échéancier de mémoire, ce qui était incohérent (un cycle d'étude renforce la mémoire au moins autant). Toute répétition d'une section — première étude (`prete`) ou révision due (`en_revision`) — traverse désormais le cycle unique décrit en §5, y compris Feynman et la lecture. `section.statut` (Machine A, §4) continue de distinguer les deux pour le **Planificateur** (§3, ADR 8 : les révisions passent toujours avant les nouvelles études, et le plafond `nouvelles_par_jour` ne doit s'appliquer qu'aux premières) — c'est la seule chose qui différencie encore une « nouvelle étude » d'une « révision » dans le produit. Voir DECISIONS.md (2026-07-15, « Suppression de la dualité étude\|révision »).
 - En révision, la divulgation de la correction est **complète d'emblée** (pas de retry à protéger).
 
 ---
@@ -196,9 +211,15 @@ CorrectionGuide  id, section_id, chapter_version INT,
                  statut ENUM(a_valider, valide, obsolete),
                  valide_le TIMESTAMPTZ
 
-StudyCycle    id, user_id, section_id, type ENUM(etude, revision),
-              etat ENUM(rubrique_a_valider, blurting, correction,
-                        feynman, bilan, clos),        -- état persisté machine B/C
+StudyCycle    id, user_id, section_id,
+              type ENUM(etude, revision),  -- label pur depuis la fusion Machine B/C
+                                            --   (2026-07-15) : ne pilote plus aucune
+                                            --   branche du cycle (badge/tri Planificateur
+                                            --   seulement, §3/ADR 8)
+              etat ENUM(rubrique_a_valider, lecture, blurting, correction,
+                        feynman, bilan, clos),        -- état persisté (§5, machine unique
+                                                       --   depuis la fusion Machine B/C) ;
+                                                       --   "lecture" ajouté REVAMP v2
               bilan_feynman JSONB NULL,     -- bilan L5 (Bloc 7.2) : UN par cycle,
                                              --   pas une StudySession (pas de type "bilan")
               closed_at TIMESTAMPTZ NULL, created_at
@@ -281,7 +302,7 @@ Principe transversal : **jamais le cours entier dans les appels de correction** 
 | 1   | **Sectionnement**                                     | import / re-version d'un chapitre            | • plan du chapitre (arbre des titres + niveaux)<br>• contenu intégral du chapitre (commentaires italiques retirés)<br>• méthodologie des titres juridiques (document utilisateur, statique)<br>• métadonnées : matière, chapitre                                                                                                                         | liste de sections proposées : {titre labelisé, bornes dans le source, justification courte}                                                               |
 | 2   | **Rubrique**                                          | section passe `active`                       | • contenu de la section (source de vérité, italiques retirés)<br>• segments **gras** de la section (points de contrôle prioritaires)<br>• commentaires italiques de la section (contexte secondaire : difficultés personnelles)<br>• métadonnées : matière, chapitre, titre de section<br>• erreurs `actives` de la matière (résumés courts, plafonnées) | points de contrôle typés {critique/important/secondaire, intitulé, attendu, piège_associé?}                                                               |
 | 3+4 | **Correction + extraction d'erreurs** (un seul appel) | soumission d'un blurting (étude ou révision) | • rubrique validée de la section<br>• texte du blurting soumis<br>• erreurs `actives` de la section (détection de récidive)<br>• n° de tentative<br>• **PAS le contenu du cours**                                                                                                                                                                        | • diff par point de contrôle {couvert/manquant/déformé + explication}<br>• verdict proposé<br>• 0..n ErrorEntry candidates {type, description, récidive?} |
-| 5   | **Feynman** (par tour + bilan)                        | chaque tour de dialogue ; clôture            | • rubrique validée<br>• contenu de la section (nécessaire ici : le questionneur doit pouvoir vérifier les détails au-delà de la rubrique)<br>• historique des tours précédents de CETTE session<br>• erreurs `actives` de la section et de la matière (cibler les faiblesses connues)<br>• transcript du dernier tour                                    | tour : question/relance (texte libre)<br>bilan de clôture : structuré {points solides, lacunes, verdict proposé}                                          |
+| 5   | **Feynman** (par tour + bilan)                        | chaque tour de dialogue ; clôture            | • rubrique validée<br>• contenu de la section (nécessaire ici : le questionneur doit pouvoir vérifier les détails au-delà de la rubrique)<br>• historique des tours précédents de CETTE session<br>• erreurs `actives` de la section et de la matière (cibler les faiblesses connues)<br>• transcript du dernier tour<br>• **dernier brouillon de blurting soumis pour ce cycle** (REVAMP v2, 2026-07-15) — les relances se construisent comme un développement progressif de CE brouillon, pas une exploration libre de la rubrique | tour : question/relance (texte libre)<br>bilan de clôture : structuré {points solides, lacunes, verdict proposé}                                          |
 | 6   | **Transcription**                                     | chaque enregistrement push-to-talk           | • audio de l'enregistrement<br>• glossaire de la section (titres + segments gras) comme aide au vocabulaire juridique                                                                                                                                                                                                                                    | texte du transcript                                                                                                                                       |
 
 ---
@@ -298,7 +319,7 @@ app/                        # App Router
   chapitre/[id]/trier       # tri des sections (importance 1..5)
   section/[id]/rubrique     # relecture/édition/validation de rubrique
   etude/[sectionId]/        # cycle blurting → feynman (machine B)
-  revision/[cardId]/        # blurting de rappel + auto-note (machine C)
+  # revision/[cardId]/ supprimée (2026-07-15) : fusionnée dans etude/[sectionId]/ (§5/§6)
   erreurs/                  # carnet d'erreurs par matière
 
 src/
@@ -352,15 +373,15 @@ Règles d'implémentation :
 | --- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | Machines à états en dur, pas d'agent                                                                             | contrôle, coût, prévisibilité                                         | orchestration agentique                                                                                                                                                                                                                                                                                 |
 | 2   | Verdict LLM = proposition, utilisateur = décideur                                                                | philosophie du projet                                                 | validation automatique                                                                                                                                                                                                                                                                                  |
-| 3   | FSRS piloté par l'auto-note utilisateur                                                                          | input canonique de FSRS                                               | piloter par le verdict LLM                                                                                                                                                                                                                                                                              |
+| 3   | FSRS piloté par l'auto-note utilisateur — depuis 2026-07-15, posée à la clôture du bilan Feynman (§5), condition nécessaire à la validation, quelle que soit la Nᵉ fois | input canonique de FSRS ; les 4 niveaux modélisent un effort de rappel subjectif qu'aucun verdict LLM (couverture de contenu) ne peut observer | piloter par le verdict LLM (toujours rejeté — DECISIONS.md 2026-07-15 : perdrait la distinction Hard/Easy, dériverait optimiste avec le carnet d'erreurs) |
 | 4   | Audio push-to-talk, pas de temps réel                                                                            | complexité disproportionnée                                           | WebRTC temps réel                                                                                                                                                                                                                                                                                       |
 | 5   | Rubrique validée obligatoire avant planification                                                                 | neutralise le point de défaillance unique                             | rubrique implicite                                                                                                                                                                                                                                                                                      |
 | 6   | Sessions immuables + version de chapitre partout                                                                 | historique interprétable                                              | mutation en place                                                                                                                                                                                                                                                                                       |
 | 7   | Correction + extraction d'erreurs = un appel                                                                     | latence, coût, mêmes entrées                                          | deux appels                                                                                                                                                                                                                                                                                             |
-| 8   | **Le Planificateur est l'organe central** ; étude et révision sont ses subordonnés ; l'accueil = la file du jour | les timelines sont le nerf de la guerre                               | SRS comme appendice du cycle d'étude                                                                                                                                                                                                                                                                    |
+| 8   | **Le Planificateur est l'organe central** ; étude et révision sont ses subordonnés ; l'accueil = la file du jour. Depuis 2026-07-15, « étude » et « révision » désignent le MÊME cycle (§5/§6) — seul le Planificateur distingue encore les deux (tri, plafond `nouvelles_par_jour`) | les timelines sont le nerf de la guerre                               | SRS comme appendice du cycle d'étude                                                                                                                                                                                                                                                                    |
 | 9   | Tout LLM et la transcription passent par OpenRouter                                                              | imposé ; fournisseur unique                                           | API Anthropic directe / Whisper OpenAI. **Point de vigilance** : OpenRouter n'expose pas d'endpoint de transcription dédié type Whisper ; la transcription se fait via un modèle acceptant l'audio en entrée (chat multimodal). À vérifier en début d'implémentation ; fallback prévu : Web Speech API. |
 | 10  | Importance 1..5, 1 = hors programme (exclusion)                                                                  | échelle unique pour trier ET écarter                                  | statut `écartée` séparé                                                                                                                                                                                                                                                                                 |
-| 11  | Divulgation contrôlée appliquée côté serveur + jamais de retry immédiat (re-file intra-journée)                  | anti-illusion de fluence ; les contenus masqués ne transitent pas     | masquage client ; retry immédiat                                                                                                                                                                                                                                                                        |
+| 11  | Divulgation contrôlée + jamais de retry immédiat — **superseded en ÉTUDE par REVAMP v2 (2026-07-15, DECISIONS.md)** : divulgation toujours complète, 2 passes de blurting immédiates dans la même séance, `presentCorrection`/P10 supprimé (§5). Reste vrai en RÉVISION (Machine C, §6) : rien n'y change | anti-illusion de fluence (v1) ; rituel piloté par l'étudiant (v2, étude uniquement) | masquage client ; retry immédiat                                                                                                                                                                                                                                                                        |
 | 12  | Rubriques paresseuses (génération à l'approche de la tête de file)                                               | friction lissée, coût évité, validation attentive                     | génération en lot à l'import (option manuelle conservée)                                                                                                                                                                                                                                                |
 | 13  | Édition WYSIWYG Tiptap limitée aux 3 constructions ; Markdown = stockage/échange                                 | la barre d'outils EST la convention ; invalidité d'emphase impossible | édition Markdown brute                                                                                                                                                                                                                                                                                  |
 | 14  | UI 100 % shadcn ; zéro lib de charts/dnd/calendrier                                                              | doctrine natif > shadcn > maison ; dépendances minimales              | dnd-kit, Recharts, FullCalendar                                                                                                                                                                                                                                                                         |
@@ -376,6 +397,8 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.13    | 2026-07-15 | DECISIONS.md (« Suppression de la dualité étude\|révision », post-hoc REVAMP.md) : Machine C fusionnée dans Machine B (§6 conservé comme pointeur historique) — toute répétition d'une section traverse le cycle unique de §5, y compris Feynman. La note FSRS (Again/Hard/Good/Easy) se pose désormais à la clôture du bilan Feynman, condition nécessaire à la validation (remplace `S4.rateRevision`, absorbé dans `S4.validateSection` + nouveau `S6.createOrRate`). `StudyCycle.type` devient un label pur (aucune branche de comportement). Aucune migration de schéma (`ReviewCard`/`section` inchangés). ADR 3 et 8 mis à jour ; route `/revision/[cardId]` supprimée. |
+| 0.12    | 2026-07-15 | REVAMP.md v0.3 (tranché avec l'humain, DECISIONS.md) : refonte de Machine B/§5 — la lecture devient un état du cycle (`StudyCycle.etat` gagne `lecture`, deux occurrences par cycle : avant chaque passe de blurting), exactement 2 passes de blurting max (jamais de re-file/délai en étude), divulgation toujours complète (`presentCorrection`/P10 supprimé), Feynman obligatoire pour toute importance 2 à 5 (plus de validation directe sur simple blurting), contexte Feynman (§9 ligne 5) enrichi du dernier brouillon de blurting. ADR 11 (§11) marqué superseded en étude, inchangé en révision (Machine C, §6, intacte). |
 | 0.11    | 2026-07-13 | Bloc 9.2 (préalable, audit états vides/erreur É2.0) : ajout de `DeferralLog.avance BOOLEAN DEFAULT false` (migration `0008_swift_stardust.sql`). Deux besoins distincts partageaient jusqu'ici le même `item_type="etude"` sans moyen de les distinguer : (a) un report normal d'une candidate encore dans le vivier (slot du jour perdu, corrigé dans le même bloc — `S5.todayQueue` remplaçait à tort la candidate reportée par la suivante du vivier, contraire à USER_FLOW É2.0 « aucune section ne la remplace ») et (b) une nouvelle mécanique `S5.advanceFromBacklog` (CTA « avancer une étude de demain », USER_FLOW É2.0) qui doit perdre un slot de DEMAIN inconditionnellement, y compris une fois la section étudiée et sortie du vivier — sans ce champ, réutiliser `DeferralLog` pour (b) aurait rouvert le bug de (a). Voir DECISIONS.md.                                                                                                     |
 | 0.10    | 2026-07-13 | Bloc 9.1 fix (S1.archive/S9.archiveSubject) : ajout de `Chapter.archived_at`/`Subject.archived_at TIMESTAMPTZ NULL` — USER_FLOW É6.4 et FUNCTIONS §S6 exigent que `S6.unfreeze` « recalcule les échéances depuis les dates réelles » au désarchivage, ce que le modèle v0.9 (statut seul, sans horodatage) ne permettait pas de calculer. `S1.archive`/`S2.setImportance(1)`/la cascade restent les 3 appelants de `S6.freeze`/`unfreeze` (FUNCTIONS §S6) ; seuls `S1.archive` (via ce fix) et la cascade (déjà câblée Bloc 8.2) le font réellement, `S2.setImportance` reste non construit (DECISIONS.md Bloc 3.3). Supersède la doctrine « pur flip de statut, aucune cascade » du Bloc 9.1 initial. Voir DECISIONS.md. |
 | 0.9     | 2026-07-09 | Bloc 9.1 (S9 réglages) : ajout de `PlannerConfig.tts_active BOOLEAN DEFAULT true` — USER_FLOW P7 exige un réglage de compte « TTS on/off », que `FeynmanChat` (Bloc 7.2) ne portait que comme un `useState` local jamais persisté. Réutilise `PlannerConfig` (une ligne par utilisateur) plutôt qu'une nouvelle table pour un seul booléen. Voir DECISIONS.md. |

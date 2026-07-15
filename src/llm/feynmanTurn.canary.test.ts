@@ -15,6 +15,7 @@ const context: FeynmanTurnContext = {
   erreursActives: [],
   historique: [{ role: "ia", texte: "Explique la notion." }],
   dernierTranscript: "Voici mon explication.",
+  brouillon: "Le brouillon de blurting de l'étudiant.",
 };
 
 function mockStreamResponse(deltas: string[]) {
@@ -58,6 +59,7 @@ describe("feynmanTurn", () => {
     const body = JSON.parse((fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
     expect(body.messages[0].content).toContain("Point — attendu : Attendu");
     expect(body.messages[0].content).toContain("IA : Explique la notion.");
+    expect(body.messages[0].content).toContain("Le brouillon de blurting de l'étudiant.");
     expect(body.stream).toBe(true);
   });
 });

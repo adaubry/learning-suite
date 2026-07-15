@@ -6,8 +6,12 @@ import * as guide from "./guide";
 import * as session from "./session";
 import { db } from "@/db";
 import { chapter, section, studyCycle, studySession, auditEvent, errorEntry } from "@/db/schema";
+import type { Note } from "@/core/fsrs/fsrsCore";
 
 // S4 · SessionService — LLM toujours mocké (fetch), Postgres réel (pattern guide.test.ts).
+// REVAMP v2 (2026-07-15) : un cycle d'étude démarre désormais en `lecture`, pas
+// `blurting` — tout helper qui enchaîne sur submitBlurting passe par
+// `session.terminerLecture` d'abord.
 
 const client = postgres(process.env.DATABASE_URL!);
 const createdUserIds: string[] = [];
@@ -37,6 +41,38 @@ const point = (type: "critique" | "important" = "critique", intitule = `Point ${
   attendu: `SECRET attendu ${intitule}`,
   segments_couverts: [],
 });
+
+function mockStreamResponse(deltas: string[]) {
+  const lines = [
+    ...deltas.map((d) => `data: ${JSON.stringify({ choices: [{ delta: { content: d } }] })}\n\n`),
+    `data: ${JSON.stringify({ choices: [{ delta: {} }], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n`,
+    "data: [DONE]\n\n",
+  ];
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const line of lines) controller.enqueue(encoder.encode(line));
+      controller.close();
+    },
+  });
+  return { ok: true, body };
+}
+
+function mockBilanResponse(content: unknown) {
+  return {
+    ok: true,
+    json: async () => ({
+      choices: [{ message: { content: JSON.stringify(content) } }],
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+    }),
+  };
+}
+
+async function drain(gen: AsyncGenerator<string>): Promise<string> {
+  let full = "";
+  for await (const chunk of gen) full += chunk;
+  return full;
+}
 
 let userId: string;
 let subjectId: string;
@@ -77,8 +113,8 @@ afterAll(async () => {
   await client.end();
 });
 
-// importance 2 par défaut (validation directe sans Feynman, PLAN Bloc 7.2) — les
-// tests de la restriction « Feynman requis si importance ≥ 3 » passent 3 explicitement.
+// Feynman obligatoire pour toute importance 2 à 5 depuis REVAMP v2 : plus de
+// distinction 2 vs ≥3, importance 2 par défaut suffit à tous les tests.
 async function createReadySection(points = [point("critique"), point("important")], importance = 2) {
   const [sec] = await db
     .insert(section)
@@ -89,23 +125,51 @@ async function createReadySection(points = [point("critique"), point("important"
   return sec;
 }
 
-// Section `en_revision` + ReviewCard due aujourd'hui — état d'entrée machine C.
-async function createRevisionSection(points = [point("critique"), point("important")]) {
+// beginFeynman (transition) + openingTurn (streaming) combinés.
+async function enterFeynman(cycle: { id: string }, deltas: string[] = ["Ouverture."], rejectedCandidateIndexes: number[] = []) {
+  await session.beginFeynman(userId, cycle.id, rejectedCandidateIndexes);
+  (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockStreamResponse(deltas));
+  return drain(session.openingTurn(userId, cycle.id));
+}
+
+// Point de départ commun aux tests Feynman : blurting acquis, cycle en `correction`.
+async function readyForFeynman(points = [point("critique"), point("important")]) {
   const sec = await createReadySection(points);
   const cycle = await session.start(userId, sec.id);
-  (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+  await session.terminerLecture(userId, cycle.id);
+  (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
     mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
   );
   await session.submitBlurting(userId, cycle.id, "Restitution parfaite.");
-  await session.validateSection(userId, cycle.id);
-  return db.query.section.findFirst({ where: eq(section.id, sec.id) }).then((s) => s!);
+  return { sec, cycle };
+}
+
+// Section `en_revision` + ReviewCard due aujourd'hui — état d'entrée d'une répétition
+// (fusion Machine B/C, 2026-07-15 : traverse le même cycle qu'une 1ʳᵉ étude).
+// Passe désormais par le Feynman en entier (obligatoire pour toute importance).
+async function createRevisionSection(points = [point("critique"), point("important")]) {
+  const { cycle } = await readyForFeynman(points);
+  await enterFeynman(cycle);
+  (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+    mockBilanResponse({
+      points: [
+        { point_index: 1, statut: "demontre", commentaire: "clair" },
+        { point_index: 2, statut: "demontre", commentaire: "clair" },
+      ],
+      points_solides: [],
+      lacunes: [],
+    }),
+  );
+  await session.closeFeynman(userId, cycle.id);
+  await session.validateSection(userId, cycle.id, "good");
+  return db.query.section.findFirst({ where: eq(section.id, cycle.sectionId) }).then((s) => s!);
 }
 
 describe("session · S4 start", () => {
-  it("crée un cycle en état blurting sur une section prête", async () => {
+  it("crée un cycle en état lecture sur une section prête (REVAMP v2)", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
-    expect(cycle.etat).toBe("blurting");
+    expect(cycle.etat).toBe("lecture");
     expect(cycle.closedAt).toBeNull();
   });
 
@@ -131,11 +195,11 @@ describe("session · S4 start", () => {
     await expect(session.start(userId, secB.id)).rejects.toThrow(session.SessionAlreadyOpenError);
   });
 
-  it("section en_revision : ouvre un cycle de type revision (USER_FLOW É4.1)", async () => {
+  it("section en_revision : ouvre un cycle de type revision, en lecture comme toute répétition (fusion Machine B/C, 2026-07-15)", async () => {
     const sec = await createRevisionSection();
     const cycle = await session.start(userId, sec.id);
     expect(cycle.type).toBe("revision");
-    expect(cycle.etat).toBe("blurting");
+    expect(cycle.etat).toBe("lecture");
   });
 
   it("refuse une révision sur une ReviewCard gelée", async () => {
@@ -143,6 +207,60 @@ describe("session · S4 start", () => {
     const { freeze } = await import("./review");
     await freeze(userId, sec.id);
     await expect(session.start(userId, sec.id)).rejects.toThrow(session.SectionNotReadyError);
+  });
+});
+
+describe("session · S4 terminerLecture (REVAMP v2)", () => {
+  it("transitionne lecture → blurting", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
+    const updated = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
+    expect(updated?.etat).toBe("blurting");
+  });
+
+  it("refuse depuis un autre état que lecture", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
+    await expect(session.terminerLecture(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+  });
+});
+
+describe("session · S4 lectureContext (REVAMP v2)", () => {
+  it("tentative 1, diff null en lecture initiale", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    const ctx = await session.lectureContext(userId, cycle.id);
+    expect(ctx).toEqual({ tentative: 1, diff: null });
+  });
+
+  it("tentative 2, diff de la correction_1 en relecture ciblée", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
+    await session.resolveOutcome(userId, cycle.id);
+
+    const ctx = await session.lectureContext(userId, cycle.id);
+    expect(ctx.tentative).toBe(2);
+    expect(ctx.diff![0]).toEqual({
+      intitule: "Point critique",
+      type: "critique",
+      statut: "manquant",
+      attendu: "SECRET attendu Point critique",
+      explication: "SECRET explication 1",
+    });
+  });
+
+  it("refuse hors de l'état lecture", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
+    await expect(session.lectureContext(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
   });
 });
 
@@ -178,6 +296,7 @@ describe("session · S4 submitBlurting", () => {
   it("sauvegarde le blurting AVANT l'appel LLM : l'input survit à un échec LLM", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("réseau down"));
 
     await expect(session.submitBlurting(userId, cycle.id, "Ma restitution.")).rejects.toThrow();
@@ -188,9 +307,16 @@ describe("session · S4 submitBlurting", () => {
     expect(rows[0].correction).toBeNull();
   });
 
-  it("verdict insuffisant : la réponse masque attendu/explication des points non couverts", async () => {
+  it("refuse depuis l'état lecture (garde d'état existante)", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await expect(session.submitBlurting(userId, cycle.id, "Trop tôt.")).rejects.toThrow(session.WrongCycleStateError);
+  });
+
+  it("verdict insuffisant : divulgation toujours complète, plus de masquage (rupture A, REVAMP v2)", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
@@ -198,18 +324,23 @@ describe("session · S4 submitBlurting", () => {
     const result = await session.submitBlurting(userId, cycle.id, "Ma restitution.");
 
     expect(result.verdict).toBe("insuffisant");
-    expect(result.divulgation).toBe("controlee");
-    // le point manquant (critique) est masqué — le point couvert, lui, reste visible.
-    expect(result.diff[0]).toEqual({ intitule: "Point critique", statut: "manquant" });
-    expect(JSON.stringify(result.diff[0])).not.toContain("SECRET");
+    expect(result.diff[0]).toEqual({
+      intitule: "Point critique",
+      type: "critique",
+      statut: "manquant",
+      attendu: "SECRET attendu Point critique",
+      explication: "SECRET explication 1",
+    });
+    expect(JSON.stringify(result)).toContain("SECRET");
 
     const updatedCycle = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
     expect(updatedCycle?.etat).toBe("correction");
   });
 
-  it("verdict acquis : divulgation complète d'emblée", async () => {
+  it("verdict acquis : divulgation complète également (le verdict ne change plus rien)", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
@@ -217,17 +348,33 @@ describe("session · S4 submitBlurting", () => {
     const result = await session.submitBlurting(userId, cycle.id, "Ma restitution parfaite.");
 
     expect(result.verdict).toBe("acquis");
-    expect(result.divulgation).toBe("complete");
     expect(JSON.stringify(result)).toContain("SECRET");
+  });
+
+  it("refuse une 3ᵉ tentative de blurting en étude (cap à 2 passes, REVAMP v2)", async () => {
+    const sec = await createReadySection();
+    const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Tentative 1.");
+    await session.resolveOutcome(userId, cycle.id);
+    await session.terminerLecture(userId, cycle.id);
+    await session.submitBlurting(userId, cycle.id, "Tentative 2.");
+
+    // Aucune voie normale ne ramène en `blurting` après la 2ᵉ passe (seul
+    // Feynman/abandonner sont atteignables) — le cap est un garde défensif,
+    // vérifié directement en forçant l'état pour l'exercer.
+    await db.update(studyCycle).set({ etat: "blurting" }).where(eq(studyCycle.id, cycle.id));
+    await expect(session.submitBlurting(userId, cycle.id, "Tentative 3.")).rejects.toThrow(session.WrongCycleStateError);
   });
 
   it("résout recidive_index vers le vrai id de l'erreur active", async () => {
     const sec = await createReadySection();
 
-    // première tentative (acquis) pour obtenir une StudySession réelle à laquelle
-    // rattacher une ErrorEntry active (S7.commitCandidates la créerait ainsi en
-    // Bloc 5.3 ; ici on fixe juste le contexte de récidive du test).
     const firstCycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, firstCycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
@@ -241,6 +388,7 @@ describe("session · S4 submitBlurting", () => {
       values (${subjectId}, ${sec.id}, ${firstResult.sessionId}, 'confusion', 'erreur récurrente') returning id`;
 
     const secondCycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, secondCycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({
         diff: [diffCouvert(1), diffCouvert(2)],
@@ -253,9 +401,10 @@ describe("session · S4 submitBlurting", () => {
   });
 });
 
-describe("session · S4 resolveOutcome", () => {
+describe("session · S4 resolveOutcome (REVAMP v2, rupture B)", () => {
   async function submitInsuffisant(sec: Awaited<ReturnType<typeof createReadySection>>) {
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
@@ -263,57 +412,56 @@ describe("session · S4 resolveOutcome", () => {
     return cycle;
   }
 
-  it("retenter : re-file l'étude, boucle vers blurting, ne journalise rien", async () => {
+  it("boucle vers lecture (relecture ciblée), ne journalise rien, ne re-file jamais", async () => {
     const sec = await createReadySection();
     const cycle = await submitInsuffisant(sec);
 
-    await session.resolveOutcome(userId, cycle.id, "retenter");
+    await session.resolveOutcome(userId, cycle.id);
 
     const updatedCycle = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
     expect(updatedCycle?.closedAt).toBeNull();
-    expect(updatedCycle?.etat).toBe("blurting");
+    expect(updatedCycle?.etat).toBe("lecture");
 
     const refile = await client`select * from refile_item where item_id = ${sec.id}`;
-    expect(refile).toHaveLength(1);
+    expect(refile).toHaveLength(0);
 
-    // Scopé à CETTE session précisément — un filtre entiteType seul capte aussi
-    // les audit_event d'autres fichiers de test tournant en parallèle sur la
-    // même base réelle (ex. audit.test.ts), fausse alerte constatée en usage.
     const blurtingSession = (await db.query.studySession.findFirst({ where: eq(studySession.cycleId, cycle.id) }))!;
     const events = await db.query.auditEvent.findMany({ where: eq(auditEvent.entiteId, blurtingSession.id) });
     expect(events).toHaveLength(0);
   });
 
-  it("reveler : divulgation complète journalisée, re-file, boucle vers blurting", async () => {
-    const sec = await createReadySection();
-    const cycle = await submitInsuffisant(sec);
-
-    await session.resolveOutcome(userId, cycle.id, "reveler");
-
-    const latest = await db.query.studySession.findFirst({ where: eq(studySession.cycleId, cycle.id) });
-    expect(latest?.divulgation).toBe("complete");
-
-    const events = await db.query.auditEvent.findMany({ where: eq(auditEvent.entiteType, "study_session") });
-    expect(events.some((e) => e.type === "revelation_correction")).toBe(true);
-
-    const updatedCycle = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
-    expect(updatedCycle?.etat).toBe("blurting");
-  });
-
-  it("refuse une issue sur un verdict acquis", async () => {
+  it("disponible aussi sur verdict acquis : le verdict ne conditionne plus rien (ARCHITECTURE §5)", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
     await session.submitBlurting(userId, cycle.id, "Restitution parfaite.");
 
-    await expect(session.resolveOutcome(userId, cycle.id, "retenter")).rejects.toThrow(session.WrongCycleStateError);
+    await session.resolveOutcome(userId, cycle.id);
+
+    const updatedCycle = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
+    expect(updatedCycle?.etat).toBe("lecture");
+  });
+
+  it("refuse une 2ᵉ relecture : la tentative 2 est déjà la dernière passe", async () => {
+    const sec = await createReadySection();
+    const cycle = await submitInsuffisant(sec);
+    await session.resolveOutcome(userId, cycle.id);
+    await session.terminerLecture(userId, cycle.id);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
+    );
+    await session.submitBlurting(userId, cycle.id, "Restitution 2.");
+
+    await expect(session.resolveOutcome(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
   });
 
   it("commit les candidates non rejetées (S7.commitCandidates, Bloc 5.3)", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({
         diff: [diffManquant(1), diffCouvert(2)],
@@ -325,7 +473,7 @@ describe("session · S4 resolveOutcome", () => {
     );
     await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
 
-    await session.resolveOutcome(userId, cycle.id, "retenter", [1]);
+    await session.resolveOutcome(userId, cycle.id, [1]);
 
     const rows = await db.query.errorEntry.findMany({ where: eq(errorEntry.sectionId, sec.id) });
     expect(rows.map((r) => r.description)).toEqual(["gardée"]);
@@ -348,62 +496,11 @@ describe("session · S4 abandon", () => {
   });
 });
 
-describe("session · S4 validateSection", () => {
-  it("ferme le cycle sur verdict acquis, section validee → en_revision, ReviewCard créée", async () => {
-    const sec = await createReadySection();
-    const cycle = await session.start(userId, sec.id);
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
-    );
-    await session.submitBlurting(userId, cycle.id, "Restitution parfaite.");
-
-    await session.validateSection(userId, cycle.id);
-
-    const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
-    expect(closed?.closedAt).not.toBeNull();
-
-    const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
-    expect(updatedSection?.statut).toBe("en_revision");
-
-    const card = await db.query.reviewCard.findFirst({ where: (r, { eq: eqOp }) => eqOp(r.sectionId, sec.id) });
-    expect(card).toBeTruthy();
-    expect(card?.gelee).toBe(false);
-  });
-
-  it("refuse sur un verdict insuffisant", async () => {
-    const sec = await createReadySection();
-    const cycle = await session.start(userId, sec.id);
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
-    );
-    await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
-
-    await expect(session.validateSection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
-  });
-
-  it("commit les candidates (auto-acceptation) même sur clôture acquis", async () => {
-    const sec = await createReadySection();
-    const cycle = await session.start(userId, sec.id);
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      mockCorrectionResponse({
-        diff: [diffCouvert(1), diffCouvert(2)],
-        erreurs_candidates: [{ type: "confusion", description: "imprécision relevée quand même" }],
-      }),
-    );
-    await session.submitBlurting(userId, cycle.id, "Restitution parfaite mais imprécise.");
-
-    await session.validateSection(userId, cycle.id);
-
-    const rows = await db.query.errorEntry.findMany({ where: eq(errorEntry.sectionId, sec.id) });
-    expect(rows).toHaveLength(1);
-    expect(rows[0].description).toBe("imprécision relevée quand même");
-  });
-});
-
 describe("session · S4 retryCorrection", () => {
   it("rejoue L3 sur la tentative sauvegardée sans en créer une nouvelle", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("réseau down"));
 
     await expect(session.submitBlurting(userId, cycle.id, "Ma restitution.")).rejects.toThrow();
@@ -424,6 +521,7 @@ describe("session · S4 retryCorrection", () => {
   it("refuse s'il n'y a aucune tentative en échec à relancer", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
@@ -437,6 +535,7 @@ describe("session · S4 getCurrentCorrection", () => {
   it("status pending quand la tentative sauvegardée n'a pas encore de correction", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("réseau down"));
     await expect(session.submitBlurting(userId, cycle.id, "Ma restitution.")).rejects.toThrow();
 
@@ -444,9 +543,10 @@ describe("session · S4 getCurrentCorrection", () => {
     expect(current.status).toBe("pending");
   });
 
-  it("status ready : ré-applique la même divulgation que celle déjà tranchée, sans nouvel appel LLM", async () => {
+  it("status ready : relit la correction déjà persistée, sans nouvel appel LLM", async () => {
     const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
@@ -458,66 +558,59 @@ describe("session · S4 getCurrentCorrection", () => {
     expect(fetch).not.toHaveBeenCalled();
     if (current.status !== "ready") throw new Error("attendu: ready");
     expect(current.verdict).toBe("insuffisant");
-    expect(current.divulgation).toBe("controlee");
-    expect(current.diff[0]).toEqual({ intitule: "Point critique", statut: "manquant" });
-  });
-
-  it("resolveOutcome('reveler') renvoie directement la vue complètement divulguée", async () => {
-    // le cycle boucle vers `blurting` dans le même appel (cf. resolveOutcome) :
-    // la vue révélée doit être renvoyée ICI, une relecture via
-    // getCurrentCorrection arriverait trop tard (etat déjà changé).
-    const sec = await createReadySection();
-    const cycle = await session.start(userId, sec.id);
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
-    );
-    await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
-
-    const revealed = await session.resolveOutcome(userId, cycle.id, "reveler");
-    if (revealed.outcome !== "reveler") throw new Error("attendu: reveler");
-    expect(revealed.divulgation).toBe("complete");
-    expect(revealed.diff[0]).toEqual({
+    expect(current.diff[0]).toEqual({
       intitule: "Point critique",
+      type: "critique",
       statut: "manquant",
       attendu: "SECRET attendu Point critique",
       explication: "SECRET explication 1",
     });
-
-    await expect(session.getCurrentCorrection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
   });
 });
 
-// Le canari correspondant (« Again ⇒ RefileItem du jour ; 2ᵉ Again consécutif ⇒
-// section prete ») vit dans session.canary.test.ts (suffixe requis par
-// CLAUDE.md §1 pour que `npm run test:canary` l'exécute réellement).
-describe("session · S4 rateRevision", () => {
-  async function submitRevisionBlurting(sec: { id: string }) {
+describe("session · S4 validateSection — auto-note FSRS (fusion Machine B/C, 2026-07-15)", () => {
+  // Depuis la fusion, une révision traverse le cycle complet (Feynman compris) —
+  // remplace l'ancien submitRevisionBlurting+rateRevision par un cycle entier.
+  async function completeRevisionCycle(sec: { id: string }, note: Note) {
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
     await session.submitBlurting(userId, cycle.id, "Rappel de révision.");
+    await enterFeynman(cycle);
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      mockBilanResponse({
+        points: [
+          { point_index: 1, statut: "demontre", commentaire: "clair" },
+          { point_index: 2, statut: "demontre", commentaire: "clair" },
+        ],
+        points_solides: [],
+        lacunes: [],
+      }),
+    );
+    await session.closeFeynman(userId, cycle.id);
+    await session.validateSection(userId, cycle.id, note);
     return cycle;
   }
 
   it("divulgation complète d'emblée en révision, quel que soit le verdict (ARCHITECTURE §6)", async () => {
     const sec = await createRevisionSection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
       mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
     const result = await session.submitBlurting(userId, cycle.id, "Rappel incomplet.");
 
     expect(result.verdict).toBe("insuffisant");
-    expect(result.divulgation).toBe("complete");
     expect(JSON.stringify(result)).toContain("SECRET");
   });
 
   it("note Again : FSRS mis à jour, re-file intra-journée, cycle fermé, section reste en_revision", async () => {
     const sec = await createRevisionSection();
-    const cycle = await submitRevisionBlurting(sec);
 
-    await session.rateRevision(userId, cycle.id, "again");
+    const cycle = await completeRevisionCycle(sec, "again");
 
     const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
     expect(closed?.closedAt).not.toBeNull();
@@ -529,60 +622,29 @@ describe("session · S4 rateRevision", () => {
     expect(updatedSection?.statut).toBe("en_revision");
   });
 
-  it("2ᵉ Again consécutif : section repasse prete, pas de nouvelle re-file", async () => {
+  it("2 Again consécutifs : la section reste en_revision (mécanisme de retour à l'étude complète retiré, fusion Machine B/C)", async () => {
     const sec = await createRevisionSection();
 
-    const firstCycle = await submitRevisionBlurting(sec);
-    await session.rateRevision(userId, firstCycle.id, "again");
-
-    const secondCycle = await submitRevisionBlurting(sec);
-    await session.rateRevision(userId, secondCycle.id, "again");
+    await completeRevisionCycle(sec, "again");
+    await completeRevisionCycle(sec, "again");
 
     const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
-    expect(updatedSection?.statut).toBe("prete");
+    expect(updatedSection?.statut).toBe("en_revision");
 
     const refileRows = await client`select * from refile_item where item_id = ${sec.id} and item_type = 'revision'`;
-    expect(refileRows).toHaveLength(1); // uniquement celle du 1er Again, pas une 2e
-  });
-
-  it("Again puis Good : la note Good remet le compteur consécutif à zéro", async () => {
-    const sec = await createRevisionSection();
-
-    const firstCycle = await submitRevisionBlurting(sec);
-    await session.rateRevision(userId, firstCycle.id, "again");
-
-    const secondCycle = await submitRevisionBlurting(sec);
-    await session.rateRevision(userId, secondCycle.id, "good");
-
-    const thirdCycle = await submitRevisionBlurting(sec);
-    await session.rateRevision(userId, thirdCycle.id, "again");
-
-    const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
-    expect(updatedSection?.statut).toBe("en_revision"); // pas 2 Again consécutifs (Good entre les deux)
+    expect(refileRows).toHaveLength(2); // une par Again, aucun traitement spécial au 2e
   });
 
   it("note non-Again : ferme le cycle sans re-file", async () => {
     const sec = await createRevisionSection();
-    const cycle = await submitRevisionBlurting(sec);
 
-    await session.rateRevision(userId, cycle.id, "good");
+    const cycle = await completeRevisionCycle(sec, "good");
 
     const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
     expect(closed?.closedAt).not.toBeNull();
 
     const refile = await client`select * from refile_item where item_id = ${sec.id}`;
     expect(refile).toHaveLength(0);
-  });
-
-  it("refuse une note sur un cycle d'étude", async () => {
-    const sec = await createReadySection();
-    const cycle = await session.start(userId, sec.id);
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue(
-      mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
-    );
-    await session.submitBlurting(userId, cycle.id, "Restitution.");
-
-    await expect(session.rateRevision(userId, cycle.id, "good")).rejects.toThrow(session.WrongCycleStateError);
   });
 });
 
@@ -635,67 +697,9 @@ describe("session · S4 transcribe", () => {
   });
 });
 
-function mockStreamResponse(deltas: string[]) {
-  const lines = [
-    ...deltas.map((d) => `data: ${JSON.stringify({ choices: [{ delta: { content: d } }] })}\n\n`),
-    `data: ${JSON.stringify({ choices: [{ delta: {} }], usage: { prompt_tokens: 1, completion_tokens: 1 } })}\n\n`,
-    "data: [DONE]\n\n",
-  ];
-  const encoder = new TextEncoder();
-  const body = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const line of lines) controller.enqueue(encoder.encode(line));
-      controller.close();
-    },
-  });
-  return { ok: true, body };
-}
-
-function mockBilanResponse(content: unknown) {
-  return {
-    ok: true,
-    json: async () => ({
-      choices: [{ message: { content: JSON.stringify(content) } }],
-      usage: { prompt_tokens: 1, completion_tokens: 1 },
-    }),
-  };
-}
-
-async function drain(gen: AsyncGenerator<string>): Promise<string> {
-  let full = "";
-  for await (const chunk of gen) full += chunk;
-  return full;
-}
-
-// Section importance 3 (Feynman requis), blurting acquis, cycle en `correction` —
-// point de départ commun aux tests beginFeynman/feynmanTurn/closeFeynman.
-async function readyForFeynman() {
-  const sec = await createReadySection([point("critique"), point("important")], 3);
-  const cycle = await session.start(userId, sec.id);
-  (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
-    mockCorrectionResponse({ diff: [diffCouvert(1), diffCouvert(2)], erreurs_candidates: [] }),
-  );
-  await session.submitBlurting(userId, cycle.id, "Restitution parfaite.");
-  return { sec, cycle };
-}
-
-// beginFeynman (transition) + openingTurn (streaming) combinés — équivalent de
-// l'ancien startFeynman unique, désormais scindé (route de streaming séparée
-// du Server Action de transition, cf. DECISIONS.md bloc 7.2).
-async function enterFeynman(
-  cycle: { id: string },
-  deltas: string[] = ["Ouverture."],
-  rejectedCandidateIndexes: number[] = [],
-  override = false,
-) {
-  await session.beginFeynman(userId, cycle.id, rejectedCandidateIndexes, override);
-  (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockStreamResponse(deltas));
-  return drain(session.openingTurn(userId, cycle.id));
-}
-
 describe("session · S4 beginFeynman + openingTurn", () => {
   it("refuse de quitter la correction si le cycle n'y est pas", async () => {
-    const sec = await createReadySection([point("critique"), point("important")], 3);
+    const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
     await expect(session.beginFeynman(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
   });
@@ -710,21 +714,23 @@ describe("session · S4 beginFeynman + openingTurn", () => {
     expect(updated?.etat).toBe("feynman");
   });
 
-  it("refuse un verdict insuffisant sans override, accepte avec override (journalisé)", async () => {
-    const sec = await createReadySection([point("critique"), point("important")], 3);
+  it("accepte un verdict insuffisant sans confirmation ni journalisation (rupture C, REVAMP v2)", async () => {
+    const sec = await createReadySection();
     const cycle = await session.start(userId, sec.id);
+    await session.terminerLecture(userId, cycle.id);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       mockCorrectionResponse({ diff: [diffManquant(1), diffCouvert(2)], erreurs_candidates: [] }),
     );
     await session.submitBlurting(userId, cycle.id, "Restitution incomplète.");
     const blurtingSession = (await db.query.studySession.findFirst({ where: eq(studySession.cycleId, cycle.id) }))!;
 
-    await expect(session.beginFeynman(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+    await enterFeynman(cycle, ["Quand même, explique."]);
 
-    await enterFeynman(cycle, ["Quand même, explique."], [], true);
+    const updated = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
+    expect(updated?.etat).toBe("feynman");
 
     const events = await client`select * from audit_event where entite_id = ${blurtingSession.id}`;
-    expect(events.some((e) => e.type === "override_verdict")).toBe(true);
+    expect(events.some((e) => e.type === "override_verdict")).toBe(false);
   });
 });
 
@@ -751,6 +757,18 @@ describe("session · S4 feynmanTurn", () => {
     const tours = rows.filter((r) => r.type === "feynman");
     expect(tours).toHaveLength(2);
     expect(tours[1].input).toBe("Voici mon explication.");
+  });
+
+  it("injecte le dernier brouillon de blurting dans le contexte L4 (REVAMP v2)", async () => {
+    const { cycle } = await readyForFeynman(); // blurting soumis : "Restitution parfaite."
+    await enterFeynman(cycle);
+
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(mockStreamResponse(["Et pourquoi donc ?"]));
+    await drain(session.feynmanTurn(userId, cycle.id, "Voici mon explication."));
+
+    const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls;
+    const body = JSON.parse(calls[calls.length - 1][1].body);
+    expect(body.messages[0].content).toContain("Restitution parfaite.");
   });
 });
 
@@ -807,13 +825,13 @@ describe("session · S4 closeFeynman", () => {
   });
 });
 
-describe("session · S4 validateSection — restriction Feynman (importance ≥ 3)", () => {
-  it("refuse de valider directement depuis la correction pour importance ≥ 3", async () => {
+describe("session · S4 validateSection — Feynman obligatoire (REVAMP v2, rupture E)", () => {
+  it("refuse de valider directement depuis la correction, quelle que soit l'importance", async () => {
     const { cycle } = await readyForFeynman();
-    await expect(session.validateSection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+    await expect(session.validateSection(userId, cycle.id, "good")).rejects.toThrow(session.WrongCycleStateError);
   });
 
-  it("valide depuis un bilan acquis", async () => {
+  it("ferme le cycle sur bilan acquis, section validee → en_revision, ReviewCard créée", async () => {
     const { cycle, sec } = await readyForFeynman();
     await enterFeynman(cycle);
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
@@ -828,10 +846,17 @@ describe("session · S4 validateSection — restriction Feynman (importance ≥ 
     );
     await session.closeFeynman(userId, cycle.id);
 
-    await session.validateSection(userId, cycle.id);
+    await session.validateSection(userId, cycle.id, "good");
+
+    const closed = await db.query.studyCycle.findFirst({ where: eq(studyCycle.id, cycle.id) });
+    expect(closed?.closedAt).not.toBeNull();
 
     const updatedSection = await db.query.section.findFirst({ where: eq(section.id, sec.id) });
     expect(updatedSection?.statut).toBe("en_revision");
+
+    const card = await db.query.reviewCard.findFirst({ where: (r, { eq: eqOp }) => eqOp(r.sectionId, sec.id) });
+    expect(card).toBeTruthy();
+    expect(card?.gelee).toBe(false);
   });
 
   it("refuse un bilan insuffisant sans override, accepte avec override (journalisé)", async () => {
@@ -849,9 +874,9 @@ describe("session · S4 validateSection — restriction Feynman (importance ≥ 
     );
     await session.closeFeynman(userId, cycle.id);
 
-    await expect(session.validateSection(userId, cycle.id)).rejects.toThrow(session.WrongCycleStateError);
+    await expect(session.validateSection(userId, cycle.id, "good")).rejects.toThrow(session.WrongCycleStateError);
 
-    await session.validateSection(userId, cycle.id, [], true);
+    await session.validateSection(userId, cycle.id, "good", true);
     const events = await client`select * from audit_event where entite_id = ${cycle.id} and type = 'validation_sur_insuffisant'`;
     expect(events).toHaveLength(1);
   });

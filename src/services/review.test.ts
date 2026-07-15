@@ -137,8 +137,32 @@ describe("review · S6", () => {
     expect(after).toEqual(before);
   });
 
-  it("preview : sans ReviewCard ⇒ NoReviewCardError", async () => {
+  it("preview : sans ReviewCard, simule depuis un état neuf (fusion Machine B/C, 2026-07-15 — 1ʳᵉ validation)", async () => {
     const sec = await createSection();
-    await expect(review.preview(userId, sec.id)).rejects.toThrow(review.NoReviewCardError);
+    const preview = await review.preview(userId, sec.id);
+    expect(Object.keys(preview).sort()).toEqual(["again", "easy", "good", "hard"]);
+    expect(preview.easy.due >= preview.again.due).toBe(true);
+
+    const card = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
+    expect(card).toBeUndefined(); // toujours pas de carte créée : preview n'écrit rien
+  });
+
+  describe("createOrRate (fusion Machine B/C, 2026-07-15)", () => {
+    it("aucune carte existante : en crée une PUIS lui applique la note (jamais exposée sans note)", async () => {
+      const sec = await createSection();
+      const updated = await review.createOrRate(userId, sec.id, "good");
+      expect(updated.reps).toBe(1);
+      expect(updated.lastReview).not.toBeNull();
+    });
+
+    it("carte déjà existante : note l'existante, n'en recrée pas une seconde", async () => {
+      const sec = await createSection();
+      await review.createCard(userId, sec.id);
+      const updated = await review.createOrRate(userId, sec.id, "again");
+      expect(updated.reps).toBe(1);
+
+      const rows = await db.query.reviewCard.findMany({ where: (r, { eq: eqOp }) => eqOp(r.sectionId, sec.id) });
+      expect(rows).toHaveLength(1);
+    });
   });
 });

@@ -1,6 +1,6 @@
 # USER_FLOW.md — Parcours utilisateur complet
 
-> **Statut** : v0.4
+> **Statut** : v0.6
 > **Rôle** : décrit tous les parcours de la webapp, écran par écran, avec états, actions et transitions. Sert de référence pour l'UI et de checklist d'implémentation.
 > **Dépend de** : ARCHITECTURE.md v0.2 (machines A/B/C, Planificateur), FORMAT.md v0.2. Les impacts de cette v0.2 sur le modèle de données sont listés en annexe A et devront être répercutés dans ARCHITECTURE.md.
 > **Convention** : `[Action]` = bouton/interaction. `→` = navigation. Chaque écran liste son état vide et ses états d'erreur : un écran sans état vide spécifié est un bug de conception.
@@ -13,13 +13,11 @@
 flowchart TB
   ONB[P0 · Onboarding] --> HOME
   HOME[ACCUEIL = Planificateur<br/>file du jour + horizon] --> IMP[P1 · Import & préparation<br/>d'un chapitre]
-  HOME --> ETU[P2 · Cycle d'étude<br/>blurting → Feynman]
-  HOME --> REV[P3 · Révision<br/>blurting de rappel + auto-note]
-  HOME --> CUR[P4 · Curriculum<br/>navigation, édition, ré-import]
+  HOME --> ETU[P3 · Cycle d'étude/révision<br/>lecture → blurting → Feynman]
+  HOME --> CUR[P6 · Curriculum<br/>navigation, édition, ré-import]
   HOME --> ERR[P5 · Carnet d'erreurs]
   IMP --> HOME
   ETU --> HOME
-  REV --> HOME
   CUR -->|édition locale OU ré-import gdoc| IMP
 ```
 
@@ -114,78 +112,76 @@ Zones, de haut en bas :
 1. **File du jour** : cartes ordonnées — révisions dues d'abord (badge retard si due < aujourd'hui), puis nouvelles études (plafonnées à `nouvelles_par_jour`). Chaque carte : matière (+ compte à rebours examen si < 30 j), titre de section, type, importance.
    - **Le réordonnancement manuel est roi** : l'ordre calculé est une suggestion, l'utilisateur a le dernier mot. Interaction : poignées/boutons de réordonnancement (shadcn) en v1, glisser-déposer HTML5 natif en amélioration progressive (TECH_MAPPING §4.2). Si une révision est déplacée sous des nouvelles études, un indicateur discret le signale (« 2 révisions repoussées ») — informatif, jamais bloquant.
    - `[Reporter]` par carte, journalisé (DeferralLog). **Révision reportée** : reste due, la dette s'affiche demain. **Nouvelle étude reportée : le slot du jour est perdu** — aucune section ne la remplace (sinon reporter ne coûte rien et le vivier défile sans travail).
-2. **Re-file intra-journée** : les éléments regénérés en cours de journée — carte notée `Again`, retry de blurting échoué (cf. É3.2) — s'ajoutent **en fin de file du jour même**, section visuellement distincte « à repasser aujourd'hui ». La file n'est donc pas figée le matin.
+2. **Re-file intra-journée** : les éléments regénérés en cours de journée — un cycle noté `Again` à la clôture du bilan (cf. É3.5 ; depuis la fusion Machine B/C, 2026-07-15, ceci s'applique aussi bien à une révision qu'à une première étude — les 2 passes de blurting elles-mêmes ne re-filent jamais, REVAMP v2) — s'ajoutent **en fin de file du jour même**, section visuellement distincte « à repasser aujourd'hui ». La file n'est donc pas figée le matin.
 3. **Horizon** : graphe de **charge de révision** 7/30 jours (étiqueté ainsi — les nouvelles études sont un backlog sans dates et n'y figurent pas), dette de retard, répartition par matière, **échéances d'examens** marquées sur la timeline.
 4. **Badges d'attention** : rubriques à valider, sections « cours modifié » (→ É6.2/É6.3), chapitres jamais triés.
 
-Actions : `[Commencer]` sur une carte → P3 si étude, P4 si révision (précédé de la validation de rubrique si elle est encore pendante, cf. É1.5).
+Actions : `[Commencer]` sur une carte → **P3, dans tous les cas** (étude ou révision : même écran depuis la fusion Machine B/C, DECISIONS.md 2026-07-15 ; précédé de la validation de rubrique si elle est encore pendante, cf. É1.5).
 
 **État vide** : « Rien à faire aujourd'hui » + prochaine échéance + CTA secondaires (importer, avancer une nouvelle étude de demain — ce qui consomme un slot de demain, pas d'aujourd'hui).
 
 ---
 
-## P3 — Cycle d'étude (machine B)
+## P3 — Cycle d'étude et de révision (machine B, fusion Machine C)
 
-Plein écran, sans navigation latérale (mode focus). Barre de progression : (Rubrique) → Blurting → Correction → Feynman → Bilan. Quitter en cours = session sauvegardée, reprise depuis l'accueil.
+> **v2 (REVAMP.md, 2026-07-15)** : rituel en 2 passes de blurting dans la même séance (grandes lignes → relecture ciblée → détail), verdict informatif (jamais bloquant), Feynman toujours atteint et obligatoire pour toute importance 2 à 5. La lecture du cours est désormais une étape de l'app (Machine B), pas une hypothèse sur ce qui a eu lieu ailleurs.
+> **v3 (DECISIONS.md, 2026-07-15, post-hoc)** : ce parcours unique sert désormais AUSSI la révision (ex-P4/Machine C, fusionnée ici) — une section due en révision traverse exactement le même écran-par-écran qu'une première étude, Feynman compris. La différence entre « nouvelle étude » et « révision » redevient un simple badge/tri du Planificateur (§2), plus une distinction de parcours. L'auto-note FSRS (Again/Hard/Good/Easy), auparavant l'unique geste de la révision, se pose désormais à la clôture du bilan (É3.5) — condition nécessaire à la validation, quelle que soit la « Nᵉ fois ».
+
+Plein écran, sans navigation latérale (mode focus). Barre de progression : (Rubrique) → Lecture → Blurting → Correction → (Lecture → Blurting → Correction) → Feynman → Bilan. Quitter en cours = session sauvegardée, reprise depuis l'accueil. Badge de contexte (« Étude » ou « Révision — Xᵉ rappel ») affiché sur l'écran de blurting — cosmétique uniquement, le parcours est identique dans les deux cas.
 
 ### É3.0 (conditionnel) Validation de rubrique
 
 Si la rubrique est `a_valider` : écran É1.5 en préambule. Sinon, direct É3.1.
 
-### É3.1 Blurting
+### É3.1 Lecture (nouveau — deux occurrences par cycle)
 
-- En-tête minimal : titre de la section, tentative n°X. **Le contenu du cours n'est PAS accessible depuis cet écran** — pas d'onglet, pas de lien. C'est le principe du blurting.
+- **Lecture initiale** (avant blurting_1) : texte complet de la section (U3 `MarkdownViewer`), plein écran.
+- **Relecture ciblée** (avant blurting_2, uniquement si une 2ᵉ passe a été choisie en É3.3) : même texte, avec en vis-à-vis le diff de la correction précédente (`DiffList`, déjà en divulgation complète) pour orienter ce qui reste à combler.
+- Avancer est **structurel, pas chronométré** : pas de minuteur, mais impossible de sauter l'étape — le bouton de blurting n'est atteignable que depuis cet écran.
+- `[Je suis prêt, je blurte]` → É3.2. `[Abandonner]` toujours disponible → retour accueil (cycle clos).
+
+### É3.2 Blurting
+
+- En-tête minimal : titre de la section, tentative n°X (1 ou 2). **Le contenu du cours n'est PAS accessible depuis cet écran** — pas d'onglet, pas de lien. C'est le principe du blurting.
+- Instruction adaptée à la tentative : n°1 = « les grandes lignes, comme un plan » ; n°2 = « développe maintenant en détail ».
 - Grande zone de texte (Markdown accepté), chrono discret (informatif, sans limite).
-- `[Soumettre]` → sauvegarde immédiate → LLM 3+4 → É3.2. `[Abandonner la tentative]` → retour accueil (session marquée abandonnée).
+- `[Soumettre]` → sauvegarde immédiate → LLM 3+4 → É3.3. `[Abandonner]` → retour accueil (cycle clos).
 
-### É3.2 Correction du blurting — divulgation contrôlée
+### É3.3 Correction du blurting
 
-Principe anti-illusion de fluence : **tant qu'un nouvel essai est à venir, la correction ne révèle pas les réponses.**
-
-- **Toujours affiché** : diff par point de contrôle — ✅ couverts (avec explication) · ❌ manquants · ⚠️ déformés/imprécis — mais pour les manquants/déformés, **seul l'intitulé du point est montré**, pas le contenu attendu (« ❌ Les quatre vices de la possession — non traités »).
-- **Verdict proposé**, affiché comme tel : « Verdict proposé : insuffisant — 2 points critiques manquants ».
-- **Si verdict insuffisant** :
-  - `[Retenter plus tard aujourd'hui]` (action principale) → la section part en re-file intra-journée (É2.0-2) ; retour à l'accueil. Le retry n'est **jamais** immédiat : re-blurter ce qu'on vient de lire est de la mémoire de travail, pas de l'apprentissage.
-  - `[Révéler les réponses et retourner étudier]` → affiche les contenus attendus + lien vers la section du cours ; la tentative est close ; la section part en re-file intra-journée (pour demain si la journée est finie). Override journalisé.
-  - `[Passer au Feynman quand même]` (override journalisé, confirmation légère).
-- **Si verdict acquis** : divulgation complète (contenus attendus des ⚠️ éventuels inclus) + `[Passer au Feynman]` · `[Refaire un blurting]` (le perfectionnisme reste permis — mais l'écran ayant tout révélé, un bandeau rappelle que ce re-essai ne « comptera » pas comme preuve de mémoire).
-- **Erreurs candidates** (encadré) : les ErrorEntry proposées par LLM 4, statut explicite « proposées » — chacune éditable ou supprimable ; `[Tout accepter]`. **Règle de commit** : acceptées → enregistrées ; quitter l'écran sans statuer → auto-acceptées telles quelles (modifiables ensuite depuis le carnet). Badge « récidive » le cas échéant. Les intitulés d'erreurs suivent la même divulgation contrôlée que le diff.
+- **Toujours affiché, intégralement** (divulgation toujours complète, dès la 1ʳᵉ correction — plus de masquage à protéger, le blurting est une étape d'un rituel piloté par l'étudiant, pas un test à protéger) : diff par point de contrôle — ✅ couverts (avec explication) · ❌ manquants (avec le contenu attendu) · ⚠️ déformés/imprécis (idem).
+- **Verdict proposé**, affiché comme tel et purement informatif : « Verdict proposé : insuffisant — 2 points critiques manquants ». Il ne bloque plus rien, n'exige aucune confirmation ni override.
+- Actions, selon la tentative :
+  - **Tentative 1** : `[Relire, puis refaire un blurting]` → É3.1 (relecture ciblée, avec diff) · `[Passer au Feynman]` (toujours disponible, quel que soit le verdict) · `[Abandonner]`.
+  - **Tentative 2** : `[Passer au Feynman]` (seul choix menant plus loin) · `[Abandonner]`. Pas de 3ᵉ passe.
+- **Erreurs candidates** (encadré) : les ErrorEntry proposées par LLM 4, statut explicite « proposées » — chacune éditable ou supprimable ; `[Tout accepter]`. **Règle de commit** : acceptées → enregistrées ; quitter l'écran sans statuer → auto-acceptées telles quelles (modifiables ensuite depuis le carnet). Badge « récidive » le cas échéant.
 - **Erreur LLM** : le blurting est TOUJOURS sauvegardé d'abord ; `[Relancer la correction]` sans re-saisie.
 
-### É3.3 Feynman (push-to-talk)
+### É3.4 Feynman (push-to-talk)
 
-- Requis pour valider une section d'**importance ≥ 3**. Pour l'importance 2, il est **optionnel** : É3.2 (verdict acquis) propose alors `[Valider sans Feynman]` à côté de `[Passer au Feynman]`.
-- Interface de conversation : bulles (toi / IA). Premier message IA : invitation à expliquer la section, orientée vers une erreur active connue le cas échéant.
+- **Obligatoire pour toute importance de 2 à 5** — une seule voie de validation, atteinte depuis É3.3 quel que soit le verdict (plus de `[Valider sans Feynman]`).
+- Interface de conversation : bulles (toi / IA). Premier message IA : invitation à expliquer la section, orientée vers une erreur active connue le cas échéant. Les relances se construisent comme un développement progressif du dernier brouillon de blurting soumis, pas une exploration libre de la rubrique.
 - **Bouton micro maintenu (ou verrouillable)** : enregistre → transcription (LLM 6) → ton tour s'affiche → **transcript éditable avant envoi** (corriger les erreurs de transcription, pas tes erreurs de fond) → `[Envoyer]` → réponse IA (LLM 5) + TTS optionnel (toggle).
 - **L'audio est supprimé sitôt le transcript confirmé** — seul le texte persiste (coût, confidentialité).
 - Alternative clavier toujours disponible.
-- `[Clore et demander le bilan]` → LLM 5 (bilan) → É3.4.
+- `[Clore et demander le bilan]` → LLM 5 (bilan) → É3.5.
 - **Erreur transcription** : ré-écoute + `[Réessayer]` + bascule clavier.
 
-### É3.4 Bilan Feynman & validation
+### É3.5 Bilan Feynman & validation
 
-- Bilan structuré **ancré sur la rubrique** : pour chaque point de contrôle — démontré à l'oral avec explication du pourquoi / seulement récité / non abordé — puis points solides, lacunes, verdict proposé. (Le critère exact est contractualisé dans LLM_CONTRACTS.md ; le principe est fixé ici : même référentiel que le blurting, exigence supplémentaire = l'explication, pas la restitution.)
-- Actions :
-  - `[Valider la section]` → confirmation → section `validee`, ReviewCard créée → retour accueil, carte suivante ;
-  - `[Refaire un Feynman]` → É3.3 (nouvelle session) ;
+- Bilan structuré **ancré sur la rubrique** : pour chaque point de contrôle — démontré à l'oral avec explication du pourquoi / seulement récité / non abordé — puis points solides, lacunes, verdict proposé, purement informatif (même doctrine qu'É3.3 : plus d'override sur CE point, plus de confirmation supplémentaire, plus de journalisation).
+- **Auto-note FSRS, condition nécessaire à la clôture** (fusion Machine C, 2026-07-15) : « À quel point c'était difficile ? » `[Again] [Hard] [Good] [Easy]` — sous chaque bouton, la prochaine échéance prévisionnelle (« Good → revu dans ~12 j »). Impossible de valider la section sans choisir une note ; c'est cette auto-note — jamais le verdict LLM — qui pilote FSRS (ADR 3). S'applique à l'identique que ce soit la 1ʳᵉ validation de la section (la ReviewCard est créée puis notée dans la foulée) ou la Nᵉ (la carte existante est notée).
+  - Si le bilan est **insuffisant**, une confirmation explicite reste requise avant de noter (comme aujourd'hui) — le choix de la note ne remplace pas cette confirmation.
+- Autres actions :
+  - `[Refaire un Feynman]` → É3.4 (nouvelle session) ;
   - `[Revenir au blurting]` → re-file intra-journée.
-- Validation possible sur verdict insuffisant (override journalisé, confirmation explicite).
+- **Cas `Again`** : en plus de la mise à jour FSRS, la section part en **re-file intra-journée** (réapparaît en fin de file du jour même) — assumé tel quel malgré le coût d'un cycle complet à rejouer (DECISIONS.md 2026-07-15). Le mécanisme v1 « 2ᵉ Again consécutif → retour en étude complète » disparaît : il n'existait que pour retomber sur une version allégée du cycle (Machine C), qui n'existe plus.
 
 ---
 
-## P4 — Révision (machine C)
+## P4 — ~~Révision (machine C)~~ (fusionnée dans P3, 2026-07-15)
 
-### É4.1 Blurting de rappel
-
-Identique à É3.1 (même composant), badge « Révision — Xᵉ rappel ».
-
-### É4.2 Correction + auto-note FSRS
-
-- Diff É3.2 (même composant). **Divulgation : complète d'emblée** — en révision il n'y a pas de retry, la carte est notée puis re-programmée ; masquer n'aurait pas de fonction.
-- Erreurs candidates : mêmes règles qu'É3.2.
-- **Zone d'auto-évaluation, élément central** : « À quel point c'était difficile ? » `[Again] [Hard] [Good] [Easy]` — sous chaque bouton, la prochaine échéance prévisionnelle (« Good → revu dans ~12 j »). Le verdict LLM est affiché à côté comme aide, explicitement non contraignant.
-- Sélection → FSRS met à jour → toast « Prochaine révision le … » → retour accueil.
-- **Cas `Again`** : la carte part en **re-file intra-journée** (elle réapparaît en fin de file du jour même — cohérent avec la re-programmation courte de FSRS). **2ᵉ Again consécutif** : dialogue « Cette section retourne en étude complète » → section `prete`.
+> Machine C n'existe plus comme parcours séparé. Une section due en révision (`en_revision`) traverse désormais exactement le même écran-par-écran que P3 ci-dessus — lecture, blurting (≤2 passes), correction, Feynman, bilan avec auto-note FSRS obligatoire. Voir ARCHITECTURE.md §5/§6 et DECISIONS.md (2026-07-15, « Suppression de la dualité étude\|révision »).
 
 ---
 
@@ -244,8 +240,8 @@ Compte · rythme (`nouvelles_par_jour`) · méthodologie des titres (document gl
 1. **Aucun appel LLM ne bloque définitivement un parcours** : chaque étape IA a `[Relancer]` + une voie de secours manuelle (sectionnement mécanique en cascade Titre 2 → Titre 1 → chapitre entier, rubrique manuelle, clavier au Feynman).
 2. **Tout ce qui est saisi est sauvegardé avant tout appel LLM.**
 3. **Les verdicts sont toujours « proposés »** ; tout override demande une confirmation légère et est journalisé.
-4. **Divulgation contrôlée** : tant qu'un nouvel essai de mémoire est attendu sur une section, les contenus attendus ne sont pas révélés (intitulés seulement). Révéler est un choix explicite qui clôt la tentative.
-5. **Jamais de retry immédiat** après correction : tout re-essai passe par la re-file intra-journée au plus tôt.
+4. **Divulgation toujours complète** en étude (dès la 1ʳᵉ correction, REVAMP v2 2026-07-15) comme en révision (jamais eu de retry à protéger) — plus aucun masquage nulle part dans le produit.
+5. **2 passes de blurting max, la 2ᵉ immédiate dans la même séance (jamais de re-file pour ce motif)** — voir É3.1–É3.3, s'applique à toute répétition (étude ou révision, parcours unique depuis 2026-07-15). **`Again` à la clôture du bilan** (É3.5) : seul cas de re-file intra-journée.
 6. **Mode focus** pour P3/P4 : pas de navigation, sortie = sauvegarde.
 7. **Chaque écran a un état vide défini et un état d'erreur LLM.**
 8. **Retour à l'accueil en fin d'élément** : le Planificateur rythme la session.
@@ -263,7 +259,8 @@ Compte · rythme (`nouvelles_par_jour`) · méthodologie des titres (document gl
 | File du jour   | + notion de **re-file intra-journée** (éléments regénérés le jour même : Again, retry différé) — calculée, avec persistance légère (table `RefileItem` ou champ daté) |
 | `StudySession` | + `divulgation ENUM(controlee, complete)` (traçabilité du mode de correction affiché)                                                                                 |
 | Rubriques      | déclencheur de génération : approche de la tête de file (paresseux) et non plus le tri                                                                                |
-| Machine B      | Feynman requis si importance ≥ 3, optionnel si importance = 2                                                                                                         |
+| Machine B      | Feynman **obligatoire pour toute importance 2 à 5** (REVAMP v2, 2026-07-15) — plus de validation directe sur simple blurting                                          |
+| Machine B/C    | **Fusionnées** (2026-07-15) : Machine C disparaît, toute révision traverse le cycle B complet. Auto-note FSRS déplacée à la clôture du bilan (É3.5), condition nécessaire à la validation |
 
 ---
 
@@ -271,6 +268,8 @@ Compte · rythme (`nouvelles_par_jour`) · méthodologie des titres (document gl
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.6     | 2026-07-15 | DECISIONS.md (« Suppression de la dualité étude\|révision », post-hoc REVAMP.md) : P4/Machine C supprimé comme parcours séparé, fusionné dans P3 — toute révision traverse désormais lecture→blurting→correction→Feynman→bilan comme une 1ʳᵉ étude. É3.5 gagne l'auto-note FSRS (Again/Hard/Good/Easy) comme condition nécessaire à la clôture. Carte des parcours, É2.0, règles transversales 2/5 et Annexe A mis à jour en conséquence. |
+| 0.5     | 2026-07-15 | REVAMP.md v0.3 (tranché avec l'humain) : P3 réécrit — lecture devient un état/écran à part entière (É3.1, 2 occurrences par cycle), blurting/correction renumérotés É3.2/É3.3, plus de divulgation contrôlée ni de retry différé en étude (2 passes max, la 2ᵉ immédiate), Feynman (É3.4) toujours atteint et obligatoire pour toute importance 2 à 5 (bilan renuméroté É3.5), suppression de `[Valider sans Feynman]`/`[Retenter plus tard]`/`[Révéler les réponses]`, ajout d'`[Abandonner]` à l'écran de correction. Règles transversales 4/5 et Annexe A mises à jour en conséquence ; P4/Machine C intacte. |
 | 0.4     | 2026-07-08 | É1.3 : retrait de « bornes visualisées sur une minicarte du document » — abandonné, pas reporté ailleurs (DECISIONS.md, bloc 3.3) ; la liste ordonnée + aperçu dépliable (U13) suffisent à juger le sectionnement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 0.1     | 2026-07-02 | Création                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 0.3     | 2026-07-02 | Alignement TECH_MAPPING v0.2 : réordonnancement de la file par boutons shadcn (drag & drop HTML5 natif en amélioration progressive) ; É6.2 devient un WYSIWYG Tiptap limité aux trois constructions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
