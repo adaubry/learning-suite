@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@astryxdesign/core/Button";
 import { listSubjects } from "@/services/account";
 import { listChaptersBySubject, listSectionsByChapter } from "@/services/chapter";
-import { AddSubjectForm, RubricQueuePanel, SubjectCard } from "./curriculum-ui";
+import { AddSubjectDialog, RubricQueuePanel, SubjectCard } from "./curriculum-ui";
 
 // P6 É6.0 — U22 CurriculumTree minimal : matières + chapitres + sections.
 // Le tri des sections (S2/L1/U13, Phase 3) n'existe toujours pas : les
@@ -37,12 +37,13 @@ export default async function CurriculumPage() {
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Curriculum</h1>
-        <Button size="sm" label="Importer un chapitre" href="/importer" />
+        <div className="flex gap-2">
+          <AddSubjectDialog />
+          <Button size="sm" label="Importer un chapitre" href="/importer" />
+        </div>
       </div>
 
       <RubricQueuePanel />
-
-      <AddSubjectForm />
 
       {subjects.length === 0 ? (
         <p className="text-sm text-secondary">Aucune matière pour l&apos;instant.</p>

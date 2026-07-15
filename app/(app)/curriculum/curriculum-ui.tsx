@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { PencilIcon, SquarePenIcon, XIcon } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { TextInput } from "@astryxdesign/core/TextInput";
@@ -11,9 +17,22 @@ import { DateInput } from "@astryxdesign/core/DateInput";
 import type { ISODateString } from "@astryxdesign/core/Calendar";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import { Card, Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
-import { CollapsibleGroup, useCollapsible } from "@astryxdesign/core/Collapsible";
+import {
+  Card,
+  HStack,
+  Layout,
+  LayoutContent,
+  LayoutFooter,
+  VStack,
+} from "@astryxdesign/core/Layout";
+import {
+  CollapsibleGroup,
+  useCollapsible,
+} from "@astryxdesign/core/Collapsible";
 import { Icon } from "@astryxdesign/core/Icon";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
+import { Text } from "@astryxdesign/core/Text";
 import { StrongConfirmDialog } from "@/components/confirm-dialog";
 import {
   createRubricQueue,
@@ -42,12 +61,17 @@ function sectionFormData(sectionId: string) {
 }
 const rubricQueue = createRubricQueue(
   (sectionId) => generateRubricAction(undefined, sectionFormData(sectionId)),
-  (sectionId) => createManualRubricAction(undefined, sectionFormData(sectionId)),
+  (sectionId) =>
+    createManualRubricAction(undefined, sectionFormData(sectionId)),
 );
 
 const EMPTY_RUBRIC_QUEUE: RubricQueueItem[] = [];
 function useRubricQueueItems() {
-  return useSyncExternalStore(rubricQueue.subscribe, rubricQueue.getSnapshot, () => EMPTY_RUBRIC_QUEUE);
+  return useSyncExternalStore(
+    rubricQueue.subscribe,
+    rubricQueue.getSnapshot,
+    () => EMPTY_RUBRIC_QUEUE,
+  );
 }
 
 const rubricQueueStatusLabel: Record<RubricQueueItem["status"], string> = {
@@ -68,7 +92,9 @@ export function RubricQueuePanel() {
   const settledCount = useRef(0);
 
   useEffect(() => {
-    const count = items.filter((i) => i.status === "termine" || i.status === "erreur").length;
+    const count = items.filter(
+      (i) => i.status === "termine" || i.status === "erreur",
+    ).length;
     if (count !== settledCount.current) {
       settledCount.current = count;
       router.refresh();
@@ -85,7 +111,10 @@ export function RubricQueuePanel() {
             <span className="flex-1">
               {rubricQueueKindLabel[item.kind]} — {item.sectionTitre}
             </span>
-            <Badge variant={item.status === "erreur" ? "error" : "neutral"} label={rubricQueueStatusLabel[item.status]} />
+            <Badge
+              variant={item.status === "erreur" ? "error" : "neutral"}
+              label={rubricQueueStatusLabel[item.status]}
+            />
             {item.status === "en_attente" && (
               <Button
                 variant="ghost"
@@ -163,6 +192,24 @@ const sectionStatutLabel: Record<SectionStatut, string> = {
   archivee: "archivée",
 };
 
+// Code couleur de la pastille (USER_FLOW É6.0 : « statut (pastille) ») — warning pour tout ce
+// qui attend une action de l'utilisateur, success pour ce qui est prêt/validé, neutral pour ce
+// qui est hors-jeu (exclue/archivée) ou pas encore actionnable (importée, tri pas encore construit).
+const sectionStatusDotVariant: Record<
+  SectionStatut,
+  "success" | "warning" | "error" | "accent" | "neutral"
+> = {
+  importee: "neutral",
+  a_trier: "warning",
+  active: "warning",
+  exclue: "neutral",
+  rubrique_a_valider: "warning",
+  prete: "success",
+  validee: "success",
+  en_revision: "accent",
+  archivee: "neutral",
+};
+
 function SectionRow({ section }: { section: Section }) {
   const items = useRubricQueueItems();
   // Les deux boutons créent une rubrique pour la MÊME section — un double-clic
@@ -174,69 +221,148 @@ function SectionRow({ section }: { section: Section }) {
   const submitting = isRubricSectionQueued(items, section.id);
 
   return (
-    <li className="flex flex-col gap-1 border-l pl-2 py-1 text-sm">
-      <div className="flex items-center gap-2">
-        <span>{section.titre}</span>
-        <Badge variant="neutral" label={`imp. ${section.importance}`} />
-        <Badge variant="neutral" label={sectionStatutLabel[section.statut]} />
-      </div>
-      {section.statut === "active" && (
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            isDisabled={submitting}
-            label="Générer la rubrique"
-            onClick={() => rubricQueue.enqueue(section.id, section.titre, "generer")}
-          />
-          <Button
-            size="sm"
-            variant="ghost"
-            isDisabled={submitting}
-            label="Rédiger manuellement"
-            onClick={() => rubricQueue.enqueue(section.id, section.titre, "manuel")}
-          />
-        </div>
-      )}
-      {section.statut === "rubrique_a_valider" && (
-        <Button size="sm" as={Link} href={`/section/${section.id}/rubrique`} label="Valider la rubrique" />
-      )}
-    </li>
+    <ListItem
+      label={section.titre}
+      description={
+        <VStack gap={1} paddingBlock={1}>
+          <HStack gap={2} align="center" wrap="wrap">
+            <Text type="supporting">imp. {section.importance}</Text>
+            <StatusDot
+              variant={sectionStatusDotVariant[section.statut]}
+              label={sectionStatutLabel[section.statut]}
+            />
+            <Text type="supporting">{sectionStatutLabel[section.statut]}</Text>
+          </HStack>
+          {section.statut === "active" ? (
+            <HStack gap={2} wrap="wrap">
+              <Button
+                size="sm"
+                variant="secondary"
+                isDisabled={submitting}
+                label="Générer la rubrique"
+                onClick={() =>
+                  rubricQueue.enqueue(section.id, section.titre, "generer")
+                }
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                isDisabled={submitting}
+                label="Rédiger manuellement"
+                onClick={() =>
+                  rubricQueue.enqueue(section.id, section.titre, "manuel")
+                }
+              />
+            </HStack>
+          ) : section.statut === "rubrique_a_valider" ? (
+            <HStack gap={2} wrap="wrap">
+              <Button
+                size="sm"
+                as={Link}
+                href={`/section/${section.id}/rubrique`}
+                label="Valider la rubrique"
+              />
+            </HStack>
+          ) : null}
+        </VStack>
+      }
+    />
   );
 }
 
-export function AddSubjectForm() {
-  const [state, action, pending] = useActionState(createSubjectAction, undefined);
+function AddSubjectFields({ setOpen }: { setOpen: (open: boolean) => void }) {
+  const [state, action, pending] = useActionState(
+    createSubjectAction,
+    undefined,
+  );
   const [nom, setNom] = useState("");
   const [semestre, setSemestre] = useState("");
-  const [dateExamen, setDateExamen] = useState<ISODateString | undefined>(undefined);
+  const [dateExamen, setDateExamen] = useState<ISODateString | undefined>(
+    undefined,
+  );
+  const [lastState, setLastState] = useState(state);
+  if (state !== lastState) {
+    setLastState(state);
+    if (state?.success) setOpen(false);
+  }
 
   return (
-    <form action={action} className="flex flex-col gap-3 rounded border p-4">
-      <h2 className="text-sm font-semibold">Ajouter une matière</h2>
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1">
-          <TextInput label="Nom" value={nom} onChange={setNom} htmlName="nom" isRequired placeholder="Droit civil" />
-        </div>
-        <div className="flex-1">
-          <TextInput
-            label="Semestre"
-            value={semestre}
-            onChange={setSemestre}
-            htmlName="semestre"
-            isRequired
-            placeholder="S1"
-          />
-        </div>
-        <div className="flex-1">
-          {/* DateInput n'a pas de htmlName natif — la valeur part via le champ caché ci-dessous. */}
-          <DateInput label="Date d'examen" value={dateExamen} onChange={setDateExamen} isOptional />
-        </div>
-      </div>
-      <input type="hidden" name="dateExamen" value={dateExamen ?? ""} />
-      <Button type="submit" isDisabled={pending} label={pending ? "Ajout…" : "Ajouter"} className="self-start" />
-      {state?.error && <p className="text-sm text-error">{state.error}</p>}
+    <form action={action}>
+      <Layout
+        header={
+          <DialogHeader title="Ajouter une matière" onOpenChange={setOpen} />
+        }
+        content={
+          <LayoutContent>
+            <div className="flex flex-col gap-3">
+              <TextInput
+                label="Nom"
+                value={nom}
+                onChange={setNom}
+                htmlName="nom"
+                isRequired
+                placeholder="Droit civil"
+              />
+              <TextInput
+                label="Semestre"
+                value={semestre}
+                onChange={setSemestre}
+                htmlName="semestre"
+                isRequired
+                placeholder="S1"
+              />
+              {/* DateInput n'a pas de htmlName natif — la valeur part via le champ caché ci-dessous. */}
+              <DateInput
+                label="Date d'examen"
+                value={dateExamen}
+                onChange={setDateExamen}
+                isOptional
+              />
+              <input type="hidden" name="dateExamen" value={dateExamen ?? ""} />
+              {state?.error && (
+                <p className="text-sm text-error">{state.error}</p>
+              )}
+            </div>
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter hasDivider>
+            <HStack gap={2} hAlign="end">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                label="Annuler"
+                onClick={() => setOpen(false)}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                isDisabled={pending}
+                label={pending ? "Ajout…" : "Ajouter"}
+              />
+            </HStack>
+          </LayoutFooter>
+        }
+      />
     </form>
+  );
+}
+
+export function AddSubjectDialog() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <Button
+        size="sm"
+        label="Ajouter une matière"
+        onClick={() => setOpen(true)}
+      />
+      <Dialog isOpen={open} onOpenChange={setOpen} purpose="form" width={640}>
+        {open && <AddSubjectFields setOpen={setOpen} />}
+      </Dialog>
+    </>
   );
 }
 
@@ -258,28 +384,45 @@ function EditSubjectFields({
   const [dateExamen, setDateExamen] = useState<ISODateString | undefined>(
     (subject.dateExamen as ISODateString | null) ?? undefined,
   );
-  const [methodologieTitres, setMethodologieTitres] = useState(subject.methodologieTitres ?? "");
+  const [methodologieTitres, setMethodologieTitres] = useState(
+    subject.methodologieTitres ?? "",
+  );
 
   return (
     <form action={action}>
       <input type="hidden" name="subjectId" value={subject.id} />
       <input type="hidden" name="dateExamen" value={dateExamen ?? ""} />
       <Layout
-        header={<DialogHeader title={`Modifier « ${subject.nom} »`} onOpenChange={setOpen} />}
+        header={
+          <DialogHeader
+            title={`Modifier « ${subject.nom} »`}
+            onOpenChange={setOpen}
+          />
+        }
         content={
           <LayoutContent>
             <div className="flex flex-col gap-3">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <div className="flex-1">
-                  <TextInput label="Nom" value={nom} onChange={setNom} htmlName="nom" isRequired />
-                </div>
-                <div className="flex-1">
-                  <TextInput label="Semestre" value={semestre} onChange={setSemestre} htmlName="semestre" isRequired />
-                </div>
-                <div className="flex-1">
-                  <DateInput label="Date d'examen" value={dateExamen} onChange={setDateExamen} isOptional hasClear />
-                </div>
-              </div>
+              <TextInput
+                label="Nom"
+                value={nom}
+                onChange={setNom}
+                htmlName="nom"
+                isRequired
+              />
+              <TextInput
+                label="Semestre"
+                value={semestre}
+                onChange={setSemestre}
+                htmlName="semestre"
+                isRequired
+              />
+              <DateInput
+                label="Date d'examen"
+                value={dateExamen}
+                onChange={setDateExamen}
+                isOptional
+                hasClear
+              />
               <TextArea
                 label="Surcharge méthodologie des titres"
                 value={methodologieTitres}
@@ -295,7 +438,21 @@ function EditSubjectFields({
         }
         footer={
           <LayoutFooter hasDivider>
-            <Button type="submit" size="sm" isDisabled={pending} label={pending ? "Enregistrement…" : "Enregistrer"} />
+            <HStack gap={2} hAlign="end">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                label="Annuler"
+                onClick={() => setOpen(false)}
+              />
+              <Button
+                type="submit"
+                size="sm"
+                isDisabled={pending}
+                label={pending ? "Enregistrement…" : "Enregistrer"}
+              />
+            </HStack>
           </LayoutFooter>
         }
       />
@@ -304,7 +461,10 @@ function EditSubjectFields({
 }
 
 function EditSubjectDialog({ subject }: { subject: Subject }) {
-  const [state, action, pending] = useActionState(updateSubjectAction, undefined);
+  const [state, action, pending] = useActionState(
+    updateSubjectAction,
+    undefined,
+  );
   const [open, setOpen] = useState(false);
   const [lastState, setLastState] = useState(state);
   if (state !== lastState) {
@@ -323,7 +483,13 @@ function EditSubjectDialog({ subject }: { subject: Subject }) {
       />
       <Dialog isOpen={open} onOpenChange={setOpen} purpose="form" width={640}>
         {open && (
-          <EditSubjectFields subject={subject} action={action} pending={pending} error={state?.error} setOpen={setOpen} />
+          <EditSubjectFields
+            subject={subject}
+            action={action}
+            pending={pending}
+            error={state?.error}
+            setOpen={setOpen}
+          />
         )}
       </Dialog>
     </>
@@ -331,29 +497,54 @@ function EditSubjectDialog({ subject }: { subject: Subject }) {
 }
 
 function ChapterItem({ chapter }: { chapter: Chapter }) {
-  const { isOpen, toggle } = useCollapsible({ isCollapsible: { defaultIsOpen: false }, value: chapter.id });
+  const { isOpen, toggle } = useCollapsible({
+    isCollapsible: { defaultIsOpen: false },
+    value: chapter.id,
+  });
   const aTraiter = chapter.sections.filter(
     (s) => s.statut === "active" || s.statut === "rubrique_a_valider",
   ).length;
 
   return (
     <Card padding={0}>
-      <div className="flex items-center gap-1 px-3 py-1">
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={isOpen}
-          className="flex flex-1 flex-wrap items-center gap-2 py-1 text-left text-sm font-medium"
+      <HStack
+        gap={2}
+        align="center"
+        justify="between"
+        paddingInline={3}
+        paddingBlock={1}
+      >
+        <HStack
+          gap={2}
+          align="center"
+          wrap="wrap"
+          paddingInline={3}
+          paddingBlock={1}
         >
-          <Icon icon="chevronDown" size="sm" className={isOpen ? "" : "-rotate-90"} />
-          {chapter.titre}
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={isOpen}
+            className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm font-medium"
+          >
+            <Icon
+              icon="chevronDown"
+              size="sm"
+              className={isOpen ? "" : "-rotate-90"}
+            />
+            <span>{chapter.titre}</span>
+          </button>
           <Badge variant="neutral" label={`v${chapter.version}`} />
-          {chapter.statut === "archive" && <Badge variant="neutral" label="archivé" />}
-          {aTraiter > 0 && <Badge variant="info" label={`${aTraiter} à traiter`} />}
-          {chapter.sections.length === 0 && (
-            <span className="text-xs font-normal text-secondary">aucune section</span>
+          {chapter.statut === "archive" && (
+            <Badge variant="neutral" label="archivé" />
           )}
-        </button>
+          {aTraiter > 0 && (
+            <Badge variant="warning" label={`${aTraiter} à traiter`} />
+          )}
+          {chapter.sections.length === 0 && (
+            <Text type="supporting">Aucune section</Text>
+          )}
+        </HStack>
         <Button
           variant="ghost"
           size="sm"
@@ -362,37 +553,44 @@ function ChapterItem({ chapter }: { chapter: Chapter }) {
           as={Link}
           href={`/curriculum/chapitre/${chapter.id}`}
         />
-      </div>
-      {isOpen && (
+      </HStack>
+
+      {isOpen && chapter.sections.length > 0 && (
         <div className="px-3 pb-2">
-          {chapter.sections.length === 0 ? (
-            <p className="text-sm text-secondary">Aucune section.</p>
-          ) : (
-            <ul className="flex flex-col">
-              {chapter.sections.map((s) => (
-                <SectionRow key={s.id} section={s} />
-              ))}
-            </ul>
-          )}
+          <List hasDividers density="compact">
+            {chapter.sections.map((s) => (
+              <SectionRow key={s.id} section={s} />
+            ))}
+          </List>
         </div>
       )}
     </Card>
   );
 }
 
-export function SubjectCard({ subject, chapters }: { subject: Subject; chapters: Chapter[] }) {
+export function SubjectCard({
+  subject,
+  chapters,
+}: {
+  subject: Subject;
+  chapters: Chapter[];
+}) {
   return (
     <Card>
       <div className="flex items-center gap-2">
         <h3 className="font-semibold">{subject.nom}</h3>
         <Badge variant="neutral" label={subject.semestre} />
-        {subject.statut === "archivee" && <Badge variant="neutral" label="archivée" />}
+        {subject.statut === "archivee" && (
+          <Badge variant="neutral" label="archivée" />
+        )}
         <EditSubjectDialog subject={subject} />
       </div>
 
       <div className="mt-3 flex flex-col gap-2 border-t pt-3">
         {chapters.length === 0 ? (
-          <p className="text-sm text-secondary">Aucun chapitre pour l&apos;instant.</p>
+          <p className="text-sm text-secondary">
+            Aucun chapitre pour l&apos;instant.
+          </p>
         ) : (
           <CollapsibleGroup type="multiple" defaultValue={[]}>
             <div className="flex flex-col gap-2">
@@ -403,7 +601,13 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
           </CollapsibleGroup>
         )}
         <div className="flex items-center gap-2">
-          <form action={subject.statut === "active" ? archiveSubjectAction : unarchiveSubjectAction}>
+          <form
+            action={
+              subject.statut === "active"
+                ? archiveSubjectAction
+                : unarchiveSubjectAction
+            }
+          >
             <input type="hidden" name="subjectId" value={subject.id} />
             <Button
               type="submit"
@@ -414,7 +618,9 @@ export function SubjectCard({ subject, chapters }: { subject: Subject; chapters:
           </form>
           {/* USER_FLOW É6.4 : archivage toujours proposé avant la suppression. */}
           <StrongConfirmDialog
-            trigger={<Button size="sm" variant="destructive" label="Supprimer" />}
+            trigger={
+              <Button size="sm" variant="destructive" label="Supprimer" />
+            }
             title={`Supprimer définitivement « ${subject.nom} » ?`}
             description="Détruit tous les chapitres, sections, rubriques et l'historique d'étude de cette matière. Irréversible — préfère l'archivage pour une matière terminée."
             confirmWord={subject.nom}
