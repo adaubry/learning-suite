@@ -3,9 +3,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://protectionjuridique.org";
 
-export async function signInWithMagicLink(_prevState: unknown, formData: FormData) {
+export async function signInWithMagicLink(
+  _prevState: unknown,
+  formData: FormData,
+) {
   const email = formData.get("email");
   if (typeof email !== "string" || !email) {
     return { error: "Email requis." };
@@ -22,6 +26,20 @@ export async function signInWithMagicLink(_prevState: unknown, formData: FormDat
   }
 
   return { sent: true };
+}
+
+export async function signInWithGoogle() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: `${siteUrl}/auth/callback` },
+  });
+
+  if (error || !data.url) {
+    redirect("/login?error=oauth");
+  }
+
+  redirect(data.url);
 }
 
 export async function signOut() {
