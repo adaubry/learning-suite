@@ -3,7 +3,9 @@
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Spinner } from "@astryxdesign/core/Spinner";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { FileInput } from "@astryxdesign/core/FileInput";
@@ -46,6 +48,14 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
     const fd = new FormData();
     fd.set("chapterId", chapterId);
     startTransition(() => proposeAction(fd));
+  }
+
+  // Réessai de l'analyse depuis l'étape "rapport" (Fix P0) : le markdown est
+  // déjà en état local, pas besoin de revenir à l'étape "import" pour relancer.
+  function triggerAnalyze() {
+    const fd = new FormData();
+    fd.set("markdown", markdown);
+    startTransition(() => analyzeAction(fd));
   }
 
   // ponytail: un rechargement en pleine étape "rapport" perd le markdown et
@@ -97,7 +107,7 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
   return (
     <div className="flex flex-col gap-6">
       {step === "destination" && (
-        <div className="flex flex-col gap-4 rounded border border-border p-4">
+        <div className="flex flex-col gap-4 rounded-none border border-border p-4">
           <h2 className="text-sm font-semibold">1. Destination</h2>
           {subjects.length === 0 ? (
             <div className="flex flex-col items-start gap-2">
@@ -138,12 +148,16 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
             analyzeAction(formData);
             goToStep("rapport");
           }}
-          className="flex flex-col gap-4 rounded border border-border p-4"
+          className="flex flex-col gap-4 rounded-none border border-border p-4"
         >
           <h2 className="text-sm font-semibold">2. Import du Markdown</h2>
           <p className="text-sm text-secondary">
             Google Docs → Fichier → Télécharger → Markdown (.md). Upload du fichier ou collage
             direct.
+          </p>
+          <p className="text-sm text-secondary">
+            Utilise les Titres pour structurer, le **gras** pour l&apos;important, l&apos;*italique*
+            pour tes commentaires — c&apos;est ce que l&apos;IA utilise pour découper le cours.
           </p>
           <FileInput label="Fichier Markdown" isLabelHidden accept=".md,text/markdown" value={null} onChange={handleFileUpload} />
           <TextArea
@@ -176,12 +190,25 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
               tooltip="Éditeur WYSIWYG (U4/Tiptap) — Phase 8, pas encore construit : recolle un markdown corrigé à l'étape précédente."
             />
           </div>
-          {!analyzeState?.success ? (
-            <p className="text-sm text-secondary">Analyse en cours…</p>
-          ) : (
+          {!analyzeState && <Spinner label="Analyse en cours… (peut prendre jusqu'à une minute)" />}
+          {analyzeState?.error && (
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-sm text-error">{analyzeState.error}</p>
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="secondary" label="Retour" onClick={() => goToStep("import")} />
+                <Button
+                  type="button"
+                  label={analyzing ? "Analyse…" : "Réessayer"}
+                  isDisabled={analyzing}
+                  onClick={triggerAnalyze}
+                />
+              </div>
+            </div>
+          )}
+          {analyzeState?.success && (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="max-h-[32rem] overflow-y-auto rounded border border-border p-4">
+                <div className="max-h-[32rem] overflow-y-auto rounded-none border border-border p-4">
                   <MarkdownViewer markdown={markdown} />
                 </div>
                 <div className="max-h-[32rem] overflow-y-auto">
@@ -224,12 +251,10 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
       )}
 
       {step === "sectionnement" && (
-        <div className="flex flex-col gap-4 rounded border border-border p-4">
+        <div className="flex flex-col gap-4 rounded-none border border-border p-4">
           <h2 className="text-sm font-semibold">4. Sectionnement</h2>
           {!proposeState && (
-            <p className="text-sm text-secondary">
-              Proposition d&apos;un sectionnement pédagogique en cours…
-            </p>
+            <Spinner label="Proposition d'un sectionnement pédagogique en cours… (peut prendre plusieurs minutes)" />
           )}
           {proposeState?.error && (
             <div className="flex flex-col gap-2">
@@ -240,17 +265,18 @@ export function ImportWizard({ subjects }: { subjects: { id: string; nom: string
           {proposeState?.success && (
             <>
               {proposeState.method === "mecanique" && (
-                <div className="flex flex-col items-start gap-2 rounded bg-muted p-2">
-                  <p className="text-sm text-secondary">
-                    L&apos;IA n&apos;a pas pu proposer de sectionnement : un découpage mécanique par
-                    titres a été utilisé. Tu peux le retrier ci-après, ou réessayer l&apos;IA.
-                  </p>
-                  <Button type="button" size="sm" variant="secondary" label="Réessayer avec l'IA" onClick={triggerPropose} />
-                </div>
+                <Banner
+                  status="warning"
+                  title="Découpage mécanique"
+                  description="L'IA n'a pas pu proposer de sectionnement : un découpage mécanique par titres a été utilisé. Tu peux le retrier ci-après, ou réessayer l'IA."
+                  endContent={
+                    <Button type="button" size="sm" variant="secondary" label="Réessayer avec l'IA" onClick={triggerPropose} />
+                  }
+                />
               )}
               <ul className="flex flex-col gap-1 text-sm">
                 {proposeState.sections.map((s) => (
-                  <li key={s.id} className="rounded border border-border px-2 py-1">
+                  <li key={s.id} className="rounded-none border border-border px-2 py-1">
                     {s.titre}
                   </li>
                 ))}
