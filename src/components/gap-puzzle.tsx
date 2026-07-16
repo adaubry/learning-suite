@@ -170,7 +170,7 @@ export function GapPuzzle({ onReady, onSolved }: GapPuzzleProps) {
 
   const squareStyles: Record<string, React.CSSProperties> = {};
   if (selected) {
-    squareStyles[selected] = { backgroundColor: estSombre() ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.06)" };
+    squareStyles[selected] = { backgroundColor: "var(--color-overlay-hover)" };
   }
   for (const { square, capture } of cibles) {
     squareStyles[square] = styleMarqueur(capture);

@@ -40,6 +40,7 @@ export function FeynmanChat({
   sectionTitre,
   transcribeAction,
   closeFeynmanAction,
+  abandonAction,
   initialMessages,
   initialTtsActive = false,
 }: {
@@ -51,6 +52,7 @@ export function FeynmanChat({
     audioFormat: string,
   ) => Promise<{ transcript?: string; error?: string }>;
   closeFeynmanAction: () => Promise<void>;
+  abandonAction: () => Promise<void>;
   /** Historique déjà persisté (S4.feynmanHistorique) — si non vide, ne PAS
    *  rappeler "opening" au montage (page rechargée, retour arrière/avant) :
    *  ça générerait un tour d'ouverture parasite au milieu de l'échange
@@ -65,6 +67,7 @@ export function FeynmanChat({
   const [error, setError] = useState<string | null>(null);
   const [ttsEnabled, setTtsEnabled] = useState(initialTtsActive);
   const [closing, startClosing] = useTransition();
+  const [abandoning, startAbandoning] = useTransition();
   const openedRef = useRef(false);
 
   function speak(text: string) {
@@ -137,14 +140,23 @@ export function FeynmanChat({
 
       <PushToTalkRecorder cycleId={cycleId} transcribeAction={transcribeAction} onConfirm={handleConfirm} />
 
-      <Button
-        type="button"
-        variant="secondary"
-        className="self-end"
-        isDisabled={closing || streaming !== null}
-        label={closing ? "…" : "Clore et demander le bilan"}
-        onClick={() => startClosing(() => closeFeynmanAction())}
-      />
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          isDisabled={closing || abandoning}
+          label={abandoning ? "…" : "Abandonner"}
+          onClick={() => startAbandoning(() => abandonAction())}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          isDisabled={closing || abandoning || streaming !== null}
+          label={closing ? "…" : "Clore et demander le bilan"}
+          onClick={() => startClosing(() => closeFeynmanAction())}
+        />
+      </div>
     </div>
   );
 }

@@ -395,6 +395,7 @@ export type CurrentCorrection =
       sessionId: string;
       tentative: number;
       verdict: "acquis" | "insuffisant";
+      input: string;
       diff: MergedDiffPoint[];
       erreursCandidates: MergedErrorCandidate[];
     };
@@ -417,7 +418,16 @@ export async function getCurrentCorrection(userId: string, cycleId: string): Pro
     diff: MergedDiffPoint[];
     erreursCandidates: MergedErrorCandidate[];
   };
-  return { status: "ready", cycleId, sessionId: latest.id, tentative: latest.tentative, verdict: latest.verdictFinal!, diff, erreursCandidates };
+  return {
+    status: "ready",
+    cycleId,
+    sessionId: latest.id,
+    tentative: latest.tentative,
+    verdict: latest.verdictFinal!,
+    input: latest.input,
+    diff,
+    erreursCandidates,
+  };
 }
 
 // resolveOutcome (REVAMP v2, 2026-07-15, rupture B) : [Relire, puis refaire un

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
 import type { FeynmanBilan } from "@/services/session";
 import type { Note } from "@/core/fsrs/fsrsCore";
@@ -22,10 +23,10 @@ import type { Note } from "@/core/fsrs/fsrsCore";
 // mutations concurrentes ; l'une gagne, l'autre plante sur le garde d'état de
 // S4 (même classe d'incident que correction-view.tsx, constaté en usage).
 
-const STATUT_LABEL: Record<string, string> = {
-  demontre: "✅ Démontré",
-  recite: "🟡 Récité",
-  non_aborde: "❌ Non abordé",
+const STATUT_DOT: Record<string, { variant: "success" | "warning" | "error"; label: string }> = {
+  demontre: { variant: "success", label: "Démontré" },
+  recite: { variant: "warning", label: "Récité" },
+  non_aborde: { variant: "error", label: "Non abordé" },
 };
 
 export function FeynmanReportView({
@@ -35,6 +36,7 @@ export function FeynmanReportView({
   validerAction,
   refaireAction,
   revenirAction,
+  abandonAction,
 }: {
   sectionTitre: string;
   bilan: FeynmanBilan;
@@ -42,6 +44,7 @@ export function FeynmanReportView({
   validerAction: (note: Note, formData: FormData) => Promise<void>;
   refaireAction: () => Promise<void>;
   revenirAction: () => Promise<void>;
+  abandonAction: () => Promise<void>;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const lockSubmit = () => setSubmitting(true);
@@ -59,9 +62,9 @@ export function FeynmanReportView({
 
       <ul className="flex flex-col gap-2">
         {bilan.points.map((p, i) => (
-          <li key={i} className="flex flex-col gap-1 rounded border border-border p-3">
+          <li key={i} className="flex flex-col gap-1 rounded-none border border-border p-3">
             <div className="flex items-center gap-2">
-              <span aria-hidden>{STATUT_LABEL[p.statut] ?? p.statut}</span>
+              <StatusDot variant={STATUT_DOT[p.statut]?.variant ?? "neutral"} label={STATUT_DOT[p.statut]?.label ?? p.statut} />
               <span className="font-medium">{p.intitule}</span>
             </div>
             <p className="text-sm text-secondary">{p.commentaire}</p>
@@ -110,6 +113,9 @@ export function FeynmanReportView({
         </form>
         <form action={revenirAction} onSubmit={lockSubmit}>
           <Button type="submit" size="sm" variant="ghost" isDisabled={submitting} label="Revenir au blurting" />
+        </form>
+        <form action={abandonAction} onSubmit={lockSubmit}>
+          <Button type="submit" size="sm" variant="ghost" isDisabled={submitting} label="Abandonner" />
         </form>
       </div>
     </div>

@@ -117,9 +117,14 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
           <p className="text-sm text-error">
             La correction a échoué. Ta restitution est déjà sauvegardée.
           </p>
-          <form action={retryCorrectionAction.bind(null, cycle.id, sectionId)}>
-            <Button type="submit" size="sm" label="Relancer la correction" />
-          </form>
+          <div className="flex flex-wrap gap-2">
+            <form action={retryCorrectionAction.bind(null, cycle.id, sectionId)}>
+              <Button type="submit" size="sm" label="Relancer la correction" />
+            </form>
+            <Link href="/" className="self-center text-sm underline">
+              Retour à l&apos;accueil
+            </Link>
+          </div>
         </div>
       );
     }
@@ -129,6 +134,7 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
         sectionTitre={sec.titre}
         tentative={current.tentative}
         verdict={current.verdict}
+        input={current.input}
         diff={current.diff}
         erreursCandidates={current.erreursCandidates}
         relireAction={relireAction.bind(null, cycle.id, sectionId)}
@@ -149,6 +155,7 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
         sectionTitre={sec.titre}
         transcribeAction={transcribeAction}
         closeFeynmanAction={closeFeynmanAction.bind(null, cycle.id, sectionId)}
+        abandonAction={abandonAction.bind(null, cycle.id)}
         initialMessages={historique}
         initialTtsActive={plannerConfig.ttsActive}
       />
@@ -169,6 +176,7 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
         validerAction={validerBilanAction.bind(null, cycle.id, bilan.verdict !== "acquis")}
         refaireAction={refaireFeynmanAction.bind(null, cycle.id, sectionId)}
         revenirAction={revenirBlurtingAction.bind(null, cycle.id)}
+        abandonAction={abandonAction.bind(null, cycle.id)}
       />
     );
   }

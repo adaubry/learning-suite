@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Badge } from "@astryxdesign/core/Badge";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
 import type { MergedDiffPoint, MergedErrorCandidate } from "@/core/correction/verdict";
 
@@ -15,10 +16,10 @@ import type { MergedDiffPoint, MergedErrorCandidate } from "@/core/correction/ve
 // révision y passent identiquement (U18 FsrsRatingBar a déménagé sur le bilan,
 // É3.5, condition de clôture de tout cycle plutôt qu'alternative ici).
 
-const statutIcon: Record<MergedDiffPoint["statut"], string> = {
-  couvert: "✅",
-  manquant: "❌",
-  deforme: "⚠️",
+const statutDot: Record<MergedDiffPoint["statut"], { variant: "success" | "error" | "warning"; label: string }> = {
+  couvert: { variant: "success", label: "Couvert" },
+  manquant: { variant: "error", label: "Manquant" },
+  deforme: { variant: "warning", label: "Déformé" },
 };
 
 // Exporté : réutilisé par la vue session lecture seule (/session/[id], U24).
@@ -26,9 +27,9 @@ export function DiffList({ diff }: { diff: MergedDiffPoint[] }) {
   return (
     <ul className="flex flex-col gap-2">
       {diff.map((p, i) => (
-        <li key={i} className="flex flex-col gap-1 rounded border p-3">
+        <li key={i} className="flex flex-col gap-1 rounded-none border p-3">
           <div className="flex items-center gap-2">
-            <span aria-hidden>{statutIcon[p.statut]}</span>
+            <StatusDot variant={statutDot[p.statut].variant} label={statutDot[p.statut].label} />
             <span className="font-medium">{p.intitule}</span>
           </div>
           {p.explication && <p className="text-sm text-secondary">{p.explication}</p>}
@@ -43,6 +44,7 @@ export function CorrectionView({
   sectionTitre,
   tentative,
   verdict,
+  input,
   diff,
   erreursCandidates,
   relireAction,
@@ -52,6 +54,10 @@ export function CorrectionView({
   sectionTitre: string;
   tentative: number;
   verdict: "acquis" | "insuffisant";
+  /** Restitution de l'utilisateur (blurting) — affichée pour éviter de forcer un rappel de
+   *  mémoire au moment le plus chargé émotionnellement de l'app (relire ce qu'on a écrit,
+   *  pas s'en souvenir, pendant qu'on découvre ce qui a été mal jugé). */
+  input: string;
   diff: MergedDiffPoint[];
   erreursCandidates: MergedErrorCandidate[];
   /** Disponible seulement à la tentative 1 (pas de 3ᵉ passe). */
@@ -81,6 +87,11 @@ export function CorrectionView({
       <p className="text-sm">
         Verdict proposé : <strong>{verdict}</strong>
       </p>
+
+      <details open className="flex flex-col gap-1 rounded-none border border-border p-3">
+        <summary className="cursor-pointer text-sm font-medium">Ta restitution</summary>
+        <p className="mt-2 whitespace-pre-wrap text-sm text-secondary">{input}</p>
+      </details>
 
       <DiffList diff={diff} />
       <ErrorCandidatesPanel
