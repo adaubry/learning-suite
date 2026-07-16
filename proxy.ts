@@ -31,7 +31,11 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isPublicPath = PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path));
+  const isPublicPath =
+    PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path)) ||
+    // Dev-only : route gitignorée (app/(auth)/dev-session/), absente en prod —
+    // ce garde reste inerte hors NODE_ENV=development.
+    (process.env.NODE_ENV === "development" && request.nextUrl.pathname.startsWith("/dev-session"));
 
   if (!user && !isPublicPath) {
     return NextResponse.redirect(new URL("/login", request.url));

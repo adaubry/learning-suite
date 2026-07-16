@@ -43,7 +43,10 @@ export function BlurtingEditor({
   type?: "etude" | "revision";
   /** USER_FLOW É3.2 : badge « Révision — Xᵉ rappel » (X = ReviewCard.reps + 1). */
   rappelNumero?: number;
-  action: (prevState: unknown, formData: FormData) => Promise<{ error?: string } | undefined>;
+  action: (
+    prevState: unknown,
+    formData: FormData,
+  ) => Promise<{ error?: string } | undefined>;
   abandonAction?: () => Promise<void>;
 }) {
   const elapsed = useElapsed();
@@ -65,7 +68,13 @@ export function BlurtingEditor({
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
         <Badge
           variant="neutral"
-          label={type === "etude" ? "Étude" : rappelNumero != null ? `Révision — ${rappelNumero}ᵉ rappel` : "Révision"}
+          label={
+            type === "etude"
+              ? "Étude"
+              : rappelNumero != null
+                ? `Révision — ${rappelNumero}ᵉ rappel`
+                : "Révision"
+          }
         />
         <Badge variant="neutral" label={`tentative n°${tentative}`} />
         <span className="ml-auto text-xs text-secondary">{elapsed}</span>
@@ -82,12 +91,23 @@ export function BlurtingEditor({
           className="min-h-[50vh] flex-1"
           hasAutoFocus
         />
-        <Button type="submit" className="self-end" isDisabled={submitting} label={pending ? "Correction…" : "Soumettre"} />
+        <Button
+          type="submit"
+          className="self-end"
+          isDisabled={submitting}
+          label={pending ? "Correction…" : "Soumettre"}
+        />
         {state?.error && <p className="text-sm text-error">{state.error}</p>}
       </form>
       {abandonAction && (
         <form action={abandonAction} onSubmit={() => setAbandoning(true)}>
-          <Button type="submit" variant="ghost" size="sm" isDisabled={submitting} label="Abandonner la tentative" />
+          <Button
+            type="submit"
+            variant="ghost"
+            size="sm"
+            isDisabled={submitting}
+            label="Abandonner la tentative"
+          />
         </form>
       )}
     </div>

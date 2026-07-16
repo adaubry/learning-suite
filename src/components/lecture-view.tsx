@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Badge } from "@astryxdesign/core/Badge";
-import { MarkdownViewer } from "@/components/markdown-viewer";
+import { AnnotatedCourse } from "@/components/annotated-course";
 import { GapPuzzle } from "@/components/gap-puzzle";
 import { ScrollToBottomButton } from "@/components/scroll-to-bottom-button";
 
@@ -51,7 +51,8 @@ function useCalibrationGapPuzzle() {
   };
   const onSolved = () => {
     const maintenant = performance.now();
-    if (dernier.current !== null) temps.current.push(maintenant - dernier.current);
+    if (dernier.current !== null)
+      temps.current.push(maintenant - dernier.current);
     dernier.current = maintenant;
   };
 
@@ -61,7 +62,9 @@ function useCalibrationGapPuzzle() {
       const echantillon = [...echantillons].sort((a, b) => a - b);
       if (echantillon.length === 0) return;
       const mediane = echantillon[Math.floor(echantillon.length / 2)];
-      console.log(`[gap-puzzle] temps médian: ${(mediane / 1000).toFixed(1)}s (n=${echantillon.length})`);
+      console.log(
+        `[gap-puzzle] temps médian: ${(mediane / 1000).toFixed(1)}s (n=${echantillon.length})`,
+      );
     };
   }, []);
 
@@ -92,14 +95,27 @@ export function LectureView({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4">
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <p className="text-sm text-secondary">Passage au blurting dans {secondes}s…</p>
+        <p className="text-sm text-secondary">
+          Passage au blurting dans {secondes}s…
+        </p>
         <div className="w-full max-w-sm">
           <GapPuzzle onReady={onReady} onSolved={onSolved} />
         </div>
         <div className="flex gap-2">
-          <Button type="button" isDisabled={pending} label="Passer maintenant" onClick={continuer} />
+          <Button
+            type="button"
+            isDisabled={pending}
+            label="Passer maintenant"
+            onClick={continuer}
+          />
           <form action={abandonAction}>
-            <Button type="submit" variant="ghost" size="sm" isDisabled={pending} label="Abandonner" />
+            <Button
+              type="submit"
+              variant="ghost"
+              size="sm"
+              isDisabled={pending}
+              label="Abandonner"
+            />
           </form>
         </div>
       </div>
@@ -108,17 +124,24 @@ export function LectureView({
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 xl:mx-auto xl:w-full xl:max-w-[40rem]">
         <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <Badge variant="neutral" label={relecture ? "Relecture ciblée" : "Lecture"} />
+        <Badge
+          variant="neutral"
+          label={relecture ? "Relecture ciblée" : "Lecture"}
+        />
       </div>
 
-      <div className="flex flex-1 flex-col overflow-y-auto">
-        <MarkdownViewer markdown={contenu} className="font-serif" />
+      <div className="flex flex-1 flex-col">
+        <AnnotatedCourse markdown={contenu} className="font-serif" />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" label="Je suis prêt, je blurte" onClick={() => setPret(true)} />
+      <div className="flex flex-wrap gap-2 xl:mx-auto xl:w-full xl:max-w-[40rem]">
+        <Button
+          type="button"
+          label="Je suis prêt, je blurte"
+          onClick={() => setPret(true)}
+        />
         <form action={abandonAction}>
           <Button type="submit" variant="ghost" size="sm" label="Abandonner" />
         </form>

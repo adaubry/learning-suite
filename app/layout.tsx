@@ -50,7 +50,7 @@ export default function RootLayout({
       lang="fr"
       className={`${poppins.variable} ${crimsonText.variable} ${geistMono.variable} ${ebGaramond.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col overflow-x-hidden">
         <Theme theme={y2kTheme} mode="system">
           {children}
         </Theme>

@@ -46,3 +46,7 @@ next-env.d.ts
 
 # impeccable (design skill) — session-local hook cache, not project state
 .impeccable/hook.cache.json
+
+# session de test dev-only (connexion instantanée sans magic link) — jamais
+# commité donc jamais présent dans un build déployé, garde NODE_ENV en plus
+/app/(auth)/dev-session/

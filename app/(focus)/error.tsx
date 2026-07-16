@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@astryxdesign/core/Button";
+import { FocusShell } from "@/components/focus-shell";
 
 // USER_FLOW règle 1/7 : aucun appel LLM ne bloque définitivement un parcours —
 // mécanisme natif (`error.tsx`, ARCHITECTURE §10) plutôt qu'un état d'erreur
@@ -15,14 +16,16 @@ import { Button } from "@astryxdesign/core/Button";
 
 export default function FocusError({ reset }: { error: Error; reset: () => void }) {
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-error">
-        Une erreur est survenue. Ta restitution, si tu en avais soumis une, est déjà sauvegardée.
-      </p>
-      <div className="flex gap-2">
-        <Button size="sm" label="Réessayer" onClick={reset} />
-        <Button size="sm" variant="secondary" label="Retour à l'accueil" href="/" as={Link} />
+    <FocusShell>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-error">
+          Une erreur est survenue. Ta restitution, si tu en avais soumis une, est déjà sauvegardée.
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" label="Réessayer" onClick={reset} />
+          <Button size="sm" variant="secondary" label="Retour à l'accueil" href="/" as={Link} />
+        </div>
       </div>
-    </div>
+    </FocusShell>
   );
 }

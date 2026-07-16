@@ -8,6 +8,7 @@ import * as session from "@/services/session";
 import * as account from "@/services/account";
 import * as reviewService from "@/services/review";
 import type { FeynmanBilan } from "@/services/session";
+import { FocusShell } from "@/components/focus-shell";
 import { LectureView } from "@/components/lecture-view";
 import { BlurtingEditor } from "@/components/blurting-editor";
 import { CorrectionView } from "@/components/correction-view";
@@ -52,38 +53,44 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
       const open = await session.findOpenCycle(userId);
       const resumeHref = open ? `/etude/${open.sectionId}` : "/";
       return (
-        <div className="flex flex-col gap-3">
-          <h1 className="text-lg font-semibold">{sec.titre}</h1>
-          <p className="text-sm text-secondary">
-            Une autre session est déjà ouverte{open ? ` (${open.sectionTitre})` : ""} — termine-la ou abandonne-la d&apos;abord.
-          </p>
-          <Link href={resumeHref} className="self-start text-sm underline">
-            Reprendre cette session
-          </Link>
-        </div>
+        <FocusShell>
+          <div className="flex flex-col gap-3">
+            <h1 className="text-lg font-semibold">{sec.titre}</h1>
+            <p className="text-sm text-secondary">
+              Une autre session est déjà ouverte{open ? ` (${open.sectionTitre})` : ""} — termine-la ou abandonne-la d&apos;abord.
+            </p>
+            <Link href={resumeHref} className="self-start text-sm underline">
+              Reprendre cette session
+            </Link>
+          </div>
+        </FocusShell>
       );
     }
     return (
-      <div className="flex flex-col gap-3">
-        <h1 className="text-lg font-semibold">{sec.titre}</h1>
-        <p className="text-sm text-secondary">Cette section n&apos;est pas prête à être étudiée (rubrique non validée).</p>
-        <Link href="/" className="self-start text-sm underline">
-          Retour à l&apos;accueil
-        </Link>
-      </div>
+      <FocusShell>
+        <div className="flex flex-col gap-3">
+          <h1 className="text-lg font-semibold">{sec.titre}</h1>
+          <p className="text-sm text-secondary">Cette section n&apos;est pas prête à être étudiée (rubrique non validée).</p>
+          <Link href="/" className="self-start text-sm underline">
+            Retour à l&apos;accueil
+          </Link>
+        </div>
+      </FocusShell>
     );
   }
 
   if (cycle.etat === "lecture") {
     const { tentative } = await session.lectureContext(userId, cycle.id);
     return (
-      <LectureView
-        sectionTitre={sec.titre}
-        contenu={sec.contenu}
-        relecture={tentative === 2}
-        action={terminerLectureAction.bind(null, cycle.id, sectionId)}
-        abandonAction={abandonAction.bind(null, cycle.id)}
-      />
+      <FocusShell wide>
+        <LectureView
+          sectionTitre={sec.titre}
+          contenu={sec.contenu}
+          relecture={tentative === 2}
+          action={terminerLectureAction.bind(null, cycle.id, sectionId)}
+          abandonAction={abandonAction.bind(null, cycle.id)}
+        />
+      </FocusShell>
     );
   }
 
@@ -96,14 +103,16 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
         ? await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sectionId), columns: { reps: true } })
         : null;
     return (
-      <BlurtingEditor
-        sectionTitre={sec.titre}
-        tentative={tentative}
-        type={cycle.type}
-        rappelNumero={card ? card.reps + 1 : undefined}
-        action={submitBlurtingAction.bind(null, cycle.id, sectionId)}
-        abandonAction={abandonAction.bind(null, cycle.id)}
-      />
+      <FocusShell>
+        <BlurtingEditor
+          sectionTitre={sec.titre}
+          tentative={tentative}
+          type={cycle.type}
+          rappelNumero={card ? card.reps + 1 : undefined}
+          action={submitBlurtingAction.bind(null, cycle.id, sectionId)}
+          abandonAction={abandonAction.bind(null, cycle.id)}
+        />
+      </FocusShell>
     );
   }
 
@@ -112,35 +121,39 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
 
     if (current.status === "pending") {
       return (
-        <div className="flex flex-col gap-3">
-          <h1 className="text-lg font-semibold">{sec.titre}</h1>
-          <p className="text-sm text-error">
-            La correction a échoué. Ta restitution est déjà sauvegardée.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <form action={retryCorrectionAction.bind(null, cycle.id, sectionId)}>
-              <Button type="submit" size="sm" label="Relancer la correction" />
-            </form>
-            <Link href="/" className="self-center text-sm underline">
-              Retour à l&apos;accueil
-            </Link>
+        <FocusShell>
+          <div className="flex flex-col gap-3">
+            <h1 className="text-lg font-semibold">{sec.titre}</h1>
+            <p className="text-sm text-error">
+              La correction a échoué. Ta restitution est déjà sauvegardée.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <form action={retryCorrectionAction.bind(null, cycle.id, sectionId)}>
+                <Button type="submit" size="sm" label="Relancer la correction" />
+              </form>
+              <Link href="/" className="self-center text-sm underline">
+                Retour à l&apos;accueil
+              </Link>
+            </div>
           </div>
-        </div>
+        </FocusShell>
       );
     }
 
     return (
-      <CorrectionView
-        sectionTitre={sec.titre}
-        tentative={current.tentative}
-        verdict={current.verdict}
-        input={current.input}
-        diff={current.diff}
-        erreursCandidates={current.erreursCandidates}
-        relireAction={relireAction.bind(null, cycle.id, sectionId)}
-        abandonAction={abandonAction.bind(null, cycle.id)}
-        passerFeynmanAction={passerFeynmanAction.bind(null, cycle.id, sectionId)}
-      />
+      <FocusShell>
+        <CorrectionView
+          sectionTitre={sec.titre}
+          tentative={current.tentative}
+          verdict={current.verdict}
+          input={current.input}
+          diff={current.diff}
+          erreursCandidates={current.erreursCandidates}
+          relireAction={relireAction.bind(null, cycle.id, sectionId)}
+          abandonAction={abandonAction.bind(null, cycle.id)}
+          passerFeynmanAction={passerFeynmanAction.bind(null, cycle.id, sectionId)}
+        />
+      </FocusShell>
     );
   }
 
@@ -150,15 +163,17 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
       account.getPlannerConfig(userId),
     ]);
     return (
-      <FeynmanChat
-        cycleId={cycle.id}
-        sectionTitre={sec.titre}
-        transcribeAction={transcribeAction}
-        closeFeynmanAction={closeFeynmanAction.bind(null, cycle.id, sectionId)}
-        abandonAction={abandonAction.bind(null, cycle.id)}
-        initialMessages={historique}
-        initialTtsActive={plannerConfig.ttsActive}
-      />
+      <FocusShell>
+        <FeynmanChat
+          cycleId={cycle.id}
+          sectionTitre={sec.titre}
+          transcribeAction={transcribeAction}
+          closeFeynmanAction={closeFeynmanAction.bind(null, cycle.id, sectionId)}
+          abandonAction={abandonAction.bind(null, cycle.id)}
+          initialMessages={historique}
+          initialTtsActive={plannerConfig.ttsActive}
+        />
+      </FocusShell>
     );
   }
 
@@ -169,15 +184,17 @@ export default async function EtudePage({ params }: { params: Promise<{ sectionI
     // ReviewCard existante (1ʳᵉ validation, simule depuis un état neuf).
     const ratingPreview = await reviewService.preview(userId, sectionId);
     return (
-      <FeynmanReportView
-        sectionTitre={sec.titre}
-        bilan={bilan}
-        ratingPreview={ratingPreview}
-        validerAction={validerBilanAction.bind(null, cycle.id, bilan.verdict !== "acquis")}
-        refaireAction={refaireFeynmanAction.bind(null, cycle.id, sectionId)}
-        revenirAction={revenirBlurtingAction.bind(null, cycle.id)}
-        abandonAction={abandonAction.bind(null, cycle.id)}
-      />
+      <FocusShell>
+        <FeynmanReportView
+          sectionTitre={sec.titre}
+          bilan={bilan}
+          ratingPreview={ratingPreview}
+          validerAction={validerBilanAction.bind(null, cycle.id, bilan.verdict !== "acquis")}
+          refaireAction={refaireFeynmanAction.bind(null, cycle.id, sectionId)}
+          revenirAction={revenirBlurtingAction.bind(null, cycle.id)}
+          abandonAction={abandonAction.bind(null, cycle.id)}
+        />
+      </FocusShell>
     );
   }
 

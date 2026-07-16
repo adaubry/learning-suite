@@ -47,6 +47,11 @@ export default function LoginPage() {
             <p className="text-sm">Lien envoyé — vérifiez votre boîte mail.</p>
           )}
         </form>
+        {process.env.NODE_ENV === "development" && (
+          <a href="/dev-session" className="self-start text-xs text-secondary underline">
+            Connexion test (dev)
+          </a>
+        )}
       </div>
     </main>
   );
