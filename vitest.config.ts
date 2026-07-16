@@ -19,5 +19,8 @@ export default defineConfig({
     // constaté : transcribeAudio.canary.test.ts, 1 attendu / 3 reçus). 'forks' isole
     // process.env par processus OS réel.
     pool: "forks",
+    // ponytail: 32 vCPUs mais ~7.7 Gio de RAM (WSL2) — sans plafond, Vitest
+    // fork jusqu'à nproc processus Postgres d'un coup et sature la RAM.
+    maxWorkers: 4,
   },
 });
