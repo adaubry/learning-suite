@@ -13,6 +13,12 @@ export async function resolveErrorAction(errorId: string) {
   revalidatePath("/erreurs");
 }
 
+export async function reopenErrorAction(errorId: string) {
+  const userId = await requireUserId();
+  await errorService.reopen(userId, errorId);
+  revalidatePath("/erreurs");
+}
+
 export async function editErrorAction(errorId: string, formData: FormData) {
   const userId = await requireUserId();
   const description = String(formData.get("description") ?? "").trim();

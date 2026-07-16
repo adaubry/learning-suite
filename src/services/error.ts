@@ -86,6 +86,9 @@ export interface ErrorListFilters {
   statut?: "active" | "resolue";
   type?: ErreurType;
   sectionId?: string;
+  /** Pagination (É5.1, carnet) — omis = pas de limite (usage L2/L3 existant, inchangé). */
+  limit?: number;
+  offset?: number;
 }
 
 // É5.1 : filtres matière/statut/type/section — toujours scopé aux matières de
@@ -111,6 +114,8 @@ export async function list(userId: string, filters: ErrorListFilters = {}) {
   return db.query.errorEntry.findMany({
     where: and(...conditions),
     orderBy: (e, { desc }) => [desc(e.createdAt)],
+    limit: filters.limit,
+    offset: filters.offset,
   });
 }
 
@@ -119,6 +124,18 @@ export async function resolve(userId: string, errorId: string) {
   const [updated] = await db
     .update(errorEntry)
     .set({ statut: "resolue" })
+    .where(eq(errorEntry.id, errorId))
+    .returning();
+  return updated;
+}
+
+// Symétrique de `resolve` — corrige un clic accidentel sur [Marquer résolue]
+// (É5.1, contrôle utilisateur : pas de statut terminal sans retour possible).
+export async function reopen(userId: string, errorId: string) {
+  await assertErrorOwnership(errorId, userId);
+  const [updated] = await db
+    .update(errorEntry)
+    .set({ statut: "active" })
     .where(eq(errorEntry.id, errorId))
     .returning();
   return updated;

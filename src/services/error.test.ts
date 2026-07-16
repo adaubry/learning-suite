@@ -158,6 +158,39 @@ describe("error · S7", () => {
       expect(updated.statut).toBe("resolue");
     });
 
+    it("reopen repasse une erreur résolue à active", async () => {
+      await errorService.resolve(userId, activeErrorId);
+      const reopened = await errorService.reopen(userId, activeErrorId);
+      expect(reopened.statut).toBe("active");
+    });
+
+    it("refuse reopen pour un autre utilisateur", async () => {
+      const otherUserId = await createUser();
+      await errorService.resolve(userId, activeErrorId);
+      await expect(errorService.reopen(otherUserId, activeErrorId)).rejects.toThrow();
+    });
+
+    it("list respecte limit/offset (pagination du carnet)", async () => {
+      const [c] = await db
+        .insert(chapter)
+        .values({ subjectId, titre: "Chap2", markdown: "# x", contentHash: "h2" })
+        .returning();
+      const [sec2] = await db
+        .insert(section)
+        .values({ chapterId: c.id, chapterVersion: 1, titre: "Sec2", ordre: 1, niveauSource: 1, contenu: "...", importance: 3 })
+        .returning();
+      await db.insert(errorEntry).values({ subjectId, sectionId: sec2.id, sessionId, type: "omission", description: "e2" });
+
+      const all = await errorService.list(userId, {});
+      expect(all.length).toBeGreaterThanOrEqual(2);
+
+      const firstPage = await errorService.list(userId, { limit: 1, offset: 0 });
+      expect(firstPage).toHaveLength(1);
+      const secondPage = await errorService.list(userId, { limit: 1, offset: 1 });
+      expect(secondPage).toHaveLength(1);
+      expect(secondPage[0].id).not.toBe(firstPage[0].id);
+    });
+
     it("edit modifie la description", async () => {
       const updated = await errorService.edit(userId, activeErrorId, { description: "corrigée" });
       expect(updated.description).toBe("corrigée");

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
+import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { ErreurType } from "@/core/correction/verdict";
@@ -13,6 +14,13 @@ const typeLabel: Record<ErreurType, string> = {
   deformation: "Déformation",
   confusion: "Confusion",
   imprecision: "Imprécision",
+};
+
+const typeBadgeVariant: Record<ErreurType, "info" | "success" | "warning" | "error" | "neutral"> = {
+  omission: "warning",
+  deformation: "error",
+  confusion: "info",
+  imprecision: "neutral",
 };
 
 export interface NotebookEntry {
@@ -33,12 +41,15 @@ export interface NotebookFilters {
   type?: ErreurType;
 }
 
-function filterHref(base: NotebookFilters, patch: Partial<NotebookFilters>) {
+function filterHref(base: NotebookFilters, patch: Partial<NotebookFilters>, page?: number) {
   const merged = { ...base, ...patch };
   const params = new URLSearchParams();
   if (merged.subjectId) params.set("subject", merged.subjectId);
   params.set("statut", merged.statut);
   if (merged.type) params.set("type", merged.type);
+  // Changer un filtre revient toujours à la page 1 (une page 5 peut ne plus exister
+  // une fois le filtre changé) — seul un lien de pagination explicite passe `page`.
+  if (page && page > 1) params.set("page", String(page));
   return `/erreurs?${params.toString()}`;
 }
 
@@ -50,14 +61,22 @@ export function ErrorNotebook({
   subjects,
   entries,
   filters,
+  isUnfiltered,
+  page,
+  hasNextPage,
   resolveAction,
+  reopenAction,
   editAction,
   deleteAction,
 }: {
   subjects: { id: string; nom: string }[];
   entries: NotebookEntry[];
   filters: NotebookFilters;
+  isUnfiltered: boolean;
+  page: number;
+  hasNextPage: boolean;
   resolveAction: (errorId: string) => Promise<void>;
+  reopenAction: (errorId: string) => Promise<void>;
   editAction: (errorId: string, formData: FormData) => Promise<void>;
   deleteAction: (errorId: string) => Promise<void>;
 }) {
@@ -124,15 +143,16 @@ export function ErrorNotebook({
 
       {entries.length === 0 ? (
         <p className="text-sm text-secondary">
-          Aucune erreur {filters.statut === "active" ? "active" : "résolue"}
-          {filters.subjectId ? " pour cette matière" : ""}.
+          {isUnfiltered
+            ? "Aucune erreur active — bien joué."
+            : `Aucune erreur ${filters.statut === "active" ? "active" : "résolue"}${filters.subjectId ? " pour cette matière" : ""} avec ce filtre.`}
         </p>
       ) : (
         <ul className="flex flex-col gap-3">
           {entries.map((e) => (
-            <li key={e.id} className="flex flex-col gap-2 rounded border border-border p-3">
+            <li key={e.id} className="flex flex-col gap-2 rounded-none border border-border p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="neutral" label={typeLabel[e.type]} />
+                <Badge variant={typeBadgeVariant[e.type]} label={typeLabel[e.type]} />
                 {e.occurrences > 1 && <Badge variant="neutral" label={`récidive ×${e.occurrences}`} />}
                 <Link href={`/section/${e.sectionId}/rubrique`} className="text-sm underline">
                   {e.sectionTitre}
@@ -143,9 +163,13 @@ export function ErrorNotebook({
               <p className="text-sm">{e.description}</p>
 
               <div className="flex flex-wrap items-center gap-2">
-                {e.statut === "active" && (
+                {e.statut === "active" ? (
                   <form action={resolveAction.bind(null, e.id)} onSubmit={() => lock(e.id)}>
                     <Button type="submit" size="sm" variant="secondary" isDisabled={submittingIds.has(e.id)} label="Marquer résolue" />
+                  </form>
+                ) : (
+                  <form action={reopenAction.bind(null, e.id)} onSubmit={() => lock(e.id)}>
+                    <Button type="submit" size="sm" variant="ghost" isDisabled={submittingIds.has(e.id)} label="Rouvrir" />
                   </form>
                 )}
                 <details className="text-sm">
@@ -171,6 +195,28 @@ export function ErrorNotebook({
             </li>
           ))}
         </ul>
+      )}
+
+      {(page > 1 || hasNextPage) && (
+        <div className="flex items-center justify-between gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            label="← Page précédente"
+            isDisabled={page <= 1}
+            href={filterHref(filters, {}, page - 1)}
+            as={Link}
+          />
+          <Text type="supporting">Page {page}</Text>
+          <Button
+            size="sm"
+            variant="ghost"
+            label="Page suivante →"
+            isDisabled={!hasNextPage}
+            href={filterHref(filters, {}, page + 1)}
+            as={Link}
+          />
+        </div>
       )}
     </div>
   );
