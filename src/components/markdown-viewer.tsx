@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useMemo, type ReactNode } from "react";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkFrontmatter from "remark-frontmatter";
@@ -100,7 +102,9 @@ function renderBlock(node: RootContent, key: string, fontClassName?: string): Re
 }
 
 export function MarkdownViewer({ markdown, className }: { markdown: string; className?: string }) {
-  const root = processor.parse(markdown) as Root;
+  // Mémoïsé sur `markdown` : sans ça, tout re-render du parent (ex. frappe
+  // dans une note de marge, AnnotatedCourse) reparse tout le chapitre.
+  const root = useMemo(() => processor.parse(markdown) as Root, [markdown]);
   return (
     <div className={cn("max-w-none space-y-3 text-sm", className)}>
       {root.children
