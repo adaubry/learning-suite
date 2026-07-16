@@ -104,7 +104,7 @@ export function RubricQueuePanel() {
   if (items.length === 0) return null;
 
   return (
-    <ul className="flex flex-col gap-1 rounded border p-2 text-sm">
+    <ul className="flex flex-col gap-1 rounded-none border p-2 text-sm">
       {items.map((item) => (
         <li key={item.id} className="flex flex-col gap-0.5">
           <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ const sectionStatusDotVariant: Record<
   "success" | "warning" | "error" | "accent" | "neutral"
 > = {
   importee: "neutral",
-  a_trier: "warning",
+  a_trier: "neutral",
   active: "warning",
   exclue: "neutral",
   rubrique_a_valider: "warning",
@@ -231,7 +231,6 @@ function SectionRow({ section }: { section: Section }) {
               variant={sectionStatusDotVariant[section.statut]}
               label={sectionStatutLabel[section.statut]}
             />
-            <Text type="supporting">{sectionStatutLabel[section.statut]}</Text>
           </HStack>
           {section.statut === "active" ? (
             <HStack gap={2} wrap="wrap">
@@ -506,7 +505,7 @@ function ChapterItem({ chapter }: { chapter: Chapter }) {
   ).length;
 
   return (
-    <Card padding={0}>
+    <div className="rounded-none border border-border bg-surface">
       <HStack
         gap={2}
         align="center"
@@ -565,7 +564,57 @@ function ChapterItem({ chapter }: { chapter: Chapter }) {
           </List>
         </div>
       )}
-    </Card>
+    </div>
+  );
+}
+
+function matchesQuery(text: string, query: string) {
+  return text.toLowerCase().includes(query.toLowerCase());
+}
+
+// Filtre client léger sur matière/chapitre/section — pas de nouvelle requête
+// serveur, la page a déjà tout chargé (ponytail: matières peu nombreuses,
+// mono-utilisateur, cf. commentaire page.tsx sur listChaptersBySubject).
+export function CurriculumFilter({
+  subjectsWithChapters,
+}: {
+  subjectsWithChapters: { subject: Subject; chapters: Chapter[] }[];
+}) {
+  const [query, setQuery] = useState("");
+  const trimmed = query.trim();
+
+  const filtered = trimmed
+    ? subjectsWithChapters.flatMap(({ subject, chapters }) => {
+        const subjectMatches = matchesQuery(subject.nom, trimmed);
+        if (subjectMatches) return [{ subject, chapters }];
+        const filteredChapters = chapters.flatMap((chapter) => {
+          if (matchesQuery(chapter.titre, trimmed)) return [chapter];
+          const sections = chapter.sections.filter((s) => matchesQuery(s.titre, trimmed));
+          return sections.length > 0 ? [{ ...chapter, sections }] : [];
+        });
+        return filteredChapters.length > 0 ? [{ subject, chapters: filteredChapters }] : [];
+      })
+    : subjectsWithChapters;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {subjectsWithChapters.length > 0 && (
+        <TextInput
+          label="Rechercher une matière, un chapitre ou une section"
+          isLabelHidden
+          placeholder="Rechercher…"
+          value={query}
+          onChange={setQuery}
+        />
+      )}
+      {trimmed && filtered.length === 0 ? (
+        <Text type="supporting">Aucun résultat pour « {trimmed} ».</Text>
+      ) : (
+        filtered.map(({ subject, chapters }) => (
+          <SubjectCard key={subject.id} subject={subject} chapters={chapters} />
+        ))
+      )}
+    </div>
   );
 }
 
