@@ -43,3 +43,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# impeccable (design skill) — session-local hook cache, not project state
+.impeccable/hook.cache.json

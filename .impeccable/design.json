@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-16T08:07:52Z",
+  "title": "Design System: Learning Suite",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "#2d241b",
+        "tonalRamp": ["#221a10", "#382f25", "#4f453b", "#675d52", "#8d8276", "#b5a99d", "#dfd2c6", "#fbefe2"]
+      },
+      "lime": {
+        "role": "secondary",
+        "displayName": "Lime",
+        "canonical": "#C5E17A",
+        "tonalRamp": ["#132200", "#173900", "#285100", "#426900", "#69901d", "#92b847", "#bce26e", "#d9fe89"]
+      },
+      "coral": {
+        "role": "tertiary",
+        "displayName": "Coral",
+        "canonical": "#FFC5C3",
+        "tonalRamp": ["#540000", "#700012", "#8e1126", "#ab313b", "#d95b5e", "#ff8787", "#ffc6c3", "#ffeceb"]
+      },
+      "amber": {
+        "role": "neutral",
+        "displayName": "Amber",
+        "canonical": "#FFE08A",
+        "tonalRamp": ["#301800", "#472c00", "#604200", "#7b5900", "#a67e00", "#d2a52a", "#ffcd55", "#ffeecf"]
+      },
+      "sky": {
+        "role": "neutral",
+        "displayName": "Sky",
+        "canonical": "#B8E0FF",
+        "tonalRamp": ["#002244", "#003759", "#004e74", "#006693", "#008ec4", "#45b6ef", "#a3dbff", "#e1f3ff"]
+      },
+      "periwinkle": { "role": "neutral", "displayName": "Periwinkle", "canonical": "#CCCFFA" },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#FFFFFF" },
+      "cream": { "role": "neutral", "displayName": "Cream", "canonical": "#ede0d4" },
+      "outline": { "role": "neutral", "displayName": "Outline", "canonical": "#2F292E" },
+      "ink-secondary": { "role": "neutral", "displayName": "Ink Secondary", "canonical": "#675d52" },
+      "ink-faded": { "role": "neutral", "displayName": "Ink Faded", "canonical": "#d1c5b8" },
+      "ink-muted": { "role": "neutral", "displayName": "Ink Muted", "canonical": "#4f453b" },
+      "lime-hover": { "role": "secondary", "displayName": "Lime Hover", "canonical": "#B5D16A" },
+      "lime-ink": { "role": "secondary", "displayName": "Lime Ink", "canonical": "#3a5500" },
+      "coral-ink": { "role": "tertiary", "displayName": "Coral Ink", "canonical": "#8b1d24" },
+      "amber-ink": { "role": "neutral", "displayName": "Amber Ink", "canonical": "#614400" },
+      "sky-ink": { "role": "neutral", "displayName": "Sky Ink", "canonical": "#004e74" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Theme-level hero sizes (Crimson Text). Defined but unused by any shipped screen." },
+      "headline": { "displayName": "Headline", "purpose": "h1-h3, Poppins semibold — drives every heading." },
+      "title": { "displayName": "Title", "purpose": "h4-h6, Poppins semibold — section and card-level headings." },
+      "body": { "displayName": "Body", "purpose": "Default paragraph and most UI copy." },
+      "label": { "displayName": "Label", "purpose": "Form field labels, Poppins medium." },
+      "code": { "displayName": "Code", "purpose": "Declared as JetBrains Mono by the theme; not loaded, falls back to system mono unless routed through Tailwind's font-mono (Geist Mono)." }
+    },
+    "shadows": [
+      { "name": "shadow-low", "value": "0 2px 4px #2d241b0D, 0 4px 8px #2d241b1A", "purpose": "Reserved by the theme; not drawn on by any first-party component." },
+      { "name": "shadow-med", "value": "0 2px 4px #2d241b0D, 0 4px 12px #2d241b1A", "purpose": "Dialogs and popovers at rest (Astryx core)." },
+      { "name": "shadow-high", "value": "0 4px 6px #2d241b1A, 0 12px 24px #2d241b26", "purpose": "Top of the stack — open dialogs, dropdowns." }
+    ],
+    "motion": [
+      { "name": "duration-fast", "value": "100ms", "purpose": "Hover/press state transitions." },
+      { "name": "duration-medium", "value": "250ms", "purpose": "Dialog/popover open-close." },
+      { "name": "duration-slow", "value": "600ms", "purpose": "Reserved by the theme for larger choreographed transitions; not observed in first-party components." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single loudest action per view (\"Commencer\", \"Reprendre la session\").",
+      "html": "<button class=\"ds-btn-primary\">Commencer</button>",
+      "css": ".ds-btn-primary { background: #2d241b; color: #CCCFFA; padding: 0 18px; height: 40px; font-family: Poppins, sans-serif; font-weight: 500; border: 1px solid transparent; border-radius: 0; transition: background 100ms; } .ds-btn-primary:hover { background: #433a30; } .ds-btn-primary:focus-visible { outline: 2px solid #2d241b; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary actions and confirmations that aren't destructive.",
+      "html": "<button class=\"ds-btn-secondary\">Avancer</button>",
+      "css": ".ds-btn-secondary { background: #C5E17A; color: #3a5500; border: 1px solid #3a5500; padding: 0 18px; height: 40px; font-family: Poppins, sans-serif; font-weight: 500; border-radius: 0; transition: background 100ms; } .ds-btn-secondary:hover { background: #B5D16A; } .ds-btn-secondary:focus-visible { outline: 2px solid #3a5500; outline-offset: 2px; }"
+    },
+    {
+      "name": "Destructive Button",
+      "kind": "button",
+      "refersTo": "button-destructive",
+      "description": "Irreversible actions — \"Supprimer définitivement\".",
+      "html": "<button class=\"ds-btn-destructive\">Supprimer définitivement</button>",
+      "css": ".ds-btn-destructive { background: #FFC5C3; color: #8b1d24; border: 1px solid #8b1d24; padding: 0 18px; height: 40px; font-family: Poppins, sans-serif; font-weight: 500; border-radius: 0; transition: background 100ms; } .ds-btn-destructive:hover { background: #ffb2af; } .ds-btn-destructive:focus-visible { outline: 2px solid #8b1d24; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "De-emphasized actions — sign-out, reorder arrows, \"Reporter\".",
+      "html": "<button class=\"ds-btn-ghost\">Reporter</button>",
+      "css": ".ds-btn-ghost { background: transparent; color: #2d241b; border: 1px solid transparent; padding: 0 18px; height: 40px; font-family: Poppins, sans-serif; font-weight: 500; border-radius: 0; transition: background 100ms; } .ds-btn-ghost:hover { background: rgba(45,36,27,0.05); } .ds-btn-ghost:focus-visible { outline: 2px solid #2d241b; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-pill",
+      "description": "Success/warning/error/info/neutral status pill — the only rounded shape in the system.",
+      "html": "<span class=\"ds-badge ds-badge-warning\">examen dans 12j</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; border-radius: 9999px; border: 1.5px solid; padding: 2px 10px; font-family: Poppins, sans-serif; font-size: 0.8125rem; font-weight: 500; } .ds-badge-warning { background: #FFE08A; color: #614400; border-color: rgba(97,68,0,0.3); } .ds-badge-success { background: #C5E17A; color: #3a5500; border-color: rgba(58,85,0,0.3); } .ds-badge-error { background: #FFC5C3; color: #8b1d24; border-color: rgba(139,29,36,0.3); }"
+    },
+    {
+      "name": "Row (dense list item)",
+      "kind": "list",
+      "refersTo": "card",
+      "description": "Curriculum sections and the daily queue render as flat bordered rows, never Card-wrapped.",
+      "html": "<li class=\"ds-row\"><span>Section 4 — Les vices du consentement</span><span class=\"ds-row-meta\">imp. 3</span></li>",
+      "css": ".ds-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; border: 1px solid #2F292E; border-radius: 0; padding: 12px; background: #FFFFFF; font-family: Poppins, sans-serif; } .ds-row-meta { font-size: 12px; color: #675d52; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field-input",
+      "description": "Shared styling across text input, text area, date input, file input.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Titre du chapitre</span><input class=\"ds-field-input\" type=\"text\" placeholder=\"Titre\" /></label>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-field-label { font-family: Poppins, sans-serif; font-weight: 500; font-size: 1rem; color: #2d241b; } .ds-field-input { border: 1px solid #2F292E; border-radius: 0; padding: 8px 12px; height: 40px; font-family: Poppins, sans-serif; background: #FFFFFF; color: #2d241b; } .ds-field-input:focus-visible { outline: 2px solid #2d241b; outline-offset: 1px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Periwinkle Terminal",
+    "overview": "The system reads as early-2000s desktop chrome pressed into service for a serious daily workflow: a saturated periwinkle canvas (#CCCFFA) holds white \"paper\" panels, every panel and control outlined in a near-black 1px line instead of a shadow, every corner pinned square. It's bubbly-pop by palette (lime greens, coral pinks, sky blues borrowed from the theme's ten-hue Y2K set) but brutalist by geometry — nothing here is soft, floating, or rounded except one deliberate exception (badge pills). The two forces sit in tension on purpose: candy colors, hard edges.\n\nThis is not a written brand brief translated into pixels — no PRODUCT.md exists yet for this project — so the rejections are read off the code itself, not quoted from a strategy doc. What the shipped screens visibly avoid: no gradients anywhere, no glassmorphism, no drop-shadow \"lifted card\" affordance, no rounded corners outside the badge exception, and no card-wrapped list rows.",
+    "keyCharacteristics": [
+      "Zero-radius brutalist chrome on every surface except pill-shaped badges",
+      "Heavy 1px charcoal (#2F292E) outlines standing in for elevation",
+      "A periwinkle body canvas cradling white content islands",
+      "One Poppins geometric sans carries the entire interface; Crimson Text is defined for display text but unused",
+      "A third, unrelated serif (EB Garamond) layered on top of the Astryx theme entirely for long-form course reading"
+    ],
+    "rules": [
+      { "name": "The Five-of-Ten Rule", "body": "The Y2K theme ships ten categorical hues; this app draws on five (green, red, yellow, blue, gray/cream). Pink, purple, cyan, orange, and teal are defined but unused anywhere in the shipped app. Don't reach for one without a reason.", "section": "colors" },
+      { "name": "The Ink-Does-Everything Rule", "body": "One dark neutral carries primary text, primary buttons, primary icons, and the theme's accent role simultaneously — there is no separate brand color competing with it.", "section": "colors" },
+      { "name": "The Unloaded Font Rule", "body": "The theme's --font-family-code names JetBrains Mono, but it is never loaded via next/font — code styled purely through the theme silently falls back to SF Mono/Monaco/Consolas.", "section": "typography" },
+      { "name": "The Second Serif Rule", "body": "EB Garamond is loaded and mapped to Tailwind's font-serif utility entirely outside the Astryx theme's own type system, reserved for read-only course text only.", "section": "typography" },
+      { "name": "The Outline-Not-Shadow Rule", "body": "Cards, buttons, and fields signal a distinct surface with a 1px #2F292E border, not elevation. Don't add box-shadow to a card or button to make it feel lifted.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep every card, button, and field at 0px radius.",
+      "Do use the 1px #2F292E outline as the way a surface separates from its background, in place of shadow.",
+      "Do render dense lists as edge-to-edge bordered rows, never Card-wrapped list items.",
+      "Do stay within the five committed categorical hues (green/red/yellow/blue/gray) for status color.",
+      "Do reserve EB Garamond strictly for read-only course text."
+    ],
+    "donts": [
+      "Don't add box-shadow to a card or button to fake elevation.",
+      "Don't round any corner beyond the badge-pill exception (9999px).",
+      "Don't introduce pink, purple, cyan, orange, or teal without a reason.",
+      "Don't style code/pre through the theme's own --font-family-code and expect JetBrains Mono to render — use the font-mono Tailwind utility instead.",
+      "Don't reach for the Crimson Text display sizes casually — they're unused by any screen so far."
+    ]
+  }
+}
