@@ -99,7 +99,7 @@ export function RubricEditor({
             )}
             {points.map((p, i) =>
               p.type === type ? (
-                <div key={i} className="flex flex-col gap-2 rounded border border-border p-3">
+                <div key={i} className="flex flex-col gap-2 rounded-none border border-border p-3">
                   <TextInput label="Intitulé" value={p.intitule} onChange={(v) => update(i, { intitule: v })} />
                   <TextArea label="Attendu" value={p.attendu} onChange={(v) => update(i, { attendu: v })} rows={2} />
                   <TextInput
@@ -117,7 +117,7 @@ export function RubricEditor({
         <Button type="submit" isDisabled={submitting} label={pending ? "Validation…" : "Valider la rubrique"} />
         {state?.error && <p className="text-sm text-error">{state.error}</p>}
       </form>
-      <div className="max-h-[80vh] overflow-y-auto rounded border border-border p-4">
+      <div className="max-h-[80vh] overflow-y-auto rounded-none border border-border p-4">
         <h3 className="mb-2 text-sm font-semibold">{sectionTitre}</h3>
         <MarkdownViewer markdown={sectionContenu} />
       </div>

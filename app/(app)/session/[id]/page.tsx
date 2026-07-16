@@ -50,7 +50,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
         Lecture seule — session close, verdict {sess.verdictFinal}.
       </p>
 
-      <div className="rounded border border-border p-3">
+      <div className="rounded-none border border-border p-3">
         <h2 className="mb-2 text-sm font-semibold">Restitution soumise</h2>
         <p className="whitespace-pre-wrap text-sm">{sess.input}</p>
       </div>

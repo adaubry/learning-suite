@@ -97,7 +97,7 @@ function SplitPicker({ contenu, onSplit }: { contenu: string; onSplit: (cutOffse
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-border p-2">
+    <div className="flex flex-col gap-2 rounded-none border border-border p-2">
       <p className="text-xs text-secondary">Clique dans le texte au point de coupe souhaité.</p>
       <TextArea
         ref={ref}
@@ -143,7 +143,7 @@ function TriageRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <li className="flex flex-col gap-2 rounded border border-border p-3">
+    <li className="flex flex-col gap-2 rounded-none border border-border p-3">
       <div className="flex flex-wrap items-center gap-3">
         <TextInput
           label="Titre de la section"
@@ -162,7 +162,7 @@ function TriageRow({
         )}
       </div>
       {expanded && (
-        <div className="max-h-40 overflow-y-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">
+        <div className="max-h-40 overflow-y-auto rounded-none bg-muted p-2 text-xs whitespace-pre-wrap">
           {row.contenu}
         </div>
       )}

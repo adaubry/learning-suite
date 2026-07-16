@@ -58,7 +58,7 @@ export function CourseEditor({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-1 rounded border border-border p-1">
+      <div className="flex flex-wrap gap-1 rounded-none border border-border p-1">
         {[1, 2, 3].map((l) => headingButton(l as 1 | 2 | 3))}
         <Button
           type="button"
@@ -90,7 +90,7 @@ export function CourseEditor({
           « l'éditeur ne marche pas ». */}
       <EditorContent
         editor={editor}
-        className="min-h-96 rounded border border-border p-3 text-sm
+        className="min-h-96 rounded-none border border-border p-3 text-sm
           [&_.tiptap]:leading-relaxed [&_.tiptap]:outline-none
           [&_.tiptap_h1]:mt-4 [&_.tiptap_h1]:mb-2 [&_.tiptap_h1]:text-2xl [&_.tiptap_h1]:font-bold
           [&_.tiptap_h2]:mt-4 [&_.tiptap_h2]:mb-2 [&_.tiptap_h2]:text-xl [&_.tiptap_h2]:font-semibold

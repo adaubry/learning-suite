@@ -60,7 +60,7 @@ export function AnomalyPanel({
           return (
             <li
               key={key}
-              className="flex items-start justify-between gap-3 rounded border border-border p-2 text-sm"
+              className="flex items-start justify-between gap-3 rounded-none border border-border p-2 text-sm"
             >
               <button
                 type="button"

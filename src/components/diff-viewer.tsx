@@ -27,11 +27,11 @@ function MotsInline({ mots }: { mots: NonNullable<DiffSegment["mots"]> }) {
     <p className="whitespace-pre-wrap leading-relaxed">
       {mots.map((m, i) =>
         m.added ? (
-          <ins key={i} className="rounded bg-green-subtle no-underline">
+          <ins key={i} className="rounded-none bg-green-subtle no-underline">
             {m.value}
           </ins>
         ) : m.removed ? (
-          <del key={i} className="rounded bg-red-subtle">
+          <del key={i} className="rounded-none bg-red-subtle">
             {m.value}
           </del>
         ) : (

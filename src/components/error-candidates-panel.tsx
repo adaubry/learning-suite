@@ -30,7 +30,7 @@ export function ErrorCandidatesPanel({
   if (candidates.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-border p-3">
+    <div className="flex flex-col gap-2 rounded-none border border-border p-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Erreurs candidates {readOnly ? "" : "(proposées)"}</h2>
         {!readOnly && (
