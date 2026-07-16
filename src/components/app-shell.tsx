@@ -45,9 +45,9 @@ export function AppShell({
       banner={
         openCycle && resumeHref ? (
           <Banner
-            status="warning"
+            status="info"
             title="Session en cours"
-            description={`${openCycle.sectionTitre} — termine-la ou abandonne-la avant d'en commencer une autre.`}
+            description={`${openCycle.sectionTitre} — reprends-la ou abandonne-la avant d'en commencer une autre.`}
             endContent={
               <Link href={resumeHref} className="font-medium underline whitespace-nowrap">
                 Reprendre la session

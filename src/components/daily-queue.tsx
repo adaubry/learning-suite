@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronUpIcon, ChevronDownIcon } from "lucide-react";
+import { ChevronUpIcon, ChevronDownIcon, ChevronsUpIcon } from "lucide-react";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import type { QueueItem } from "@/core/planner/buildDailyQueue";
@@ -35,7 +35,7 @@ export function DailyQueue({
   queue: QueueItem[];
   infoById: Map<string, QueueSectionInfo>;
   keys: string[];
-  moveAction: (index: number, direction: "up" | "down", formData: FormData) => Promise<void>;
+  moveAction: (index: number, direction: "up" | "down" | "top", formData: FormData) => Promise<void>;
   deferAction: (itemType: "etude" | "revision", itemId: string) => Promise<void>;
   /** Prochaine échéance ISO (S5.nextDeadline), ou null si aucune ReviewCard active (USER_FLOW É2.0). */
   nextDeadline: string | null;
@@ -50,10 +50,10 @@ export function DailyQueue({
   if (queue.length === 0) {
     return (
       <div className="flex flex-col items-start gap-2 text-sm">
-        <p className="text-secondary">
+        <p className="text-primary">
           Rien à faire aujourd&apos;hui.{" "}
           {nextDeadline
-            ? `Prochaine échéance : ${nextDeadline}.`
+            ? `Prochaine échéance : ${new Date(nextDeadline).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}.`
             : "Aucune échéance à venir."}
         </p>
         <div className="flex flex-wrap gap-2">
@@ -83,10 +83,13 @@ export function DailyQueue({
         const commencerHref = `/etude/${sectionId}`;
 
         return (
-          <li key={keys[index]} className="flex flex-wrap items-center gap-3 rounded border border-border p-3">
+          <li key={keys[index]} className="flex flex-wrap items-center gap-3 rounded-none border border-border bg-surface p-3">
             <div className="flex flex-col gap-1">
               {(
                 [
+                  ...(index > 1
+                    ? [{ direction: "top" as const, label: "Tout en haut", icon: <ChevronsUpIcon size={16} />, disabled: false }]
+                    : []),
                   { direction: "up" as const, label: "Monter", icon: <ChevronUpIcon size={16} />, disabled: index === 0 },
                   { direction: "down" as const, label: "Descendre", icon: <ChevronDownIcon size={16} />, disabled: index === queue.length - 1 },
                 ]

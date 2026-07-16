@@ -14,14 +14,20 @@ export async function deferAction(itemType: "etude" | "revision", itemId: string
   revalidatePath("/");
 }
 
-export async function reorderAction(index: number, direction: "up" | "down", formData: FormData) {
+export async function reorderAction(index: number, direction: "up" | "down" | "top", formData: FormData) {
   await requireUserId();
   const raw = formData.get("keys");
   if (typeof raw !== "string") return;
   const keys = JSON.parse(raw) as string[];
-  const target = direction === "up" ? index - 1 : index + 1;
-  if (target < 0 || target >= keys.length) return;
-  [keys[index], keys[target]] = [keys[target], keys[index]];
+  if (direction === "top") {
+    if (index <= 0 || index >= keys.length) return;
+    const [item] = keys.splice(index, 1);
+    keys.unshift(item);
+  } else {
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= keys.length) return;
+    [keys[index], keys[target]] = [keys[target], keys[index]];
+  }
   await planner.reorder(keys);
   revalidatePath("/");
 }
