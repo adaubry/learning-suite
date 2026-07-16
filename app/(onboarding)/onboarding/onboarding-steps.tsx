@@ -36,14 +36,14 @@ export function StepMatieres({ subjects }: { subjects: Subject[] }) {
       {subjects.length > 0 && (
         <ul className="flex flex-col gap-1 text-sm">
           {subjects.map((s) => (
-            <li key={s.id} className="rounded border border-border px-3 py-2">
+            <li key={s.id} className="rounded-none border border-border px-3 py-2">
               {s.nom} — {s.semestre}
             </li>
           ))}
         </ul>
       )}
 
-      <form action={action} className="flex flex-col gap-3 rounded border border-border p-4">
+      <form action={action} className="flex flex-col gap-3 rounded-none border border-border p-4">
         <TextInput label="Nom" htmlName="nom" isRequired value={nom} onChange={setNom} placeholder="Droit civil" />
         <TextInput label="Semestre" htmlName="semestre" isRequired value={semestre} onChange={setSemestre} placeholder="S1" />
         <DateInput label="Date d'examen" isOptional value={dateExamen} onChange={setDateExamen} />
@@ -88,6 +88,7 @@ export function StepRythme({ nouvellesParJour }: { nouvellesParJour: number }) {
           onChange={setRythme}
         />
         <div className="flex gap-3">
+          <Button variant="ghost" label="Précédent" href="/onboarding?step=1" as={Link} />
           <Button type="submit" isDisabled={pending} label={pending ? "Enregistrement…" : "Suivant"} />
           <Button variant="secondary" label={`Passer (garder ${nouvellesParJour})`} href="/onboarding?step=3" as={Link} />
         </div>
@@ -131,6 +132,7 @@ export function StepMethodologie({
           placeholder="Ex : Titre 1 = partie, Titre 2 = chapitre, Titre 3 = section..."
         />
         <div className="flex gap-3">
+          <Button variant="ghost" label="Précédent" href="/onboarding?step=2" as={Link} />
           <Button type="submit" isDisabled={pending} label={pending ? "Enregistrement…" : "Suivant"} />
           <Button variant="secondary" label="Passer" href="/onboarding?step=4" as={Link} />
         </div>
@@ -171,10 +173,14 @@ export function StepRecap({
           {methodologieTitresGlobale ? "renseignée" : "non renseignée (ajustable plus tard)"}
         </li>
       </ul>
-      <form action={finishOnboardingAction}>
-        <input type="hidden" name="nouvellesParJour" value={nouvellesParJour} />
-        <Button type="submit" label="Terminer" />
-      </form>
+      <p className="text-sm text-secondary">C&apos;est prêt : tu peux commencer à étudier.</p>
+      <div className="flex gap-3">
+        <Button variant="ghost" label="Précédent" href="/onboarding?step=3" as={Link} />
+        <form action={finishOnboardingAction}>
+          <input type="hidden" name="nouvellesParJour" value={nouvellesParJour} />
+          <Button type="submit" label="Terminer" />
+        </form>
+      </div>
     </div>
   );
 }
