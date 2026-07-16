@@ -34,11 +34,12 @@ export function ScrollToBottomButton() {
   }
 
   return (
-    <div ref={ref} className="fixed bottom-6 right-6 z-50 outline-1">
+    <div ref={ref} className="fixed bottom-6 right-6 z-50 ">
       <IconButton
         label="Aller en bas de la page"
         tooltip="Aller en bas"
-        icon={<ChevronDown size={18} />}
+        size="lg"
+        icon={<ChevronDown size={24} />}
         onClick={scrollToBottom}
       />
     </div>

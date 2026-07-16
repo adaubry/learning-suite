@@ -49,7 +49,10 @@ export function AppShell({
             title="Session en cours"
             description={`${openCycle.sectionTitre} — reprends-la ou abandonne-la avant d'en commencer une autre.`}
             endContent={
-              <Link href={resumeHref} className="font-medium underline whitespace-nowrap">
+              <Link
+                href={resumeHref}
+                className="font-medium underline whitespace-nowrap"
+              >
                 Reprendre la session
               </Link>
             }

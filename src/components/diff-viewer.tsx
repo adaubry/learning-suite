@@ -51,7 +51,7 @@ export function DiffViewer({ segments }: { segments: DiffSegment[] }) {
   return (
     <div className="space-y-3">
       {pertinents.map((s, i) => (
-        <div key={`${s.titre}-${i}`} className={cn("rounded-md border-l-4 bg-muted/30 p-3 text-sm", BORDER[s.type])}>
+        <div key={`${s.titre}-${i}`} className={cn("rounded-md border bg-muted/30 p-3 text-sm", BORDER[s.type])}>
           <div className="mb-1 flex items-center gap-2">
             <span className="font-medium">{s.titre}</span>
             <span className="text-xs text-secondary">{LABEL[s.type]}</span>
