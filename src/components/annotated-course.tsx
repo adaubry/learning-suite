@@ -162,7 +162,13 @@ export function AnnotatedCourse({
               tooltip="Supprimer"
               variant="ghost"
               size="sm"
-              icon={<X size={12} />}
+              className="group"
+              icon={
+                <X
+                  size={12}
+                  className="text-secondary transition-colors group-hover:text-primary"
+                />
+              }
               onClick={() => removeNote(note.id)}
             />
           </div>
