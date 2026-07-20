@@ -9,6 +9,20 @@ import * as schema from "./schema";
 // le défaut de postgres.js (10) multiplie inutilement les connexions ouvertes
 // contre le pooler par instance, ce qui a déjà épuisé le quota du pooler en
 // mode session (incident réel, EMAXCONNSESSION) — sans effet en local (Docker).
-const client = postgres(process.env.DATABASE_URL!, { prepare: false, max: 1 });
+// NB : max: 3 testé (répartir les ~9 requêtes concurrentes de (app)/layout.tsx
+// sur plusieurs connexions) casse un canari (planner.canary.test.ts) — la
+// suite de tests n'est pas isolée pour du vrai parallélisme sur la même base ;
+// abandonné, ne pas retenter sans fiabiliser l'isolation des tests d'abord.
+// idle_timeout/max_lifetime/connect_timeout — une connexion bloquée (requête
+// tuée côté Vercel avant lecture du résultat, incident réel 2026-07-20) ne
+// doit plus rester bloquée indéfiniment et geler toutes les requêtes
+// suivantes sur la même instance serverless réchauffée.
+const client = postgres(process.env.DATABASE_URL!, {
+  prepare: false,
+  max: 1,
+  idle_timeout: 20,
+  max_lifetime: 60 * 30,
+  connect_timeout: 10,
+});
 
 export const db = drizzle(client, { schema });
