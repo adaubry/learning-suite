@@ -12,6 +12,10 @@ import { resolveModel, type AppelLLM } from "./models";
 
 const MAX_RETRIES_DEFAULT = 2;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+// ponytail: sans timeout, un OpenRouter qui ne répond pas bloque la requête
+// jusqu'à la limite de la fonction Vercel (5 min) au lieu d'échouer vite —
+// `after()`/lazyScheduler (S3, page d'accueil) dépend de cet appel à chaque connexion.
+const LLM_FETCH_TIMEOUT_MS = 30_000;
 
 export class LLMValidationError extends Error {
   constructor(appel: AppelLLM, lastError: string) {
@@ -191,6 +195,7 @@ export async function* streamCompletion(options: StreamCompletionOptions): Async
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model, messages, stream: true, stream_options: { include_usage: true } }),
+      signal: AbortSignal.timeout(LLM_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     await logStreamAttempt(appel, promptVersion, model, 0, 0, Date.now() - start, "echec");
@@ -272,6 +277,7 @@ async function postChatCompletion(model: string, messages: unknown[]): Promise<P
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model, messages }),
+      signal: AbortSignal.timeout(LLM_FETCH_TIMEOUT_MS),
     });
   } catch (err) {
     return { ok: false, error: `échec réseau : ${(err as Error).message}`, infra: true, inputTokens: 0, outputTokens: 0 };
