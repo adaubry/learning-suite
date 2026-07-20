@@ -10,6 +10,11 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // ponytail: sans timeout, un blip réseau Supabase bloque la requête
+      // jusqu'à la limite de la fonction Vercel (5 min) au lieu d'échouer vite.
+      global: {
+        fetch: (url, options = {}) => fetch(url, { ...options, signal: AbortSignal.timeout(10_000) }),
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll();
