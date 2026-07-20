@@ -17,12 +17,22 @@ import * as schema from "./schema";
 // tuée côté Vercel avant lecture du résultat, incident réel 2026-07-20) ne
 // doit plus rester bloquée indéfiniment et geler toutes les requêtes
 // suivantes sur la même instance serverless réchauffée.
+// statement_timeout/idle_in_transaction_session_timeout — insuffisant ci-dessus :
+// idle_timeout/max_lifetime ne se déclenchent que sur une connexion IDLE, pas
+// sur une requête bloquée en plein vol (en attente de réponse). Ce sont ces
+// deux GUC, appliqués côté serveur par Postgres/pgbouncer, qui bornent
+// réellement une requête (ou une transaction laissée ouverte, cf. regenerate())
+// qui ne répond jamais — cause du 504 systématique sur toute session ouverte.
 const client = postgres(process.env.DATABASE_URL!, {
   prepare: false,
   max: 1,
   idle_timeout: 20,
   max_lifetime: 60 * 30,
   connect_timeout: 10,
+  connection: {
+    statement_timeout: 10_000,
+    idle_in_transaction_session_timeout: 10_000,
+  },
 });
 
 export const db = drizzle(client, { schema });

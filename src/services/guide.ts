@@ -177,14 +177,18 @@ export async function regenerate(userId: string, sectionId: string) {
   });
   if (!existing) throw new NoGuideToRegenerateError();
 
+  // L'appel LLM reste HORS transaction (connexion serverless unique, `max: 1` —
+  // src/db/index.ts) : une transaction ouverte pendant tout l'appel externe
+  // bloquerait la seule connexion de l'instance pour toute autre requête le
+  // temps de la réponse LLM (incident réel 2026-07-20, cause du 504 systématique).
+  const { context } = await loadSectionContext(sectionId, userId);
+  const output = await generateGuide(context);
+
   return db.transaction(async (tx) => {
     await tx
       .update(correctionGuide)
       .set({ statut: "obsolete" })
       .where(eq(correctionGuide.id, existing.id));
-
-    const { context } = await loadSectionContext(sectionId, userId);
-    const output = await generateGuide(context);
 
     const [created] = await tx
       .insert(correctionGuide)
