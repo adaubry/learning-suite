@@ -1,0 +1,131 @@
+"use client";
+
+import { Bell } from "lucide-react";
+import { Badge } from "@astryxdesign/core/Badge";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Popover } from "@astryxdesign/core/Popover";
+import { Button } from "@astryxdesign/core/Button";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { dismissAlertAction, snoozeAlertAction } from "../../app/(app)/regularite/actions";
+import type { alert as alertTable } from "@/db/schema";
+
+// U26 RegulariteHeader + U31 AlertBell (IMPLEMENT_SCHEDULE.md §7) — chip
+// semaine courante, série + gels restants, sessions du jour, cloche avec badge
+// du nombre d'alertes visibles + historique 30 j.
+
+type Alert = typeof alertTable.$inferSelect;
+
+const ALERT_LABELS: Record<string, string> = {
+  echeance_j7: "Échéance dans 7 jours",
+  echeance_j3: "Échéance dans 3 jours",
+  echeance_j1: "Échéance demain",
+  echeance_jour_j: "Échéance aujourd'hui",
+  echeance_depassee: "Échéance dépassée",
+  serie_en_peril: "Série en péril",
+  dette_reports: "Dette de reports",
+  pic_charge: "Pic de charge",
+};
+
+function AlertBell({ visible, history }: { visible: Alert[]; history: Alert[] }) {
+  const olderHistory = history.filter((h) => !visible.some((v) => v.id === h.id));
+
+  return (
+    <Popover
+      label="Alertes"
+      content={
+        <div className="flex max-h-96 w-80 flex-col gap-3 overflow-y-auto">
+          <div>
+            <p className="text-secondary text-xs">Visibles</p>
+            {visible.length === 0 ? (
+              <p className="text-secondary text-sm">Rien à signaler.</p>
+            ) : (
+              <List hasDividers density="compact">
+                {visible.map((a) => {
+                  const payload = a.payload as { libelle?: string } | null;
+                  const snoozable = a.type !== "echeance_jour_j" && a.type !== "echeance_depassee";
+                  return (
+                    <ListItem
+                      key={a.id}
+                      label={ALERT_LABELS[a.type] ?? a.type}
+                      description={payload?.libelle}
+                      endContent={
+                        <div className="flex gap-1">
+                          {snoozable && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              label="Reporter"
+                              clickAction={async () => {
+                                await snoozeAlertAction(a.id);
+                              }}
+                            />
+                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            label="Fermer"
+                            clickAction={async () => {
+                              await dismissAlertAction(a.id);
+                            }}
+                          />
+                        </div>
+                      }
+                    />
+                  );
+                })}
+              </List>
+            )}
+          </div>
+          {olderHistory.length > 0 && (
+            <div>
+              <p className="text-secondary text-xs">Historique (30 j)</p>
+              <List hasDividers density="compact">
+                {olderHistory.map((a) => (
+                  <ListItem key={a.id} label={ALERT_LABELS[a.type] ?? a.type} />
+                ))}
+              </List>
+            </div>
+          )}
+        </div>
+      }
+    >
+      <span className="relative inline-flex">
+        <IconButton label="Alertes" icon={<Bell size={18} />} variant="ghost" />
+        {visible.length > 0 && (
+          <span className="absolute -top-1 -right-1">
+            <Badge variant="error" label={String(visible.length)} />
+          </span>
+        )}
+      </span>
+    </Popover>
+  );
+}
+
+export function RegulariteHeader({
+  weekLabel,
+  streak,
+  gelsSerieRestants,
+  sessionsToday,
+  visibleAlerts,
+  alertHistory,
+}: {
+  weekLabel: string | null;
+  streak: number;
+  gelsSerieRestants: number;
+  sessionsToday: number;
+  visibleAlerts: Alert[];
+  alertHistory: Alert[];
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        {weekLabel && <Badge variant="info" label={weekLabel} />}
+        <span className="text-sm">
+          Série : <strong>{streak} j</strong> · {gelsSerieRestants} gel(s) restant(s)
+        </span>
+        <span className="text-secondary text-sm">{sessionsToday} session(s) aujourd&apos;hui</span>
+      </div>
+      <AlertBell visible={visibleAlerts} history={alertHistory} />
+    </div>
+  );
+}

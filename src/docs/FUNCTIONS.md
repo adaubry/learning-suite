@@ -42,6 +42,9 @@
 | P8  | **computeHorizon**             | ReviewCards → charge de révision 7/30 j (étiquetée ainsi — le backlog d'études sans dates n'y figure pas), dette, répartition par matière, échéances d'examens superposées.                                                                                                                                                                                                                                                                             |
 | P9  | **fsrsCore** (wrapper ts-fsrs) | Note (Again/Hard/Good/Easy) × état de carte → nouvel état + échéance. Inclut **previewIntervals** : simulation des quatre notes sans effet de bord (affichage sous les boutons, É3.5 depuis la fusion Machine B/C 2026-07-15 — anciennement É4.2).                                                                                                                                                                                                                                                                  |
 | —   | ~~P10 presentCorrection~~ | **Supprimée** (REVAMP.md v0.3, 2026-07-15) : divulgation contrôlée abandonnée en étude, plus aucun appelant avec masquage à opérer (révision n'en a jamais eu besoin) — la fonction ne faisait plus que recopier ses entrées telles quelles. `computeVerdict` (le calcul du verdict qu'elle hébergeait) déplacé dans `core/correction/verdict.ts`, réutilisé tel quel. |
+| P11 | **computeStreak**               | (IMPLEMENT_SCHEDULE.md §4) Dates de sessions + dates gelées → série courante et meilleure série. Aujourd'hui incomplet ne casse jamais la série ; un gel comble un trou comme une session réelle.                                                                                                                                                                                                                                                     |
+| P12 | **weekLabel**                    | Jour + `debutS3`/`debutS4` → label `sXsY` de l'écran Régularité (heatmap, chip semaine courante). `debutS3` null ⇒ aucun label (empty state de config côté écran).                                                                                                                                                                                                                                                                                    |
+| P13 | **evaluateAlertRules**           | Instantané (échéances non acquittées, dette, charge 14j) → liste des alertes qui devraient exister pour `today`, selon les règles du tableau §5. Idempotence réelle portée par l'index unique en base (`ON CONFLICT DO NOTHING`), pas par ce module. `pickBannerAlert` (même fichier) : sélection de la bannière la plus urgente (jour_j > j1 > depassee > j3).                                                                                    |
 
 ## 2. Appels LLM (`llm/`) — catalogue contractualisé
 
@@ -97,7 +100,20 @@
 
 ### S9 · AccountService — configuration & données
 
-- `updatePlannerConfig`, `updateMethodology` (globale + surcharges matière), CRUD matières (date d'examen alimentant P7/P8), `exportUserData` (JSON complet, archives et journaux compris).
+- `updatePlannerConfig`, `updateMethodology` (globale + surcharges matière), CRUD matières (date d'examen alimentant P7/P8), `exportUserData` (JSON complet, archives et journaux compris), `updateSemesterConfig` (Régularité : `debutS3`/`debutS4`).
+
+### S10 · DeadlineService — échéances (IMPLEMENT_SCHEDULE.md §3, §7)
+
+- **Points d'entrée** : `list` (non acquittées, triées par échéance — seule vue, consommée par la checklist ET le moteur d'alertes), `create` (dépliage récurrence hebdo → n lignes groupées par `recurrenceGroupId`), `update`, `ack`/`unack` (cascade sur les alertes de la deadline via S12, undo restaure celles du jour même), `remove` (scope `this`/`following` pour une occurrence récurrente).
+
+### S11 · StatsService — régularité (IMPLEMENT_SCHEDULE.md §4)
+
+- **Points d'entrée** : `streak` (P11 sur l'historique complet), `sessionCountsByDay`/`heatmapData` (heatmap), `detteReports` (reports non-avance encore dans la re-file, réutilise DeferralLog/RefileItem sans dupliquer S5), `chargeParJour`/`averageCharge14j` (ReviewCards dues + `nouvellesParJour` forfaitaire), `useStreakFreeze` (pose un `SerieGel`, décrémente le compteur — refuse si épuisé).
+
+### S12 · AlertService — moteur d'alertes (IMPLEMENT_SCHEDULE.md §5, §6)
+
+- **Points d'entrée** : `generateAlerts` (P13 sur un instantané chargé, INSERT idempotent — appelé à chaque chargement de l'app), `recordSerieEnPeril` (seule règle évaluée côté client, insérée à l'affichage), `listVisible`/`listHistory`, `dismiss`/`snooze` (refuse le snooze pour `echeance_jour_j`/`echeance_depassee`), `dismissForDeadline`/`restoreTodayDismissedForDeadline` (cascade d'acquittement, appelées par S10 uniquement).
+- **Invariant possédé** : idempotence de génération — index unique `alert_dedupe` (type, dateRef, deadlineId), jamais de logique applicative de déduplication.
 
 ## 4. Server Actions — règle unique
 
@@ -150,6 +166,13 @@ Une action par point d'entrée de service exposé à l'UI. Contenu type : authen
 | U22 | **CurriculumTree**         | Arbre matières→chapitres→sections : pastilles de statut, importances, échéances, recherche ; fiches matières (date d'examen, surcharge méthodologie, archivage).                                                                                                                                                  |
 | U23 | **ImportWizard**           | Enchaîne les étapes de P1 (destination → import → rapport → sectionnement en streaming → tri) avec persistance de reprise entre étapes. Réutilise U4/U5, U13.                                                                                                                                                     |
 | U24 | **ErrorNotebook**          | É5.1 : filtres, compteurs de récidive, liens vers sessions d'origine (lecture seule), actions S7.                                                                                                                                                                                                                 |
+| U26 | **RegulariteHeader**       | Chip semaine courante (P12), série + gels restants, sessions du jour, compose U31.                                                                                                                                                                                                                                |
+| U27 | **DeadlineChecklist**      | Toutes les deadlines non acquittées, triées par échéance ; pill J-x/J+x, coche → toast undo, formulaire création (récurrence hebdo) + édition + suppression (scope this/following). Aucun pourcentage nulle part.                                                                                               |
+| U28 | **ActivityHeatmap**        | Heatmap façon GitHub, CSS grid pure (zéro lib de charts) : buckets 0/1-2/3-4/5+, bordure échéance, teinte gel, contour aujourd'hui, labels de semaine (P12).                                                                                                                                                     |
+| U29 | **ChargeChart**            | Barres pures CSS (même doctrine que U11), 14j desktop / 7j mobile, marqueurs d'échéances, message si pic (S11).                                                                                                                                                                                                   |
+| U30 | **StatsPanel**             | Jours actifs 7j, dette de reports, meilleure série — aucun pourcentage.                                                                                                                                                                                                                                           |
+| U31 | **AlertBell**              | Popover : alertes visibles (dismiss/snooze inline) + historique 30j, badge de compte sur la cloche.                                                                                                                                                                                                               |
+| U32 | **AlertBanner / ToastHost**| `AlertBanner` : bannière persistante globale (rendue par le layout, jamais par un écran), une seule à la fois (P13.pickBannerAlert). `ToastHost` (`toast-host.tsx`) : fine couche sur `useToast` astryx (qui gère déjà positionnement/stacking/auto-dismiss/dédup) — ajoute uniquement la règle produit pile max 3 + file FIFO. |
 
 ### 6.3 Matrice écran → composants (les écrans sont des assemblages)
 
@@ -168,6 +191,7 @@ Une action par point d'entrée de service exposé à l'UI. Contenu type : authen
 | É6.2 Éditeur           | U1 + U4 + U5 + U7 + U8                  |
 | É6.3 Ré-import         | U1 + U4/U5 + U6 + U7 + U8               |
 | P7 Réglages            | U1 + formulaires (schémas Zod partagés) |
+| P8 Régularité (IMPLEMENT_SCHEDULE.md) | U1 + U26 (U31) + U27 + U28 + U29 + U30 ; U32 câblé dans le layout, jamais dans l'écran |
 
 **Gains de réutilisation actés** : le couple blurting/correction (U15/U16/U17) sert quatre écrans ; l'éditeur validé (U4/U5) trois ; le dialogue de conséquences (U7) et le RubricEditor (U14) deux chacun. Tout écran nouveau doit d'abord se composer de l'existant.
 
@@ -186,6 +210,7 @@ Une action par point d'entrée de service exposé à l'UI. Contenu type : authen
 | Seules les erreurs `actives` alimentent les LLM | S7.activeFor        | ContextBuilders (L0)                                                                 |
 | « Journalisé » = AuditService                   | S8                  | —                                                                                    |
 | OpenRouter uniquement via L0                    | L0                  | revue de code                                                                        |
+| Idempotence de génération des alertes           | S12                 | index unique `alert_dedupe` (type, dateRef, deadlineId)                             |
 
 ---
 
@@ -213,6 +238,7 @@ Une action par point d'entrée de service exposé à l'UI. Contenu type : authen
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                     |
 | ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.14    | 2026-07-20 | IMPLEMENT_SCHEDULE.md, écran Régularité (P8 USER_FLOW) : P11-P13 (§1), S10-S12 (§3), U26-U32 (§6.2), matrice écran (§6.3), invariant idempotence des alertes (§7). Voir DECISIONS.md et ARCHITECTURE.md v0.15. |
 | 0.13    | 2026-07-16 | Retour humain (0.12 encore insuffisant ; correctif manuel validé empiriquement — `FocusShell` élargi + `overflow-y-auto` retiré de `lecture-view.tsx`). Le vrai fond du problème : le breakout d'`AnnotatedCourse` (0.12) cherchait à s'échapper d'un `FocusShell` qui restait, lui, étroit — la bonne largeur devait être portée par `FocusShell` directement, pas simulée en aval. `FocusShell` (U2) gagne une prop `wide` (défaut `max-w-2xl`, `wide` → `max-w-svw`) ; `AnnotatedCourse` perd son breakout devenu inutile (simple rangée flex à 3 cases dans le `FocusShell` désormais large). Comme `FocusShell` est partagé par tous les écrans du cycle (blurting/correction/Feynman/bilan doivent rester étroits), il ne peut plus être posé une fois pour toutes par `(focus)/layout.tsx` (supprimé, devenu un passthrough inutile) : chaque branche d'`EtudePage` et `error.tsx` posent désormais leur propre `<FocusShell>`, seule la branche `lecture` passant `wide`. `overflow-y-auto` retiré de `lecture-view.tsx` (vestige sans effet — FocusShell est un simple `div`, la page scrolle déjà au niveau fenêtre, cf. commentaire de `ScrollToBottomButton`). |
 | 0.12    | 2026-07-16 | Retour humain (0.11 insuffisant) : `AnnotatedCourse` reposait sur `position: absolute; left: 100%` en espérant une marge de viewport non garantie au-delà de `FocusShell` (partagé par blurting/Feynman/correction, jamais élargi) — structurellement fragile, sans largeur réservée. Remplacé par un « breakout » (pattern marginalia standard, type Tufte CSS) : au-delà de `xl`, `AnnotatedCourse` s'échappe seul jusqu'au viewport plein, puis centre une rangée flexbox à 3 cases fixes et symétriques (spacer 14rem — cours 40rem — notes 14rem) ; `40rem` = `max-w-2xl` de `FocusShell` moins sa `px-4`, pour un alignement pixel-parfait avec le titre/les boutons du même écran. En dessous de `xl`, rendu identique à avant la fonctionnalité (aucune classe `xl:` ne s'applique). |
 | 0.11    | 2026-07-16 | Bug racine trouvé par capture d'écran Playwright (retour humain : « le cours n'est que le cours, les annotations cachées ») — U2 `FocusShell` (`mx-auto flex … max-w-2xl`) sans largeur explicite : un item flex avec marges `auto` désactive le stretch et retombe en *shrink-to-fit*, sa largeur dépendant alors du contenu (démontré à 401px au lieu de 672px avec un texte court). Ajout de `w-full` : largeur déterministe (672px, toujours centrée), indépendante du contenu ou de ce qu'ajoute un descendant (notes en marge y compris). Aucun changement visuel sur les autres écrans en `(focus)/` (blurting, Feynman, correction) — `w-full` ne fait que rendre robuste un comportement qui, avec du texte de cours réel (toujours plus large que 672px sur au moins une ligne), donnait déjà visuellement le bon résultat par coïncidence. |

@@ -85,6 +85,21 @@ export const promptLogAppelEnum = pgEnum("prompt_log_appel", [
 ]);
 export const promptLogStatutEnum = pgEnum("prompt_log_statut", ["ok", "retry", "echec"]);
 
+// --- Régularité (IMPLEMENT_SCHEDULE.md §3) ---
+
+export const deadlineTypeEnum = pgEnum("deadline_type", ["examen", "controle_continu", "autre"]);
+
+export const alertTypeEnum = pgEnum("alert_type", [
+  "echeance_j7",
+  "echeance_j3",
+  "echeance_j1",
+  "echeance_jour_j",
+  "echeance_depassee",
+  "serie_en_peril",
+  "dette_reports",
+  "pic_charge",
+]);
+
 // --- Tables (ARCHITECTURE.md §8) ---
 
 export const plannerConfig = pgTable("planner_config", {
@@ -95,6 +110,13 @@ export const plannerConfig = pgTable("planner_config", {
   // Réglages P7 (Bloc 9.1, USER_FLOW P7) : TTS on/off — même table de config par
   // utilisateur que nouvellesParJour, pas de nouvelle table pour un seul booléen.
   ttsActive: boolean("tts_active").notNull().default(true),
+  // Régularité (IMPLEMENT_SCHEDULE.md §3) : lundi de la semaine 1 du S3/S4, pour
+  // les labels sXs3/sXs4 de l'heatmap.
+  debutS3: date("debut_s3"),
+  debutS4: date("debut_s4"),
+  gelsSerieRestants: integer("gels_serie_restants").notNull().default(2),
+  heureAlerteSerie: text("heure_alerte_serie").notNull().default("20:00"),
+  seuilDetteReports: integer("seuil_dette_reports").notNull().default(3),
 });
 
 export const subject = pgTable("subject", {
@@ -314,5 +336,52 @@ export const promptLog = pgTable("prompt_log", {
   outputTokens: integer("output_tokens").notNull(),
   dureeMs: integer("duree_ms").notNull(),
   statut: promptLogStatutEnum("statut").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// --- Échéances (IMPLEMENT_SCHEDULE.md §3) — mono-utilisateur (ADR 6), pas de
+// user_id sur deadline/alert/serie_gel, même doctrine que DeferralLog/RefileItem/
+// QueueOrder/AuditEvent.
+export const deadline = pgTable("deadline", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subjectId: uuid("subject_id").references(() => subject.id),
+  type: deadlineTypeEnum("type").notNull(),
+  libelle: text("libelle").notNull(),
+  dueDate: date("due_date").notNull(),
+  coefficient: real("coefficient"),
+  dureeMin: integer("duree_min"),
+  // Récurrences DÉPLIÉES à la création (une ligne par occurrence, groupées par
+  // recurrenceGroupId) — pas de moteur de rrule (doctrine simplicité).
+  recurrenceGroupId: uuid("recurrence_group_id"),
+  ackAt: timestamp("ack_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const alert = pgTable(
+  "alert",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    type: alertTypeEnum("type").notNull(),
+    deadlineId: uuid("deadline_id").references(() => deadline.id),
+    dateRef: date("date_ref").notNull(),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    snoozedUntil: date("snoozed_until"),
+  },
+  (t) => [
+    // Idempotence de generateAlerts (§5) : une alerte par (type, jour de génération,
+    // deadline) — coalesce sur un uuid nul pour les types sans deadline (serie/dette/charge).
+    uniqueIndex("alert_dedupe").on(
+      t.type,
+      t.dateRef,
+      sql`coalesce(${t.deadlineId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+    ),
+  ],
+);
+
+// Streak freeze : une ligne = un jour protégé.
+export const serieGel = pgTable("serie_gel", {
+  date: date("date").primaryKey(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

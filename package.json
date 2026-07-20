@@ -14,7 +14,8 @@
     "db:generate": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs migrate",
     "db:studio": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs studio",
-    "db:seed": "node --experimental-strip-types --env-file=.env.local src/db/seed.ts"
+    "db:seed": "node --experimental-strip-types --env-file=.env.local src/db/seed.ts",
+    "db:seed-deadlines": "node --experimental-strip-types --env-file=.env.local src/db/seed-deadlines.ts"
   },
   "dependencies": {
     "@astryxdesign/cli": "^0.1.4",

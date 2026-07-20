@@ -231,7 +231,23 @@ Contenu rendu (gras/commentaires stylés), liste des sections avec statuts, hist
 
 ## P7 — Réglages
 
-Compte · rythme (`nouvelles_par_jour`) · méthodologie des titres (document global ; les surcharges se gèrent sur les fiches matières) · TTS on/off · export des données (JSON) · zone technique : modèle par appel LLM (lecture seule v1).
+Compte · rythme (`nouvelles_par_jour`) · méthodologie des titres (document global ; les surcharges se gèrent sur les fiches matières) · TTS on/off · export des données (JSON) · zone technique : modèle par appel LLM (lecture seule v1) · Régularité : `debutS3`/`debutS4`.
+
+---
+
+## P8 — Régularité (IMPLEMENT_SCHEDULE.md, 2026-07-20)
+
+Écran distinct de l'accueil/Planificateur (P2) : gère les échéances du semestre, la régularité (heatmap + série), et les alertes — le Planificateur, lui, reste focalisé sur la file du jour.
+
+### É8.0 Écran Régularité
+
+En-tête : semaine courante (`sXsY`), série de jours actifs + gels restants, sessions du jour, cloche d'alertes (badge = nombre de visibles). Deux colonnes desktop (une pile sur mobile) : à gauche la checklist des échéances non acquittées (cocher fait disparaître avec toast undo 5s ; formulaire d'ajout avec récurrence hebdomadaire pour les contrôles continus) ; à droite la heatmap d'activité, le graphe de charge 14j (7j mobile) et un panneau de stats (jours actifs 7j, dette de reports, meilleure série). **Aucun pourcentage de couverture ou de complétion n'apparaît nulle part sur cet écran** — donnée jugée incalculable/trompeuse (même principe que P2/l'horizon).
+
+**État vide** : `debutS3` non configuré ⇒ la colonne heatmap/charge est remplacée par une invitation à le renseigner dans P7 (la checklist des échéances, elle, ne dépend pas de cette configuration et reste utilisable).
+
+### Alertes (transverse, pas un écran à part)
+
+Trois canaux, routés par type d'échéance/situation, jamais mélangés : bannière persistante (globale, rendue par le layout de l'app — une seule à la fois, la plus urgente), toast actionnable (persistant jusqu'à dismissal/action), toast éphémère (confirmations locales, 5s, jamais généré par le moteur). Un toast ne porte jamais d'information critique. La cloche (É8.0) liste les alertes visibles + un historique de 30 jours.
 
 ---
 
@@ -268,6 +284,7 @@ Compte · rythme (`nouvelles_par_jour`) · méthodologie des titres (document gl
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.9     | 2026-07-20 | Ajout de P8 — Régularité (IMPLEMENT_SCHEDULE.md) : écran échéances/série/alertes, distinct de l'accueil P2. Voir ARCHITECTURE.md v0.15, FUNCTIONS.md v0.14, DECISIONS.md. |
 | 0.8     | 2026-07-15 | Retour (avec l'humain) sur É3.1 : le diff de la correction précédente (`DiffList`) n'est plus affiché en vis-à-vis pendant la relecture ciblée — même texte seul dans les deux occurrences, la distinction redevient un simple badge. Voir FUNCTIONS.md v0.7, DECISIONS.md. |
 | 0.7     | 2026-07-15 | Retour (post-hoc, avec l'humain) sur É3.1 : la transition lecture→blurting n'est plus « structurel, pas chronométré » — compte à rebours de 30s après `[Je suis prêt, je blurte]`, `[Passer maintenant]` en échappatoire. Voir ARCHITECTURE.md v0.14, DECISIONS.md. |
 | 0.6     | 2026-07-15 | DECISIONS.md (« Suppression de la dualité étude\|révision », post-hoc REVAMP.md) : P4/Machine C supprimé comme parcours séparé, fusionné dans P3 — toute révision traverse désormais lecture→blurting→correction→Feynman→bilan comme une 1ʳᵉ étude. É3.5 gagne l'auto-note FSRS (Again/Hard/Good/Easy) comme condition nécessaire à la clôture. Carte des parcours, É2.0, règles transversales 2/5 et Annexe A mis à jour en conséquence. |

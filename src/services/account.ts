@@ -134,7 +134,32 @@ export async function getPlannerConfig(userId: string) {
   const row = await db.query.plannerConfig.findFirst({
     where: eq(plannerConfig.userId, userId),
   });
-  return row ?? { userId, nouvellesParJour: 3, ttsActive: true };
+  return (
+    row ?? {
+      userId,
+      nouvellesParJour: 3,
+      ttsActive: true,
+      debutS3: null,
+      debutS4: null,
+      gelsSerieRestants: 2,
+      heureAlerteSerie: "20:00",
+      seuilDetteReports: 3,
+    }
+  );
+}
+
+// Régularité (IMPLEMENT_SCHEDULE.md §3) : debutS3/debutS4 configurés depuis
+// l'écran Régularité (empty state si debutS3 est null, §4).
+export async function updateSemesterConfig(
+  userId: string,
+  input: Partial<{ debutS3: string | null; debutS4: string | null }>,
+) {
+  const [row] = await db
+    .insert(plannerConfig)
+    .values({ userId, ...input })
+    .onConflictDoUpdate({ target: plannerConfig.userId, set: input })
+    .returning();
+  return row;
 }
 
 export async function updatePlannerConfig(userId: string, nouvellesParJour: number) {

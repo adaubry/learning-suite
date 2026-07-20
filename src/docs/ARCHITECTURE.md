@@ -179,6 +179,10 @@ User          id, email, created_at
 
 PlannerConfig user_id, nouvelles_par_jour INT DEFAULT 3,
               tts_active BOOLEAN DEFAULT true,   -- réglage P7 (Bloc 9.1)
+              debut_s3 DATE NULL, debut_s4 DATE NULL,      -- Régularité : labels sXs3/sXs4
+              gels_serie_restants INT DEFAULT 2,           -- streak freeze (Régularité)
+              heure_alerte_serie TEXT DEFAULT '20:00',     -- HH:MM, seuil serie_en_peril
+              seuil_dette_reports INT DEFAULT 3            -- alerte dette_reports
               -- extensible : jours off, plafond de révisions/jour…
 
 Subject       id, user_id, nom, semestre, ordre,
@@ -283,6 +287,30 @@ PromptConfig  user_id, methodologie_titres_globale TEXT NULL
 PromptLog     id, appel ENUM(sectionnement, rubrique, correction_erreurs, feynman, transcription),
               prompt_version, model, input_tokens, output_tokens,
               duree_ms, statut ENUM(ok, retry, echec), created_at
+
+-- Régularité (IMPLEMENT_SCHEDULE.md, écran P8) — mono-utilisateur, pas de
+-- user_id (même doctrine que DeferralLog/RefileItem/QueueOrder/AuditEvent).
+
+Deadline      id, subject_id UUID NULL,               -- "autre" peut être hors matière
+              type ENUM(examen, controle_continu, autre),
+              libelle TEXT, due_date DATE,
+              coefficient REAL NULL, duree_min INT NULL,
+              recurrence_group_id UUID NULL,           -- CC dépliés, une ligne/occurrence
+              ack_at TIMESTAMPTZ NULL,                 -- cochée ⇒ disparaît de la checklist
+              created_at
+
+Alert         id, type ENUM(echeance_j7, echeance_j3, echeance_j1, echeance_jour_j,
+                            echeance_depassee, serie_en_peril, dette_reports, pic_charge),
+              deadline_id UUID NULL → Deadline,        -- nul pour serie/dette
+              date_ref DATE,                           -- clé d'idempotence (jour de génération)
+              payload JSONB NULL,
+              created_at, dismissed_at TIMESTAMPTZ NULL, snoozed_until DATE NULL
+              -- UNIQUE(type, date_ref, coalesce(deadline_id, uuid_nul)) : `generateAlerts`
+              --   (P13.evaluateAlertRules + service) est idempotente par cet index seul,
+              --   ON CONFLICT DO NOTHING — jamais de DELETE/UPDATE de son cru
+
+SerieGel      date DATE PRIMARY KEY, created_at
+              -- streak freeze : un jour protégé compte comme actif dans P11.computeStreak
 ```
 
 Contraintes notables :
@@ -398,6 +426,7 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.15    | 2026-07-20 | IMPLEMENT_SCHEDULE.md, écran Régularité (P8 USER_FLOW) : trois tables `Deadline`/`Alert`/`SerieGel` (mono-utilisateur, ADR 6) + 5 colonnes `PlannerConfig` (`debut_s3`/`debut_s4`/`gels_serie_restants`/`heure_alerte_serie`/`seuil_dette_reports`). Aucune table dérivable en plus (heatmap, série, dette de reports, charge 14j se recalculent à la lecture — §4 du spec). Idempotence du moteur d'alertes portée entièrement par l'index unique `alert_dedupe`, jamais par de la logique applicative. **Point signalé, non tranché par cette session** : §12 liste « statistiques avancées » hors périmètre v1 — le Régularité StatsPanel/ActivityHeatmap (jours actifs, dette, meilleure série, heatmap d'activité) sont des compteurs motivationnels légers (aucun pourcentage de couverture/complétion, conforme à l'esprit du spec), pas des analytics de performance — mais la lettre de §12 n'a pas été mise à jour ni confirmée avec l'humain avant implémentation. Voir DECISIONS.md. |
 | 0.14    | 2026-07-15 | Retour (post-hoc, avec l'humain) sur le point (D) de REVAMP.md v0.3 : la transition `lecture→blurting` (§5) gagne un compte à rebours de 30s (`[Passer maintenant]` en échappatoire), remplaçant le comportement « structurel, pas de minuteur ». Purement côté client (U25) : `S4.terminerLecture` inchangée, aucune migration. Voir DECISIONS.md. |
 | 0.13    | 2026-07-15 | DECISIONS.md (« Suppression de la dualité étude\|révision », post-hoc REVAMP.md) : Machine C fusionnée dans Machine B (§6 conservé comme pointeur historique) — toute répétition d'une section traverse le cycle unique de §5, y compris Feynman. La note FSRS (Again/Hard/Good/Easy) se pose désormais à la clôture du bilan Feynman, condition nécessaire à la validation (remplace `S4.rateRevision`, absorbé dans `S4.validateSection` + nouveau `S6.createOrRate`). `StudyCycle.type` devient un label pur (aucune branche de comportement). Aucune migration de schéma (`ReviewCard`/`section` inchangés). ADR 3 et 8 mis à jour ; route `/revision/[cardId]` supprimée. |
 | 0.12    | 2026-07-15 | REVAMP.md v0.3 (tranché avec l'humain, DECISIONS.md) : refonte de Machine B/§5 — la lecture devient un état du cycle (`StudyCycle.etat` gagne `lecture`, deux occurrences par cycle : avant chaque passe de blurting), exactement 2 passes de blurting max (jamais de re-file/délai en étude), divulgation toujours complète (`presentCorrection`/P10 supprimé), Feynman obligatoire pour toute importance 2 à 5 (plus de validation directe sur simple blurting), contexte Feynman (§9 ligne 5) enrichi du dernier brouillon de blurting. ADR 11 (§11) marqué superseded en étude, inchangé en révision (Machine C, §6, intacte). |
