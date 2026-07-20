@@ -1,6 +1,7 @@
 import { and, eq, gte, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { deadline } from "@/db/schema";
+import { addDays } from "@/lib/utils";
 import * as alertService from "./alert";
 import type { DeadlineInput, DeadlineUpdateInput } from "./deadline.schemas";
 
@@ -8,12 +9,6 @@ import type { DeadlineInput, DeadlineUpdateInput } from "./deadline.schemas";
 // pas de userId sur `deadline` (même doctrine que DeferralLog/RefileItem).
 // Possède le CRUD + l'ack/unack ; le dépliage de récurrence (une ligne par
 // occurrence, `recurrenceGroupId` partagé) se fait ici, à la création.
-
-function addDays(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 // Non acquittées, triées par échéance — seule vue consommée par la checklist
 // (U27) ET par le moteur d'alertes (§5 : « deadlines : uniquement ackAt IS NULL »),

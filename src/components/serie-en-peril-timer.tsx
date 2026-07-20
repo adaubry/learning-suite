@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import NextLink from "next/link";
-import { Button } from "@astryxdesign/core/Button";
-import { Link } from "@astryxdesign/core/Link";
 import { queueToast } from "./toast-host";
-import { recordSerieEnPerilAction, freezeStreakAction } from "../../app/(app)/regularite/actions";
+import { SerieEnPerilActions } from "./toast-alerts";
+import { recordSerieEnPerilAction } from "../../app/(app)/regularite/actions";
 
 // serie_en_peril (IMPLEMENT_SCHEDULE.md §5) : seule règle évaluée côté client
 // (timer), jamais par `generateAlerts` serveur. Condition : 0 session
@@ -48,24 +46,7 @@ export function SerieEnPerilTimer({
         ),
         kind: "action",
         uniqueID: "serie_en_peril_client",
-        endContent: (
-          <div className="flex gap-2">
-            <Link as={NextLink} href="/" isStandalone hasUnderline>
-              Démarrer une session
-            </Link>
-            {gelsSerieRestants > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                label="Utiliser un gel"
-                clickAction={async () => {
-                  await freezeStreakAction();
-                  queueToast({ body: "Gel utilisé", kind: "info" });
-                }}
-              />
-            )}
-          </div>
-        ),
+        endContent: <SerieEnPerilActions gelsSerieRestants={gelsSerieRestants} />,
       });
     };
 

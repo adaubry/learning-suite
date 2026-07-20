@@ -5,6 +5,7 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Link } from "@astryxdesign/core/Link";
 import { snoozeAlertAction } from "../../app/(app)/regularite/actions";
+import { ALERT_LABELS, isSnoozable } from "@/core/planner/generateAlerts";
 import type { alert as alertTable } from "@/db/schema";
 
 // AlertBanner (IMPLEMENT_SCHEDULE.md §6) — rendu par le layout de l'app, jamais
@@ -15,23 +16,16 @@ import type { alert as alertTable } from "@/db/schema";
 
 type Alert = typeof alertTable.$inferSelect;
 
-const TITLES: Record<string, string> = {
-  echeance_jour_j: "Échéance aujourd'hui",
-  echeance_j1: "Échéance demain",
-  echeance_depassee: "Échéance dépassée",
-  echeance_j3: "Échéance dans 3 jours",
-};
-
 export function AlertBanner({ alert }: { alert: Alert | null }) {
   if (!alert) return null;
   const payload = alert.payload as { libelle?: string; dueDate?: string } | null;
-  const snoozable = alert.type !== "echeance_jour_j" && alert.type !== "echeance_depassee";
+  const snoozable = isSnoozable(alert.type);
 
   return (
     <Banner
       status="error"
       container="section"
-      title={TITLES[alert.type] ?? "Échéance"}
+      title={ALERT_LABELS[alert.type] ?? "Échéance"}
       description={payload?.libelle ?? undefined}
       endContent={
         <div className="flex items-center gap-2">

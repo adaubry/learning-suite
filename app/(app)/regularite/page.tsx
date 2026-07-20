@@ -6,6 +6,7 @@ import * as deadlineService from "@/services/deadline";
 import * as statsService from "@/services/stats";
 import * as alertService from "@/services/alert";
 import { weekLabel } from "@/core/planner/weekLabel";
+import { todayIso, addDays } from "@/lib/utils";
 import { RegulariteHeader } from "@/components/regularite-header";
 import { DeadlineChecklist } from "@/components/deadline-checklist";
 import { ActivityHeatmap } from "@/components/activity-heatmap";
@@ -16,16 +17,6 @@ import { StatsPanel } from "@/components/stats-panel";
 // S10/S11/S12. Desktop : grille 2 colonnes. Mobile : pile verticale, gérée en
 // Tailwind responsive dans les composants (DeadlineChecklist collapse,
 // ChargeChart 7j/14j) plutôt que deux pages séparées.
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 export default async function RegularitePage() {
   const userId = await requireUserId();

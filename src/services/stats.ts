@@ -15,21 +15,12 @@ import {
 } from "@/db/schema";
 import * as account from "./account";
 import { computeStreak, type StreakResult } from "@/core/planner/computeStreak";
+import { todayIso, addDays } from "@/lib/utils";
 
 // S11 · StatsService (IMPLEMENT_SCHEDULE.md §4) — logique dérivée de l'écran
 // Régularité : rien n'est stocké en plus, tout se recalcule à la lecture depuis
 // study_session/serie_gel/deferral_log/refile_item/review_card. Possède aussi
 // l'écriture du gel de série (mutation adjacente au calcul qu'elle protège).
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 // Jours distincts avec >= 1 session terminée — tout l'historique (la meilleure
 // série en a besoin, §4).

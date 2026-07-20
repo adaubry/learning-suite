@@ -115,3 +115,22 @@ export function pickBannerAlert<T extends { type: string }>(alerts: T[]): T | nu
   }
   return null;
 }
+
+// jour_j et depassee non snoozables (§6) — seule source de vérité, consommée
+// par le service (garde) ET l'UI (affichage conditionnel du bouton).
+export function isSnoozable(type: string): boolean {
+  return type !== "echeance_jour_j" && type !== "echeance_depassee";
+}
+
+// Libellés d'alerte (§6, §7 AlertBell/AlertBanner/ToastAlerts) — une seule
+// source, chaque consommateur n'indexe que les clés dont il a besoin.
+export const ALERT_LABELS: Record<AlertType | "serie_en_peril", string> = {
+  echeance_j7: "Échéance dans 7 jours",
+  echeance_j3: "Échéance dans 3 jours",
+  echeance_j1: "Échéance demain",
+  echeance_jour_j: "Échéance aujourd'hui",
+  echeance_depassee: "Échéance dépassée",
+  serie_en_peril: "Série en péril",
+  dette_reports: "Dette de reports",
+  pic_charge: "Pic de charge",
+};

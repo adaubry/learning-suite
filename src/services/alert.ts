@@ -4,23 +4,14 @@ import { alert as alertTable } from "@/db/schema";
 import * as account from "./account";
 import * as deadlineService from "./deadline";
 import * as statsService from "./stats";
-import { evaluateAlertRules } from "@/core/planner/generateAlerts";
+import { evaluateAlertRules, isSnoozable } from "@/core/planner/generateAlerts";
+import { todayIso, addDays } from "@/lib/utils";
 
 // S12 · AlertService (IMPLEMENT_SCHEDULE.md §5, §6) — mono-utilisateur (ADR 6),
 // pas de userId sur `alert`. `generateAlerts` est LE point d'entrée idempotent
 // (ON CONFLICT DO NOTHING sur l'index `alert_dedupe`, jamais de DELETE/UPDATE
 // de son cru) ; le reste gère le cycle de vie (visibles, dismiss, snooze) et le
 // cas client-évalué `serie_en_peril`.
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, delta: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 // Appelée (a) à chaque chargement de l'app, (b) par un cron si l'infra en a un
 // — mono-utilisateur, (a) suffit en pratique (§5). N'insère jamais deux fois la
@@ -85,7 +76,7 @@ export async function dismiss(id: string): Promise<void> {
 export async function snooze(id: string, untilDate: string): Promise<void> {
   const row = await db.query.alert.findFirst({ where: eq(alertTable.id, id) });
   if (!row) return;
-  if (row.type === "echeance_jour_j" || row.type === "echeance_depassee") {
+  if (!isSnoozable(row.type)) {
     throw new Error("Cette alerte n'est pas reportable.");
   }
   await db.update(alertTable).set({ snoozedUntil: untilDate }).where(eq(alertTable.id, id));

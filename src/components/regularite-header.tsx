@@ -7,6 +7,7 @@ import { Popover } from "@astryxdesign/core/Popover";
 import { Button } from "@astryxdesign/core/Button";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { dismissAlertAction, snoozeAlertAction } from "../../app/(app)/regularite/actions";
+import { ALERT_LABELS, isSnoozable } from "@/core/planner/generateAlerts";
 import type { alert as alertTable } from "@/db/schema";
 
 // U26 RegulariteHeader + U31 AlertBell (IMPLEMENT_SCHEDULE.md §7) — chip
@@ -14,17 +15,6 @@ import type { alert as alertTable } from "@/db/schema";
 // du nombre d'alertes visibles + historique 30 j.
 
 type Alert = typeof alertTable.$inferSelect;
-
-const ALERT_LABELS: Record<string, string> = {
-  echeance_j7: "Échéance dans 7 jours",
-  echeance_j3: "Échéance dans 3 jours",
-  echeance_j1: "Échéance demain",
-  echeance_jour_j: "Échéance aujourd'hui",
-  echeance_depassee: "Échéance dépassée",
-  serie_en_peril: "Série en péril",
-  dette_reports: "Dette de reports",
-  pic_charge: "Pic de charge",
-};
 
 function AlertBell({ visible, history }: { visible: Alert[]; history: Alert[] }) {
   const olderHistory = history.filter((h) => !visible.some((v) => v.id === h.id));
@@ -42,7 +32,7 @@ function AlertBell({ visible, history }: { visible: Alert[]; history: Alert[] })
               <List hasDividers density="compact">
                 {visible.map((a) => {
                   const payload = a.payload as { libelle?: string } | null;
-                  const snoozable = a.type !== "echeance_jour_j" && a.type !== "echeance_depassee";
+                  const snoozable = isSnoozable(a.type);
                   return (
                     <ListItem
                       key={a.id}

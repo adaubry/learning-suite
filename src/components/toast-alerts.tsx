@@ -6,6 +6,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Link } from "@astryxdesign/core/Link";
 import { queueToast } from "./toast-host";
 import { dismissAlertAction, freezeStreakAction } from "../../app/(app)/regularite/actions";
+import { ALERT_LABELS } from "@/core/planner/generateAlerts";
 import type { alert as alertTable } from "@/db/schema";
 
 // Toasts actionnables (IMPLEMENT_SCHEDULE.md §6) — echeance_j7, serie_en_peril,
@@ -18,34 +19,33 @@ import type { alert as alertTable } from "@/db/schema";
 
 type Alert = typeof alertTable.$inferSelect;
 
-const TITLES: Record<string, string> = {
-  echeance_j7: "Échéance dans 7 jours",
-  serie_en_peril: "Série en péril",
-  dette_reports: "Dette de reports",
-  pic_charge: "Pic de charge à venir",
-};
+// Partagé avec SerieEnPerilTimer (même alerte, deux points de déclenchement :
+// le toast générique ici, le timer client dédié là-bas).
+export function SerieEnPerilActions({ gelsSerieRestants }: { gelsSerieRestants: number }) {
+  return (
+    <div className="flex gap-2">
+      <Link as={NextLink} href="/" isStandalone hasUnderline>
+        Démarrer une session
+      </Link>
+      {gelsSerieRestants > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          label="Utiliser un gel"
+          clickAction={async () => {
+            await freezeStreakAction();
+            queueToast({ body: "Gel utilisé", kind: "info" });
+          }}
+        />
+      )}
+    </div>
+  );
+}
 
 function actionsFor(alert: Alert, gelsSerieRestants: number) {
   switch (alert.type) {
     case "serie_en_peril":
-      return (
-        <div className="flex gap-2">
-          <Link as={NextLink} href="/" isStandalone hasUnderline>
-            Démarrer une session
-          </Link>
-          {gelsSerieRestants > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              label="Utiliser un gel"
-              clickAction={async () => {
-                await freezeStreakAction();
-                queueToast({ body: "Gel utilisé", kind: "info" });
-              }}
-            />
-          )}
-        </div>
-      );
+      return <SerieEnPerilActions gelsSerieRestants={gelsSerieRestants} />;
     case "dette_reports":
       return (
         <Link as={NextLink} href="/" isStandalone hasUnderline>
@@ -65,7 +65,7 @@ function bodyFor(alert: Alert) {
   const payload = alert.payload as { libelle?: string } | null;
   return (
     <span>
-      <strong>{TITLES[alert.type] ?? alert.type}</strong>
+      <strong>{ALERT_LABELS[alert.type] ?? alert.type}</strong>
       {payload?.libelle ? ` — ${payload.libelle}` : ""}
     </span>
   );
