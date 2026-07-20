@@ -5,78 +5,15 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1783347425076,
-      "tag": "0000_nervous_meltdown",
+      "when": 1784556380659,
+      "tag": "0000_bumpy_iceman",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1783350972284,
+      "when": 1784557076295,
       "tag": "0001_study_cycle_requires_valid_guide",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1783589551662,
-      "tag": "0002_error_entry_occurrences",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1783592763413,
-      "tag": "0003_real_lord_hawal",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1783593466312,
-      "tag": "0004_complex_war_machine",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1783598945819,
-      "tag": "0005_lowly_namor",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1783622249688,
-      "tag": "0006_clumsy_the_stranger",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1783944516885,
-      "tag": "0007_typical_dragon_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1783946434849,
-      "tag": "0008_swift_stardust",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1784117427553,
-      "tag": "0009_foamy_apocalypse",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1784533548746,
-      "tag": "0010_ambitious_the_spike",
       "breakpoints": true
     }
   ]

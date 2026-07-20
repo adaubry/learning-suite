@@ -1,1 +1,0 @@
-ALTER TABLE "error_entry" ADD COLUMN "occurrences" integer DEFAULT 1 NOT NULL;

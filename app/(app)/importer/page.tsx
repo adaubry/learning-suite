@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import { listSubjects } from "@/services/account";
 import { ImportWizard } from "./import-wizard";
 
@@ -8,13 +7,9 @@ import { ImportWizard } from "./import-wizard";
 // la création du Chapter v1 (DECISIONS.md).
 
 export default async function ImporterPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
-  const subjects = await listSubjects(user.id);
+  const subjects = await listSubjects(userId);
   const activeSubjects = subjects.filter((s) => s.statut === "active");
 
   return (

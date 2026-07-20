@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-// ponytail: tests d'intégration contre le Postgres local (supabase start) —
+// ponytail: tests d'intégration contre le Postgres local (docker compose up) —
 // pas une suite exhaustive par table, juste le garde-fou que le schéma tient.
 // Les canaris (invariants FUNCTIONS §7 qui doivent rester verts en
 // permanence) sont dans schema.canary.test.ts.
@@ -19,7 +19,7 @@ let sectionId: string;
 
 beforeAll(async () => {
   const [user] = await client`
-    insert into auth.users (id) values (gen_random_uuid()) returning id
+    insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id
   `;
   userId = user.id;
 
@@ -52,7 +52,7 @@ afterAll(async () => {
   await db.delete(schema.section).where(eq(schema.section.id, sectionId));
   await db.delete(schema.chapter).where(eq(schema.chapter.id, chapterId));
   await db.delete(schema.subject).where(eq(schema.subject.id, subjectId));
-  await client`delete from auth.users where id = ${userId}`;
+  await client`delete from "user" where id = ${userId}`;
   await client.end();
 });
 

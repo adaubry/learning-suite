@@ -1,10 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://protectionjuridique.org";
+import { headers } from "next/headers";
+import { auth } from "@/lib/better-auth/server";
 
 export async function signInWithMagicLink(
   _prevState: unknown,
@@ -15,35 +13,31 @@ export async function signInWithMagicLink(
     return { error: "Email requis." };
   }
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: `${siteUrl}/auth/callback` },
-  });
-
-  if (error) {
-    return { error: error.message };
+  try {
+    await auth.api.signInMagicLink({
+      body: { email, callbackURL: "/" },
+      headers: await headers(),
+    });
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Échec de l'envoi." };
   }
 
   return { sent: true };
 }
 
 export async function signInWithGoogle() {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: `${siteUrl}/auth/callback` },
+  const { url } = await auth.api.signInSocial({
+    body: { provider: "google", callbackURL: "/" },
   });
 
-  if (error || !data.url) {
+  if (!url) {
     redirect("/login?error=oauth");
   }
 
-  redirect(data.url);
+  redirect(url);
 }
 
 export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  await auth.api.signOut({ headers: await headers() });
   redirect("/login");
 }

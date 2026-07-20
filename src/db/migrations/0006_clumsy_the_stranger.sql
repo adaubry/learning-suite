@@ -1,1 +1,0 @@
-ALTER TABLE "planner_config" ADD COLUMN "tts_active" boolean DEFAULT true NOT NULL;

@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-// ponytail: Supabase local (Mailpit) capture les magic links sans envoi réel,
-// ce qui permet d'automatiser le parcours complet sans compte email réel.
-const MAILPIT_URL = "http://127.0.0.1:54324";
-
 // ponytail: dispatchEvent("click") plutôt que .click() — le dev overlay de
 // Next 16 (portail plein écran, invisible hors erreur) intercepte parfois les
 // clics réels de Playwright ; dispatchEvent déclenche directement le handler.
@@ -16,22 +12,17 @@ test("créer un compte, se connecter, se déconnecter", async ({ page, request }
   await page.getByRole("button", { name: /recevoir un lien/i }).dispatchEvent("click");
   await expect(page.getByText(/lien envoyé/i)).toBeVisible();
 
-  let messageId = "";
+  // app/api/dev/magic-link (dev/e2e uniquement, 404 en prod) capture le lien
+  // en mémoire au lieu d'un vrai envoi — remplace le Mailpit de l'ancien stack Supabase.
+  let verifyUrl = "";
   await expect(async () => {
-    const res = await request.get(`${MAILPIT_URL}/api/v1/messages`);
+    const res = await request.get(`/api/dev/magic-link?email=${encodeURIComponent(email)}`);
     const body = await res.json();
-    const msg = body.messages.find(
-      (m: { To: { Address: string }[] }) => m.To[0]?.Address === email,
-    );
-    expect(msg).toBeTruthy();
-    messageId = msg.ID;
+    expect(body.url).toBeTruthy();
+    verifyUrl = body.url;
   }).toPass();
 
-  const msgRes = await request.get(`${MAILPIT_URL}/api/v1/message/${messageId}`);
-  const { HTML: html } = await msgRes.json();
-  const [, verifyUrl] = html.match(/href="([^"]+)"/) as RegExpMatchArray;
-
-  await page.goto(verifyUrl.replace(/&amp;/g, "&"));
+  await page.goto(verifyUrl);
   await expect(page).toHaveURL(/\/onboarding(\?step=1)?$/);
 
   // P0 É0.2 — première connexion : au moins une matière requise, le reste est skippable.

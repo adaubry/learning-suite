@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { inArray, eq } from "drizzle-orm";
-import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import { db } from "@/db";
 import { chapter, subject, section } from "@/db/schema";
 import { hasCompletedOnboarding, listSubjects } from "@/services/account";
@@ -17,13 +17,9 @@ import { deferAction, reorderAction, advanceFromBacklogAction } from "./planner-
 // — remplace l'entrée temporaire par le curriculum (Phase 5).
 
 export default async function HomePage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
-  if (!(await hasCompletedOnboarding(user.id))) {
+  if (!(await hasCompletedOnboarding(userId))) {
     redirect("/onboarding");
   }
 
@@ -31,7 +27,7 @@ export default async function HomePage() {
     .select({ id: chapter.id })
     .from(chapter)
     .innerJoin(subject, eq(chapter.subjectId, subject.id))
-    .where(eq(subject.userId, user.id))
+    .where(eq(subject.userId, userId))
     .limit(1);
 
   if (!anyChapter) {
@@ -49,12 +45,12 @@ export default async function HomePage() {
   }
 
   const [queue, horizon, badges, subjects, nextDeadline, backlogCandidate] = await Promise.all([
-    planner.todayQueue(user.id),
-    planner.horizon(user.id),
-    planner.attentionBadges(user.id),
-    listSubjects(user.id),
-    planner.nextDeadline(user.id),
-    planner.nextBacklogCandidate(user.id),
+    planner.todayQueue(userId),
+    planner.horizon(userId),
+    planner.attentionBadges(userId),
+    listSubjects(userId),
+    planner.nextDeadline(userId),
+    planner.nextBacklogCandidate(userId),
   ]);
 
   // S3.lazyScheduler comme « hook de S5 » (FUNCTIONS §3, PLAN Bloc 6.4) : la
@@ -64,7 +60,7 @@ export default async function HomePage() {
   // de requête Next, absent des tests Vitest qui appellent `todayQueue`
   // directement (planner.test.ts).
   after(() => {
-    guide.lazyScheduler(user.id).catch(() => {});
+    guide.lazyScheduler(userId).catch(() => {});
   });
 
   const sectionIds = [...new Set(queue.map((item) => (item.kind === "re_file" ? item.itemId : item.sectionId)))];

@@ -1,6 +1,6 @@
 # USER_FLOW.md — Parcours utilisateur complet
 
-> **Statut** : v0.7
+> **Statut** : v0.10
 > **Rôle** : décrit tous les parcours de la webapp, écran par écran, avec états, actions et transitions. Sert de référence pour l'UI et de checklist d'implémentation.
 > **Dépend de** : ARCHITECTURE.md v0.2 (machines A/B/C, Planificateur), FORMAT.md v0.2. Les impacts de cette v0.2 sur le modèle de données sont listés en annexe A et devront être répercutés dans ARCHITECTURE.md.
 > **Convention** : `[Action]` = bouton/interaction. `→` = navigation. Chaque écran liste son état vide et ses états d'erreur : un écran sans état vide spécifié est un bug de conception.
@@ -31,7 +31,7 @@ flowchart TB
 
 ### É0.1 Création de compte
 
-Écran Supabase Auth (magic link). → É0.2.
+Écran de connexion (magic link Better-Auth + Google OAuth). → É0.2.
 
 ### É0.2 Configuration initiale (4 étapes, skippables sauf la première)
 
@@ -284,6 +284,7 @@ Trois canaux, routés par type d'échéance/situation, jamais mélangés : banni
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.10    | 2026-07-20 | É0.1 : « Écran Supabase Auth » → « Écran de connexion (magic link Better-Auth + Google OAuth) » — migration du fournisseur d'auth, le flux (magic link + OAuth) est inchangé. Voir ARCHITECTURE.md v0.16, DECISIONS.md. |
 | 0.9     | 2026-07-20 | Ajout de P8 — Régularité (IMPLEMENT_SCHEDULE.md) : écran échéances/série/alertes, distinct de l'accueil P2. Voir ARCHITECTURE.md v0.15, FUNCTIONS.md v0.14, DECISIONS.md. |
 | 0.8     | 2026-07-15 | Retour (avec l'humain) sur É3.1 : le diff de la correction précédente (`DiffList`) n'est plus affiché en vis-à-vis pendant la relecture ciblée — même texte seul dans les deux occurrences, la distinction redevient un simple badge. Voir FUNCTIONS.md v0.7, DECISIONS.md. |
 | 0.7     | 2026-07-15 | Retour (post-hoc, avec l'humain) sur É3.1 : la transition lecture→blurting n'est plus « structurel, pas chronométré » — compte à rebours de 30s après `[Je suis prêt, je blurte]`, `[Passer maintenant]` en échappatoire. Voir ARCHITECTURE.md v0.14, DECISIONS.md. |

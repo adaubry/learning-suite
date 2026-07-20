@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — Planificateur, machines à états & modèle de données
 
-> **Statut** : v0.14
+> **Statut** : v0.16
 > **Rôle** : source de vérité structurelle. Toute proposition de modification du code (humaine ou IA) doit être vérifiée contre ce document. Si elle le contredit, soit elle est rejetée, soit ce document est révisé d'abord — jamais l'inverse.
 > **Dépend de** : FORMAT.md v0.2 · TECH_MAPPING.md v0.2 (stack et délégations) · USER_FLOW.md v0.3 · FUNCTIONS.md v0.3 (services & invariants). **Complété par** : LLM_CONTRACTS.md.
 
@@ -340,7 +340,7 @@ Principe transversal : **jamais le cours entier dans les appels de correction** 
 
 ```
 app/                        # App Router
-  (auth)/                   # Supabase Auth
+  (auth)/                   # Better-Auth
   page.tsx                  # ACCUEIL = le Planificateur : file du jour,
                             #   horizon 7/30 j, dette, répartition par matière
   curriculum/               # arbre matières → chapitres → sections
@@ -384,7 +384,7 @@ Règles d'implémentation :
 | Couche                        | Choix                                                                                                                                                                                   |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Framework                     | Next.js App Router + TypeScript + Tailwind (imposé)                                                                                                                                     |
-| Auth / BDD / ORM              | Supabase (Postgres) + Drizzle                                                                                                                                                           |
+| Auth / BDD / ORM              | Neon (Postgres) + Better-Auth + Drizzle                                                                                                                                                 |
 | Parsing Markdown              | **unified/remark** (AST mdast ; jamais MDX — TECH_MAPPING §0bis)                                                                                                                        |
 | Éditeur de cours              | **Tiptap WYSIWYG façon Google Docs**, limité aux 3 constructions FORMAT ; Markdown = stockage/échange (tests de round-trip exigés)                                                      |
 | UI                            | **shadcn/ui (Radix) exclusivement** ; réordonnancement de file : boutons shadcn v1 → drag & drop HTML5 natif ; horizon : barres Tailwind pures ; calendrier optionnel : shadcn Calendar |
@@ -426,6 +426,7 @@ Multi-utilisateur collaboratif, génération de cas pratiques, audio temps réel
 
 | Version | Date       | Changement                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.16    | 2026-07-20 | Migration Supabase → Neon (Postgres) + Better-Auth + Resend (§10, §12) : stub `pgSchema("auth")`/`authUsers` (référence de typage vers `auth.users`, jamais géré par nos migrations) supprimé, remplacé par la table `user` générée par Better-Auth (`src/db/auth-schema.ts`, propriétaire au sens plein cette fois — nos propres migrations la gèrent). Les 4 FK `user_id` (`PlannerConfig`/`Subject`/`StudyCycle`/`PromptConfig`) repointées en conséquence, aucun autre changement de modèle. Historique de migrations Drizzle réinitialisé (base vide, aucune donnée à préserver). Voir DECISIONS.md. |
 | 0.15    | 2026-07-20 | IMPLEMENT_SCHEDULE.md, écran Régularité (P8 USER_FLOW) : trois tables `Deadline`/`Alert`/`SerieGel` (mono-utilisateur, ADR 6) + 5 colonnes `PlannerConfig` (`debut_s3`/`debut_s4`/`gels_serie_restants`/`heure_alerte_serie`/`seuil_dette_reports`). Aucune table dérivable en plus (heatmap, série, dette de reports, charge 14j se recalculent à la lecture — §4 du spec). Idempotence du moteur d'alertes portée entièrement par l'index unique `alert_dedupe`, jamais par de la logique applicative. **Point signalé, non tranché par cette session** : §12 liste « statistiques avancées » hors périmètre v1 — le Régularité StatsPanel/ActivityHeatmap (jours actifs, dette, meilleure série, heatmap d'activité) sont des compteurs motivationnels légers (aucun pourcentage de couverture/complétion, conforme à l'esprit du spec), pas des analytics de performance — mais la lettre de §12 n'a pas été mise à jour ni confirmée avec l'humain avant implémentation. Voir DECISIONS.md. |
 | 0.14    | 2026-07-15 | Retour (post-hoc, avec l'humain) sur le point (D) de REVAMP.md v0.3 : la transition `lecture→blurting` (§5) gagne un compte à rebours de 30s (`[Passer maintenant]` en échappatoire), remplaçant le comportement « structurel, pas de minuteur ». Purement côté client (U25) : `S4.terminerLecture` inchangée, aucune migration. Voir DECISIONS.md. |
 | 0.13    | 2026-07-15 | DECISIONS.md (« Suppression de la dualité étude\|révision », post-hoc REVAMP.md) : Machine C fusionnée dans Machine B (§6 conservé comme pointeur historique) — toute répétition d'une section traverse le cycle unique de §5, y compris Feynman. La note FSRS (Again/Hard/Good/Easy) se pose désormais à la clôture du bilan Feynman, condition nécessaire à la validation (remplace `S4.rateRevision`, absorbé dans `S4.validateSection` + nouveau `S6.createOrRate`). `StudyCycle.type` devient un label pur (aucune branche de comportement). Aucune migration de schéma (`ReviewCard`/`section` inchangés). ADR 3 et 8 mis à jour ; route `/revision/[cardId]` supprimée. |

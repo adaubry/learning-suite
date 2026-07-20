@@ -10,8 +10,10 @@ import * as schema from "./schema";
 const client = postgres(process.env.DATABASE_URL!);
 const db = drizzle(client, { schema });
 
-// auth.users (schéma "auth", stub Supabase) volontairement exclu : possédé par
-// Supabase, hors périmètre de nos migrations (DECISIONS.md).
+// user/session/account/verification (src/db/auth-schema.ts) volontairement
+// exclues : générées par la CLI Better-Auth, jamais éditées à la main (même
+// doctrine que les composants shadcn vendored, TECH_MAPPING §0) — hors
+// périmètre de ce canari structurel.
 const EXPECTED_COLUMNS: Record<string, string[]> = {
   planner_config: [
     "user_id",
@@ -128,7 +130,7 @@ let sectionId: string;
 
 beforeAll(async () => {
   const [user] = await client`
-    insert into auth.users (id) values (gen_random_uuid()) returning id
+    insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id
   `;
   userId = user.id;
 
@@ -163,7 +165,7 @@ afterAll(async () => {
   await db.delete(schema.section).where(eq(schema.section.id, sectionId));
   await db.delete(schema.chapter).where(eq(schema.chapter.id, chapterId));
   await db.delete(schema.subject).where(eq(schema.subject.id, subjectId));
-  await client`delete from auth.users where id = ${userId}`;
+  await client`delete from "user" where id = ${userId}`;
   await client.end();
 });
 

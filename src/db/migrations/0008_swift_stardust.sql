@@ -1,1 +1,0 @@
-ALTER TABLE "deferral_log" ADD COLUMN "avance" boolean DEFAULT false NOT NULL;

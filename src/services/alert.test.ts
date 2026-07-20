@@ -13,7 +13,7 @@ const createdUserIds: string[] = [];
 let deadlineIds: string[] = [];
 
 async function createUser() {
-  const [user] = await client`insert into auth.users (id) values (gen_random_uuid()) returning id`;
+  const [user] = await client`insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id`;
   createdUserIds.push(user.id);
   return user.id as string;
 }
@@ -35,7 +35,7 @@ afterEach(async () => {
 afterAll(async () => {
   for (const id of createdUserIds) {
     await client`delete from planner_config where user_id = ${id}`;
-    await client`delete from auth.users where id = ${id}`;
+    await client`delete from "user" where id = ${id}`;
   }
   await client.end();
 });

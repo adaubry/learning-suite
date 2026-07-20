@@ -1,5 +1,4 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import { Button } from "@astryxdesign/core/Button";
 import { listSubjects } from "@/services/account";
 import { listChaptersBySubject, listSectionsByChapter } from "@/services/chapter";
@@ -11,13 +10,9 @@ import { AddSubjectDialog, CurriculumFilter, RubricQueuePanel } from "./curricul
 // ajoute l'action rubrique (générer/rédiger) sur les sections `active`.
 
 export default async function CurriculumPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
-  const subjects = await listSubjects(user.id);
+  const subjects = await listSubjects(userId);
   // ponytail: un listChaptersBySubject par matière — nombre de matières faible
   // (mono-utilisateur), pas de jointure batch tant que ça ne pose pas de problème.
   const subjectsWithChapters = await Promise.all(

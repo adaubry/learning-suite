@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
 
-// ponytail: même mécanisme Mailpit que auth-flow.spec.ts — magic link capturé
-// sans envoi réel.
-const MAILPIT_URL = "http://127.0.0.1:54324";
-
 function addDays(n: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + n);
@@ -25,19 +21,14 @@ test("échéance examen coef>=2 à J-3 : bannière persistante, cocher la fait d
   await page.getByRole("button", { name: /recevoir un lien/i }).dispatchEvent("click");
   await expect(page.getByText(/lien envoyé/i)).toBeVisible();
 
-  let messageId = "";
+  let verifyUrl = "";
   await expect(async () => {
-    const res = await request.get(`${MAILPIT_URL}/api/v1/messages`);
+    const res = await request.get(`/api/dev/magic-link?email=${encodeURIComponent(email)}`);
     const body = await res.json();
-    const msg = body.messages.find((m: { To: { Address: string }[] }) => m.To[0]?.Address === email);
-    expect(msg).toBeTruthy();
-    messageId = msg.ID;
+    expect(body.url).toBeTruthy();
+    verifyUrl = body.url;
   }).toPass();
-
-  const msgRes = await request.get(`${MAILPIT_URL}/api/v1/message/${messageId}`);
-  const { HTML: html } = await msgRes.json();
-  const [, verifyUrl] = html.match(/href="([^"]+)"/) as RegExpMatchArray;
-  await page.goto(verifyUrl.replace(/&amp;/g, "&"));
+  await page.goto(verifyUrl);
 
   await page.getByLabel("Nom").fill("Droit civil");
   await page.getByLabel("Semestre").fill("S1");

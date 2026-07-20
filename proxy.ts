@@ -1,52 +1,24 @@
-import { createServerClient } from "@supabase/ssr";
+import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+const PUBLIC_PATHS = ["/login", "/api/auth"];
 
-export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      // ponytail: sans timeout, un blip réseau Supabase bloque la requête
-      // jusqu'à la limite de la fonction Vercel (5 min) au lieu d'échouer vite.
-      global: {
-        fetch: (url, options = {}) => fetch(url, { ...options, signal: AbortSignal.timeout(10_000) }),
-      },
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          for (const { name, value } of cookiesToSet) {
-            request.cookies.set(name, value);
-          }
-          response = NextResponse.next({ request });
-          for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
-          }
-        },
-      },
-    },
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export function proxy(request: NextRequest) {
+  const sessionCookie = getSessionCookie(request);
 
   const isPublicPath =
     PUBLIC_PATHS.some((path) => request.nextUrl.pathname.startsWith(path)) ||
-    // Dev-only : route gitignorée (app/(auth)/dev-session/), absente en prod —
-    // ce garde reste inerte hors NODE_ENV=development.
-    (process.env.NODE_ENV === "development" && request.nextUrl.pathname.startsWith("/dev-session"));
+    // Dev-only : routes gitignorées/absentes en prod (app/(auth)/dev-session/,
+    // app/api/dev/) — ce garde reste inerte hors NODE_ENV=development.
+    (process.env.NODE_ENV === "development" &&
+      (request.nextUrl.pathname.startsWith("/dev-session") ||
+        request.nextUrl.pathname.startsWith("/api/dev")));
 
-  if (!user && !isPublicPath) {
+  if (!sessionCookie && !isPublicPath) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {

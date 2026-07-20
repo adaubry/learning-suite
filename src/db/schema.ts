@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  pgSchema,
   pgTable,
   pgEnum,
   uuid,
@@ -15,13 +14,12 @@ import {
   check,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { user } from "./auth-schema";
 
-// ponytail: pas de table `User` domaine — Supabase Auth possède déjà auth.users,
-// on référence directement cette table (mono-utilisateur, doctrine simplicité §1).
-const authSchema = pgSchema("auth");
-export const authUsers = authSchema.table("users", {
-  id: uuid("id").primaryKey(),
-});
+// ponytail: pas de table `User` domaine séparée — Better-Auth possède déjà sa
+// propre table `user` (générée, src/db/auth-schema.ts), on la référence
+// directement (mono-utilisateur, doctrine simplicité §1).
+export * from "./auth-schema";
 
 // --- Enums (ARCHITECTURE.md §8) ---
 
@@ -105,7 +103,7 @@ export const alertTypeEnum = pgEnum("alert_type", [
 export const plannerConfig = pgTable("planner_config", {
   userId: uuid("user_id")
     .primaryKey()
-    .references(() => authUsers.id),
+    .references(() => user.id),
   nouvellesParJour: integer("nouvelles_par_jour").notNull().default(3),
   // Réglages P7 (Bloc 9.1, USER_FLOW P7) : TTS on/off — même table de config par
   // utilisateur que nouvellesParJour, pas de nouvelle table pour un seul booléen.
@@ -123,7 +121,7 @@ export const subject = pgTable("subject", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
     .notNull()
-    .references(() => authUsers.id),
+    .references(() => user.id),
   nom: text("nom").notNull(),
   semestre: text("semestre").notNull(),
   ordre: integer("ordre").notNull(),
@@ -197,7 +195,7 @@ export const studyCycle = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
-      .references(() => authUsers.id),
+      .references(() => user.id),
     sectionId: uuid("section_id")
       .notNull()
       .references(() => section.id),
@@ -323,7 +321,7 @@ export const auditEvent = pgTable("audit_event", {
 export const promptConfig = pgTable("prompt_config", {
   userId: uuid("user_id")
     .primaryKey()
-    .references(() => authUsers.id),
+    .references(() => user.id),
   methodologieTitresGlobale: text("methodologie_titres_globale"),
 });
 

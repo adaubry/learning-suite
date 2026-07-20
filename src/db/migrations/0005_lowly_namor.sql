@@ -1,1 +1,0 @@
-ALTER TABLE "study_cycle" ADD COLUMN "bilan_feynman" jsonb;

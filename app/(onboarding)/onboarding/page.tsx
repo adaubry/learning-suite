@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import {
   listSubjects,
   getPlannerConfig,
@@ -21,20 +21,16 @@ export default async function OnboardingPage({
 }: {
   searchParams: Promise<{ step?: string; reason?: string }>;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
-  if (await hasCompletedOnboarding(user.id)) {
+  if (await hasCompletedOnboarding(userId)) {
     redirect("/");
   }
 
   const { step, reason } = await searchParams;
   const currentStep = Number(step ?? "1");
 
-  const subjects = await listSubjects(user.id);
+  const subjects = await listSubjects(userId);
   if (currentStep > 1 && subjects.length === 0) {
     redirect("/onboarding?step=1&reason=no-subjects");
   }
@@ -56,18 +52,18 @@ export default async function OnboardingPage({
       {currentStep === 1 && <StepMatieres subjects={subjects} />}
 
       {currentStep === 2 && (
-        <StepRythme nouvellesParJour={(await getPlannerConfig(user.id)).nouvellesParJour} />
+        <StepRythme nouvellesParJour={(await getPlannerConfig(userId)).nouvellesParJour} />
       )}
 
       {currentStep === 3 && (
-        <StepMethodologie methodologieTitresGlobale={await getMethodologieGlobale(user.id)} />
+        <StepMethodologie methodologieTitresGlobale={await getMethodologieGlobale(userId)} />
       )}
 
       {currentStep === 4 && (
         <StepRecap
           subjects={subjects}
-          nouvellesParJour={(await getPlannerConfig(user.id)).nouvellesParJour}
-          methodologieTitresGlobale={await getMethodologieGlobale(user.id)}
+          nouvellesParJour={(await getPlannerConfig(userId)).nouvellesParJour}
+          methodologieTitresGlobale={await getMethodologieGlobale(userId)}
         />
       )}
     </main>

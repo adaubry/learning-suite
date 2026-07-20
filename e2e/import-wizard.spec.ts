@@ -4,9 +4,8 @@ import { expect, test } from "@playwright/test";
 
 // P1 Import (É1.0–É1.2, USER_FLOW) — parcours réel du wizard sur un vrai
 // chapitre (AGENTS.md §4 : pas de faux cours de droit). Pas @canary : dépend
-// du login Mailpit, plus lent que les canaris déterministes du parseur.
+// du login (magic link dev), plus lent que les canaris déterministes du parseur.
 
-const MAILPIT_URL = "http://127.0.0.1:54324";
 const fixture = readFileSync(
   join(__dirname, "evals/fixtures/Introduction obli.md"),
   "utf8",
@@ -28,21 +27,14 @@ test("importer un vrai chapitre : upload, rapport, sectionnement, tri", async ({
   await page.getByRole("button", { name: /recevoir un lien/i }).dispatchEvent("click");
   await expect(page.getByText(/lien envoyé/i)).toBeVisible();
 
-  let messageId = "";
+  let verifyUrl = "";
   await expect(async () => {
-    const res = await request.get(`${MAILPIT_URL}/api/v1/messages`);
+    const res = await request.get(`/api/dev/magic-link?email=${encodeURIComponent(email)}`);
     const body = await res.json();
-    const msg = body.messages.find(
-      (m: { To: { Address: string }[] }) => m.To[0]?.Address === email,
-    );
-    expect(msg).toBeTruthy();
-    messageId = msg.ID;
+    expect(body.url).toBeTruthy();
+    verifyUrl = body.url;
   }).toPass();
-
-  const msgRes = await request.get(`${MAILPIT_URL}/api/v1/message/${messageId}`);
-  const { HTML: html } = await msgRes.json();
-  const [, verifyUrl] = html.match(/href="([^"]+)"/) as RegExpMatchArray;
-  await page.goto(verifyUrl.replace(/&amp;/g, "&"));
+  await page.goto(verifyUrl);
 
   // Onboarding minimal : une matière, le reste skippé.
   await page.getByLabel("Nom").fill("Droit civil");

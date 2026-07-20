@@ -21,7 +21,7 @@ const client = postgres(process.env.DATABASE_URL!);
 const createdUserIds: string[] = [];
 
 async function createUser() {
-  const [user] = await client`insert into auth.users (id) values (gen_random_uuid()) returning id`;
+  const [user] = await client`insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id`;
   createdUserIds.push(user.id);
   return user.id as string;
 }
@@ -43,7 +43,7 @@ afterAll(async () => {
     await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
     await client`delete from subject where user_id = ${id}`;
     await client`delete from planner_config where user_id = ${id}`;
-    await client`delete from auth.users where id = ${id}`;
+    await client`delete from "user" where id = ${id}`;
   }
   await client.end();
 });
