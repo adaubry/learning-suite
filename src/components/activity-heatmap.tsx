@@ -4,8 +4,10 @@ import { weekLabel, type WeekLabelConfig } from "@/core/planner/weekLabel";
 
 // U28 ActivityHeatmap (IMPLEMENT_SCHEDULE.md §4, §7) — CSS grid pure, aucune lib
 // de charting (TECH_MAPPING §4.2, même doctrine que HorizonChart). Buckets
-// d'intensité 0/1-2/3-4/5+ ; bordure rouge = échéance non-"autre" ; teinte
-// violette = jour gelé ; contour fort = aujourd'hui ; jours futurs grisés.
+// d'intensité 0/1-2/3-4/5+ ; bordure rouge = échéance non-"autre" ; bordure
+// pointillée = jour gelé (pas de teinte violette : DESIGN.md n'engage que
+// cinq teintes catégorielles — vert/rouge/jaune/bleu/gris — le violet en est
+// explicitement exclu) ; contour fort = aujourd'hui ; jours futurs grisés.
 
 const JOURS = ["L", "M", "M", "J", "V", "S", "D"];
 
@@ -60,11 +62,11 @@ export function ActivityHeatmap({
   const deadlines = new Set(deadlineDates);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex min-w-0 flex-col gap-2">
       <div
         role="img"
         aria-label={`Activité d'étude du ${from} au ${to} : ${Object.values(sessionCounts).reduce((a, b) => a + b, 0)} sessions au total.`}
-        className="flex gap-1 overflow-x-auto pb-1"
+        className="flex min-w-0 gap-1 overflow-x-auto pb-1"
       >
         <div className="flex flex-col items-end gap-1 pt-5">
           {JOURS.map((j, i) => (
@@ -91,7 +93,8 @@ export function ActivityHeatmap({
                       title={`${day} — ${n} session(s)${hasDeadline ? " — échéance" : ""}${isGel ? " — gel de série" : ""}`}
                       className={[
                         "h-3 w-3 rounded-none",
-                        isGel ? "bg-purple-500/50" : bucketClass(n),
+                        bucketClass(n),
+                        isGel ? "border-2 border-dashed border-accent" : "",
                         isFuture ? "opacity-40" : "",
                         hasDeadline ? "outline outline-1 outline-error" : "",
                         isToday ? "ring-2 ring-accent" : "",
@@ -118,7 +121,7 @@ export function ActivityHeatmap({
           <span className="bg-accent-bg h-3 w-3 rounded-none" /> 5+
         </span>
         <span className="flex items-center gap-1">
-          <span className="bg-purple-500/50 h-3 w-3 rounded-none" /> gel
+          <span className="h-3 w-3 rounded-none border-2 border-dashed border-accent" /> gel
         </span>
       </div>
     </div>

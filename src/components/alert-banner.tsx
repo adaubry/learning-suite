@@ -24,7 +24,6 @@ export function AlertBanner({ alert }: { alert: Alert | null }) {
   return (
     <Banner
       status="error"
-      container="section"
       title={ALERT_LABELS[alert.type] ?? "Échéance"}
       description={payload?.libelle ?? undefined}
       endContent={

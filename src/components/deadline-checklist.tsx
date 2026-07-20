@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Repeat } from "lucide-react";
+import { Repeat, MoreVertical } from "lucide-react";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
 import { Badge } from "@astryxdesign/core/Badge";
@@ -268,7 +268,9 @@ function DeadlineRow({ row, subjects, today }: { row: DeadlineRow; subjects: Sub
   return (
     <>
       <ListItem
-        startContent={<CheckboxInput label="Cocher" isLabelHidden value={false} changeAction={ack} />}
+        startContent={
+          <CheckboxInput label={`Cocher ${row.libelle}`} isLabelHidden value={false} changeAction={ack} />
+        }
         label={row.libelle}
         description={matiere}
         endContent={
@@ -277,7 +279,12 @@ function DeadlineRow({ row, subjects, today }: { row: DeadlineRow; subjects: Sub
             {row.coefficient != null && <Badge variant="neutral" label={`coef ${row.coefficient}`} />}
             <DistancePill distance={daysUntil(today, row.dueDate)} />
             <DropdownMenu
-              button={{ label: "Actions", isIconOnly: true, variant: "ghost", icon: "⋮" }}
+              button={{
+                label: `Actions pour ${row.libelle}`,
+                isIconOnly: true,
+                variant: "ghost",
+                icon: <MoreVertical size={16} />,
+              }}
               hasChevron={false}
               items={[
                 { label: "Modifier", onClick: () => setEditing(true) },
