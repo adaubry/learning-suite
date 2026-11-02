@@ -3,19 +3,12 @@
 import { useActionState, useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { NumberInput } from "@astryxdesign/core/NumberInput";
-import type { AppelLLM } from "@/llm/models";
 import { updatePlannerConfigAction } from "../actions";
-
-const APPEL_LABEL: Record<AppelLLM, string> = {
-  correction_erreurs: "Correction des blurtings",
-};
 
 export function ReglagesForm({
   nouvellesParJour,
-  modeles,
 }: {
   nouvellesParJour: number;
-  modeles: { appel: AppelLLM; modele: string }[];
 }) {
   const [rythmeState, rythmeAction, rythmePending] = useActionState(updatePlannerConfigAction, undefined);
   const [rythme, setRythme] = useState(nouvellesParJour);
@@ -56,27 +49,9 @@ export function ReglagesForm({
       <div className="flex items-center justify-between rounded-none border border-border p-4">
         <div>
           <p className="text-sm font-medium">Export des données</p>
-          <p className="text-sm text-secondary">JSON complet — archives et journaux compris.</p>
+          <p className="text-sm text-secondary">JSON complet, archives comprises.</p>
         </div>
         <Button size="sm" variant="secondary" label="Télécharger" href="/api/export" />
-      </div>
-
-      <div>
-        <p className="mb-1 text-sm font-medium text-secondary">Zone technique — lecture seule</p>
-        <div className="rounded-none border border-border bg-muted p-4">
-          <p className="mb-2 text-sm font-medium">Modèle par appel LLM</p>
-          <ul className="flex flex-col gap-1 text-sm">
-            {modeles.map(({ appel, modele }) => {
-              const nonConfigure = modele === "(non configuré)";
-              return (
-                <li key={appel} className="flex items-center justify-between">
-                  <span className="text-secondary">{APPEL_LABEL[appel]}</span>
-                  <span className={nonConfigure ? "text-xs font-mono text-error" : "font-mono text-xs"}>{modele}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
       </div>
     </div>
   );

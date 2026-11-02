@@ -29,10 +29,6 @@ beforeEach(async () => {
 
 afterAll(cleanupAll);
 
-async function setCorrection(erreursCandidates: unknown) {
-  await client`update tentative set correction = ${client.json({ points: [], erreursCandidates } as never)} where id = ${tentativeId}`;
-}
-
 describe("error", () => {
   it("activeForFiche ne renvoie que les erreurs actives de la fiche", async () => {
     const rows = await errorService.activeForFiche(ficheId);
@@ -40,52 +36,19 @@ describe("error", () => {
     expect(await errorService.activeForFiche(otherFicheId)).toEqual([]);
   });
 
-  describe("commitCandidates", () => {
-    it("crée une nouvelle ErrorEntry pour une candidate sans récidive", async () => {
-      await setCorrection([{ type: "confusion", description: "nouvelle erreur", idErreurExistante: null }]);
-      await errorService.commitCandidates(userId, tentativeId, []);
-
-      const rows = await errorService.list(userId, { ficheId, type: "confusion" });
-      expect(rows).toHaveLength(1);
-      expect(rows[0].description).toBe("nouvelle erreur");
-      expect(rows[0].occurrences).toBe(1);
-    });
-
-    it("incrémente occurrences au lieu de dupliquer sur récidive (idErreurExistante)", async () => {
-      await setCorrection([{ type: "omission", description: "revu", idErreurExistante: activeErrorId }]);
-      await errorService.commitCandidates(userId, tentativeId, []);
-
-      const rows = await errorService.list(userId, { ficheId, statut: "active" });
-      expect(rows).toHaveLength(1);
-      expect(rows[0].id).toBe(activeErrorId);
-      expect(rows[0].occurrences).toBe(2);
-    });
-
-    it("index rejeté (rejectedIndexes) ⇒ candidate non committée", async () => {
-      await setCorrection([{ type: "confusion", description: "à rejeter", idErreurExistante: null }]);
-      await errorService.commitCandidates(userId, tentativeId, [0]);
-
-      const rows = await errorService.list(userId, { ficheId, type: "confusion" });
-      expect(rows).toHaveLength(0);
-    });
-
-    it("auto-acceptation : un index non explicitement rejeté est committé", async () => {
-      await setCorrection([
-        { type: "confusion", description: "gardée", idErreurExistante: null },
-        { type: "imprecision", description: "rejetée", idErreurExistante: null },
-      ]);
-      await errorService.commitCandidates(userId, tentativeId, [1]);
-
-      const rows = await errorService.list(userId, { ficheId });
-      const descriptions = rows.map((r) => r.description);
-      expect(descriptions).toContain("gardée");
-      expect(descriptions).not.toContain("rejetée");
+  describe("addManual", () => {
+    it("ajoute une erreur rattachée à la tentative, à la fiche et à sa matière", async () => {
+      const created = await errorService.addManual(userId, tentativeId, { type: "omission", description: "oublié la loi" });
+      expect(created).toMatchObject({ ficheId, tentativeId, type: "omission", statut: "active", occurrences: 1 });
+      const rows = await errorService.list(userId, { ficheId, type: "omission" });
+      expect(rows.map((r) => r.description)).toContain("oublié la loi");
     });
 
     it("refuse une tentative qui n'appartient pas à l'utilisateur", async () => {
       const otherUserId = await createUser();
-      await setCorrection([{ type: "confusion", description: "x", idErreurExistante: null }]);
-      await expect(errorService.commitCandidates(otherUserId, tentativeId, [])).rejects.toThrow();
+      await expect(
+        errorService.addManual(otherUserId, tentativeId, { type: "confusion", description: "x" }),
+      ).rejects.toThrow();
     });
   });
 

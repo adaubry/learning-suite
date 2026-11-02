@@ -10,7 +10,6 @@
 | Markdown | unified + remark-parse + **remark-gfm** (tableaux des fiches) + remark-frontmatter ; rendu maison depuis l'AST |
 | Validation | zod |
 | Répétition espacée | ts-fsrs (`enable_short_term: false`) |
-| LLM | OpenRouter via `fetch` natif, uniquement dans `src/llm/client.ts` |
 | UI | Astryx (`@astryxdesign/core`), Tailwind 4, lucide-react |
 | Distracteur | chess.js + react-chessboard (puzzles hors ligne, CHESS.md) |
 | Tâches de fond | Route Handler `/api/cron` + Vercel Cron |
@@ -24,4 +23,5 @@ Tiptap (`@tiptap/*`) : plus d'édition de cours dans l'app, les fiches se modifi
 
 | Version | Date | Changement |
 |---|---|---|
+| 2.1 | 2026-11-02 | Retrait d'OpenRouter : plus aucun appel LLM (auto-évaluation). Voir DECISIONS.md. |
 | 2.0 | 2026-11-02 | Réécriture v2 (fiches). Ajout de remark-gfm ; retrait de Tiptap et jsdiff. Voir DECISIONS.md. |

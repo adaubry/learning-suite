@@ -5,7 +5,7 @@ import type { Note } from "@/core/fsrs/fsrsCore";
 
 // @canary — « la note FSRS vient de l'utilisateur, jamais du verdict » (assertion
 // d'API) et « gel/dégel idempotents ». Un canari rouge invalide la modification
-// qui l'a cassé, jamais l'inverse (AGENTS §2.5).
+// qui l'a cassé, jamais l'inverse (AGENTS §2.4).
 
 let userId: string;
 let ficheId: string;

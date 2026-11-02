@@ -1,6 +1,6 @@
 # USER_FLOW.md — v2 : écrans
 
-> **Statut** : v2.0 (2026-11-02). Réécriture complète (fiches, cycle unique). Règle transversale : chaque écran a un état vide, et chaque appel LLM a un état d'erreur avec relance.
+> **Statut** : v2.1 (2026-11-02). Fiches, cycle unique, auto-évaluation sans LLM. Règle transversale : chaque écran a un état vide.
 
 ## Accueil — la file du jour (`/`)
 
@@ -26,10 +26,9 @@
 
 1. **Lecture** (nouvelle fiche, ou relecture) : fiche complète. [Je suis prêt] → 30 s avec puzzle d'échecs, [Passer maintenant] ; [Abandonner].
 2. **Blurting** : titre seul, aucun accès à la fiche. Badge « Nouvelle » ou « Révision — Nᵉ rappel », tentative n°1/2, chrono discret. [Soumettre] ; [Abandonner].
-3. **Correction** : ta restitution, verdict proposé, résumé « raisonnement x/y », liste des points (couvert / manquant / déformé, explication, attendu), erreurs candidates (rejetables).
-   - Tentative 1 : [Relire puis refaire] et [Noter], le bouton primaire suit le verdict.
+3. **Comparaison** (auto-évaluation, aucun LLM) : à gauche ta restitution puis la liste des points de la fiche à cocher (badge « essentiel » / « raisonnement », lien « Au carnet d'erreurs » par point), puis tes erreurs déjà relevées sur cette fiche ; à droite la fiche complète. Bilan en direct : points, essentiels, raisonnement cochés.
+   - Tentative 1 : [Relire puis refaire] et la notation, la relecture est mise en avant s'il manque un point essentiel.
    - Notation : Again / Hard / Good / Easy avec l'échéance prévue sous chaque bouton. Après une relecture : Again / Hard seulement.
-   - Erreur LLM : la restitution est déjà sauvegardée, [Relancer la correction].
 4. Après la note : retour à l'accueil.
 
 ## Carnet d'erreurs (`/erreurs`)
@@ -42,4 +41,4 @@ Filtres matière / statut / type. Par erreur : description, fiche d'origine, ré
 
 ## Réglages (`/reglages`)
 
-Nouvelles fiches par jour, export JSON, modèle LLM configuré (lecture seule), déconnexion.
+Nouvelles fiches par jour, export JSON, déconnexion.

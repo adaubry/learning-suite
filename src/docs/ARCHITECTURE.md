@@ -1,6 +1,7 @@
 # ARCHITECTURE.md — v2 : fiches, cycle unique, planificateur
 
-> **Statut** : v2.0 (2026-11-02). Réécriture complète. La v1 (import de cours bruts, sectionnement et rubriques par LLM, dialogue Feynman) est close : son historique vit dans git (dernier commit v1 : `0e8055f`). Voir DECISIONS.md.
+> **Statut** : v2.1 (2026-11-02). v2.1 : la correction LLM est remplacée par une auto-évaluation (comparaison côte à côte + cases à cocher), plus aucun appel LLM.
+> v2.0 (2026-11-02). Réécriture complète. La v1 (import de cours bruts, sectionnement et rubriques par LLM, dialogue Feynman) est close : son historique vit dans git (dernier commit v1 : `0e8055f`). Voir DECISIONS.md.
 > **Rôle** : source de vérité structurelle. Une demande qui contredit ce document se signale avant d'agir.
 
 ---
@@ -9,8 +10,8 @@
 
 1. **Le planificateur est l'organe central.** L'accueil est la file du jour. FSRS décide quand revoir chaque fiche ; l'étudiant n'a plus à trouver lui-même son rythme.
 2. **La fiche est l'unité.** Une fiche (≤ 1 page, produite hors de l'app) = une carte FSRS = une cible de rappel. L'app ne découpe rien et ne génère aucune rubrique : la structure de la fiche (thèse, étiquettes, tableaux) EST le barème (FORMAT.md).
-3. **Un seul appel LLM** : la correction d'un blurting contre les points de la fiche. Tout le reste est du code déterministe.
-4. **Le LLM propose, l'utilisateur dispose.** Le verdict de correction met en avant un bouton ; l'utilisateur clique. FSRS est piloté par l'auto-note, jamais par le verdict.
+3. **Aucun LLM.** L'étudiant se corrige lui-même : sa restitution et la fiche côte à côte, et il coche les points de la fiche qu'il a restitués. Tout est déterministe, instantané et gratuit.
+4. **L'étudiant décide.** Le bilan de ses cases met un bouton en avant ; il clique. FSRS est piloté par son auto-note.
 5. **Mono-utilisateur, simplicité d'abord.**
 
 ## 2. Le cycle (machine unique)
@@ -23,28 +24,29 @@
         │ [Je suis prêt] → 30 s + puzzle d'échecs     │
         ▼                                             ▼
    blurting n°1 (aucun accès à la fiche) ◀────────────┘
-        │ soumission : sauvegarde PUIS correction LLM
+        │ soumission
         ▼
-   correction n°1 ── verdict « bon » ─────▶ [Noter] Again/Hard/Good/Easy ─▶ clos
+   comparaison n°1 (restitution | fiche, cases à cocher)
+        │ ── bilan « bon » ─────▶ [Noter] Again/Hard/Good/Easy ─▶ clos
         │
         └─ verdict « insuffisant » (bouton mis en avant, mais l'utilisateur choisit)
                ▼
           relecture (fiche complète)
                │ [Je suis prêt] → 30 s + puzzle d'échecs
                ▼
-          blurting n°2 → correction n°2 ─▶ [Noter] Again/Hard uniquement ─▶ clos
+          blurting n°2 → comparaison n°2 ─▶ [Noter] Again/Hard uniquement ─▶ clos
 ```
 
 Règles :
 
 - **Révision = rappel à froid** : une fiche `en_revision` commence directement au blurting, sans lecture.
 - **2 blurtings maximum** par cycle ; le 2ᵉ n'existe qu'après une relecture.
-- **Verdict** (calculé en code, pas par le LLM) : `insuffisant` si un point `critique` (thèse, Définition, Texte) est manquant ou déformé, sinon `bon`. Il choisit le bouton primaire : `insuffisant` → [Relire puis refaire], `bon` → [Noter]. Les deux restent toujours disponibles à la tentative 1.
+- **Comparaison** : la restitution et la fiche côte à côte ; sous la restitution, les points de la fiche (§6) à cocher. Le **bilan** (calculé en code, `core/fiche/verdict`) donne points cochés, essentiels cochés, raisonnement coché, et un verdict : `insuffisant` si un point `critique` (thèse, Définition, Texte) n'est pas coché, sinon `bon`. Il choisit le bouton primaire : `insuffisant` → [Relire puis refaire], `bon` → [Noter]. Les deux restent toujours disponibles à la tentative 1. Les cases sont enregistrées sur la tentative en quittant l'écran.
 - **Note après relecture : Again ou Hard uniquement.** Avoir eu besoin de relire, c'est un rappel à froid raté ; c'est ce que FSRS doit enregistrer. La 2ᵉ passe sert à apprendre, pas à mesurer. (Invariant tenu par SessionService.)
-- **Raisonnement** : les points étiquetés Cause/Conséquence/Logique sont notés à part (« raisonnement : x/y »), pour distinguer « tu as donné la règle » de « tu as dit pourquoi ».
+- **Raisonnement** : les points étiquetés Cause/Conséquence/Logique sont comptés à part (« raisonnement : x/y »), pour distinguer « j'ai donné la règle » de « j'ai dit pourquoi ».
+- **Carnet d'erreurs** : depuis chaque point, l'étudiant consigne une erreur (oubli, déformation, confusion, imprécision) ; les erreurs actives de la fiche s'affichent à la comparaison suivante.
 - **Again ⇒ re-file** : la fiche revient en fin de file du jour même.
 - **[Abandonner]** est toujours disponible : ferme le cycle, aucune note, aucune trace visible ensuite (les tentatives restent en base, immuables).
-- Une tentative est **sauvegardée avant** tout appel LLM ; en cas d'échec, [Relancer la correction] rejoue sans re-saisie.
 - **Une seule session ouverte par utilisateur** (index unique partiel en base).
 
 ## 3. Le planificateur
@@ -81,12 +83,11 @@ study_cycle       user_id, fiche_id, type etude|revision (label), etat lecture|b
                   note (again|hard|good|easy, posée à la clôture), closed_at, created_at
                   UNIQUE(user_id) WHERE closed_at IS NULL
 tentative         cycle_id, fiche_id, fiche_hash (version de la fiche corrigée), numero (1|2),
-                  input, correction JSONB, verdict bon|insuffisant, created_at — INSERT puis
-                  un seul UPDATE (la correction), jamais modifiée ensuite
+                  input, correction JSONB { coches: index des points cochés }, verdict bon|insuffisant,
+                  created_at — INSERT au blurting puis un seul UPDATE (l'auto-évaluation)
 error_entry       subject_id, fiche_id, tentative_id, type omission|deformation|confusion|imprecision,
                   description, statut active|resolue, occurrences
 deferral_log, refile_item, queue_order   planificateur (mono-utilisateur)
-prompt_log        journal de chaque appel LLM
 deadline, alert, serie_gel               écran Régularité (IMPLEMENT_SCHEDULE.md)
 ```
 
@@ -99,7 +100,7 @@ deadline, alert, serie_gel               écran Régularité (IMPLEMENT_SCHEDULE
 
 ## 6. Points de contrôle d'une fiche
 
-Calculés à la volée depuis le corps de la fiche (`extractPoints`, pur), jamais stockés :
+La liste à cocher de la comparaison. Calculés à la volée depuis le corps de la fiche (`extractPoints`, pur), jamais stockés :
 
 | Élément de la fiche | Type | Raisonnement |
 |---|---|---|
@@ -108,35 +109,31 @@ Calculés à la volée depuis le corps de la fiche (`extractPoints`, pur), jamai
 | **Cause**, **Conséquence**, **Logique** | important | oui |
 | **Constat**, **Nuance**, **Exemple**, **Piège**, étiquette inconnue | important | non |
 | **Lien** | secondaire | non |
-| **Complément (hors cours)** | exclu, jamais exigé | — |
+| **Complément (hors cours)** | exclu, jamais à cocher | — |
 | Ligne de tableau | important | non |
 | Liste ou paragraphe non étiqueté | important | non |
 
-La correction LLM reçoit ces points numérotés et renvoie un statut par point (couvert / manquant / déformé) + des erreurs candidates. Le mapping index → point se fait en code.
+Les cases cochées sont stockées par index : elles se lisent contre la fiche telle qu'elle était à cette tentative (`tentative.fiche_hash`).
 
-## 7. LLM
+## 7. Pas de LLM
 
-- Un seul point d'accès : `src/llm/client.ts` (OpenRouter, clé serveur, validation zod, retry avec réinjection d'erreur, PromptLog).
-- Un seul appel : `correction_erreurs` (prompt `prompts/correction_fiche.vN.md`, modèle `LLM_MODEL_CORRECTION_ERREURS`).
-- Contexte : points de la fiche, blurting, n° de tentative, erreurs actives de la fiche.
+v2.0 corrigeait chaque blurting par un appel OpenRouter (~10 s, ~6 000 tokens). v2.1 l'a retiré au profit de l'auto-évaluation (DECISIONS.md 2026-11-02) : le code (`src/llm/`, `prompts/`) est dans l'historique git.
 
 ## 8. Invariants et propriétaires
 
 | Invariant | Propriétaire | Renfort |
 |---|---|---|
 | Une seule session ouverte par utilisateur | SessionService | index unique partiel |
-| Tentative sauvegardée avant l'appel LLM | SessionService | ordre des écritures |
 | ≤ 2 blurtings par cycle ; relecture seulement après la tentative 1 | SessionService | — |
 | Note après relecture ∈ {Again, Hard} | SessionService | test canari |
-| FSRS piloté par la note utilisateur, jamais le verdict | ReviewService | test canari |
+| FSRS piloté par la note utilisateur | ReviewService | test canari |
 | Ré-import : historique FSRS conservé pour les fiches appariées | FicheService | test canari |
 | Gel/dégel des cartes | ReviewService | — |
-| OpenRouter uniquement via `src/llm/client.ts` | L0 | revue |
 
 ## 9. Couches
 
-`app/` (écrans + Server Actions minces : auth → zod → un service → retour) → `src/services/` → `src/core/` (pur) + `src/llm/` + `src/db/`.
+`app/` (écrans + Server Actions minces : auth → zod → un service → retour) → `src/services/` → `src/core/` (pur) + `src/db/`.
 
 ## 10. Hors périmètre
 
-Génération de fiches dans l'app (elle se fait en amont), dialogue oral / Feynman, multi-utilisateur, mobile natif, import PDF.
+Génération de fiches dans l'app (elle se fait en amont), correction par LLM, dialogue oral / Feynman, multi-utilisateur, mobile natif, import PDF.

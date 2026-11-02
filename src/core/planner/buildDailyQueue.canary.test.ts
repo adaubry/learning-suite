@@ -9,7 +9,7 @@ function ficheIdOf(item: QueueItem): string {
 
 // @canary — cas limites de la file du jour (file vide, tout en retard, plafond 0,
 // examen passé, re-file en queue). Un canari rouge invalide la modification qui
-// l'a cassé, jamais l'inverse (AGENTS §2.5).
+// l'a cassé, jamais l'inverse (AGENTS §2.4).
 
 const baseInput: BuildDailyQueueInput = {
   today: "2026-07-09",

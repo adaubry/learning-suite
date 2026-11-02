@@ -5,21 +5,15 @@ import { loadOwnedFiche } from "./ownership";
 import * as errorService from "./error";
 import * as reviewService from "./review";
 import * as plannerService from "./planner";
-import { extractPoints } from "@/core/fiche/extractPoints";
-import {
-  computeVerdict,
-  type ErreurCandidate,
-  type PointCorrige,
-  type Verdict,
-} from "@/core/fiche/verdict";
-import { buildCorrectionContext } from "@/llm/context/correction";
-import { correctBlurting } from "@/llm/correctBlurting";
+import { extractPoints, type PointFiche } from "@/core/fiche/extractPoints";
+import { bilanAutoEvaluation, normaliserCoches } from "@/core/fiche/verdict";
 import type { Note } from "@/core/fsrs/fsrsCore";
 
 // SessionService — le cycle unique (ARCHITECTURE.md v2 §2). Propriétaire des
-// invariants : une seule session ouverte par utilisateur ; tentative sauvegardée
-// avant l'appel LLM ; ≤ 2 blurtings, le 2ᵉ seulement après relecture ; note
-// limitée à Again/Hard après relecture.
+// invariants : une seule session ouverte par utilisateur ; ≤ 2 blurtings, le 2ᵉ
+// seulement après relecture ; note limitée à Again/Hard après relecture. La
+// correction est une auto-évaluation : comparaison côte à côte avec la fiche et
+// cases cochées par l'étudiant (état `correction`), aucun appel LLM.
 //
 //   nouvelle :  lecture → blurting(1) → correction ─┬─ noter → clos
 //   révision :            blurting(1) → correction ─┤
@@ -47,9 +41,10 @@ export class WrongCycleStateError extends Error {}
 
 export const NOTES_APRES_RELECTURE: Note[] = ["again", "hard"];
 
+// Ce que l'étudiant a coché en se corrigeant (indices dans extractPoints de la
+// fiche telle qu'elle était à cette tentative, cf. `ficheHash`).
 export interface CorrectionData {
-  points: PointCorrige[];
-  erreursCandidates: ErreurCandidate[];
+  coches: number[];
 }
 
 async function loadOwnedOpenCycle(userId: string, cycleId: string) {
@@ -135,40 +130,6 @@ export async function prochaineTentative(cycleId: string): Promise<number> {
   return (await tentatives(cycleId)).length + 1;
 }
 
-// Appelle la correction sur une tentative DÉJÀ sauvegardée, résout les index du
-// LLM vers les vrais points/erreurs, calcule le verdict, complète la ligne.
-async function corriger(tentativeId: string, ficheId: string, numero: number, input: string, contenu: string) {
-  const points = extractPoints(contenu);
-  const erreursActives = await errorService.activeForFiche(ficheId);
-
-  const output = await correctBlurting(
-    buildCorrectionContext({
-      points,
-      blurting: input,
-      tentative: numero,
-      erreursActives: erreursActives.map((e) => ({ id: e.id, type: e.type, description: e.description })),
-    }),
-  );
-
-  const parIndex = new Map(output.diff.map((d) => [d.point_index, d]));
-  const corriges: PointCorrige[] = points.map((p, i) => {
-    const d = parIndex.get(i + 1)!;
-    return { ...p, statut: d.statut, explication: d.explication };
-  });
-  const erreursCandidates: ErreurCandidate[] = output.erreurs_candidates.map((e) => ({
-    type: e.type,
-    description: e.description,
-    idErreurExistante: e.recidive_index != null ? erreursActives[e.recidive_index - 1].id : null,
-  }));
-  const verdict = computeVerdict(corriges);
-  const correction: CorrectionData = { points: corriges, erreursCandidates };
-
-  await db.update(tentative).set({ correction, verdict }).where(eq(tentative.id, tentativeId));
-  return { verdict, ...correction };
-}
-
-// Sauvegarde AVANT l'appel LLM : si la correction échoue, le texte est en base
-// (ligne sans correction) et retryCorrection la rejoue sans re-saisie.
 export async function submitBlurting(userId: string, cycleId: string, blurtingText: string) {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "blurting") throw new WrongCycleStateError("Cette session n'attend pas de blurting.");
@@ -179,60 +140,61 @@ export async function submitBlurting(userId: string, cycleId: string, blurtingTe
   const f = await db.query.fiche.findFirst({ where: eq(fiche.id, cycle.ficheId) });
   if (!f) throw new FicheNonEtudiableError();
 
-  const [saved] = await db
-    .insert(tentative)
-    .values({ cycleId, ficheId: f.id, ficheHash: f.contentHash, numero, input: blurtingText })
-    .returning();
+  await db.insert(tentative).values({ cycleId, ficheId: f.id, ficheHash: f.contentHash, numero, input: blurtingText });
   await db.update(studyCycle).set({ etat: "correction" }).where(eq(studyCycle.id, cycleId));
-
-  return corriger(saved.id, f.id, numero, blurtingText, f.contenu);
+  return { numero };
 }
 
-export async function retryCorrection(userId: string, cycleId: string) {
-  const cycle = await loadOwnedOpenCycle(userId, cycleId);
-  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction en attente.");
-  const last = await derniereTentative(cycleId);
-  if (!last || last.correction !== null) throw new WrongCycleStateError("Aucune correction en échec à relancer.");
-  const f = await db.query.fiche.findFirst({ where: eq(fiche.id, cycle.ficheId) });
-  if (!f) throw new FicheNonEtudiableError();
-  return corriger(last.id, f.id, last.numero, last.input, f.contenu);
+export interface Comparaison {
+  tentativeId: string;
+  numero: number;
+  input: string;
+  contenu: string;
+  points: PointFiche[];
+  erreursConnues: { type: string; description: string; occurrences: number }[];
 }
 
-export type CurrentCorrection =
-  | { status: "pending"; numero: number }
-  | ({ status: "ready"; numero: number; verdict: Verdict; input: string } & CorrectionData);
-
-// Re-sert la correction persistée (rechargement de l'écran) — aucun appel LLM.
-export async function getCurrentCorrection(userId: string, cycleId: string): Promise<CurrentCorrection> {
+// Écran de comparaison : la restitution, la fiche, ses points à cocher, et les
+// erreurs déjà relevées sur cette fiche (pièges connus de l'étudiant).
+export async function getComparaison(userId: string, cycleId: string): Promise<Comparaison> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
-  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction pour cette session.");
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune comparaison pour cette session.");
   const last = await derniereTentative(cycleId);
   if (!last) throw new WrongCycleStateError("Aucune tentative pour cette session.");
-  if (last.correction === null) return { status: "pending", numero: last.numero };
+  const f = await db.query.fiche.findFirst({ where: eq(fiche.id, cycle.ficheId) });
+  if (!f) throw new FicheNonEtudiableError();
+  const erreurs = await errorService.activeForFiche(f.id);
   return {
-    status: "ready",
+    tentativeId: last.id,
     numero: last.numero,
-    verdict: last.verdict!,
     input: last.input,
-    ...(last.correction as CorrectionData),
+    contenu: f.contenu,
+    points: extractPoints(f.contenu),
+    erreursConnues: erreurs.map((e) => ({ type: e.type, description: e.description, occurrences: e.occurrences })),
   };
 }
 
-async function correctionPrete(cycleId: string) {
+// Enregistre l'auto-évaluation sur la dernière tentative, en quittant l'écran.
+async function enregistrerCoches(cycleId: string, ficheId: string, coches: number[]) {
   const last = await derniereTentative(cycleId);
-  if (!last || last.correction === null) throw new WrongCycleStateError("Aucune correction disponible.");
+  if (!last) throw new WrongCycleStateError("Aucune tentative pour cette session.");
+  const f = await db.query.fiche.findFirst({ where: eq(fiche.id, ficheId) });
+  if (!f) throw new FicheNonEtudiableError();
+  const points = extractPoints(f.contenu);
+  const correction: CorrectionData = { coches: normaliserCoches(coches, points.length) };
+  const { verdict } = bilanAutoEvaluation(points, correction.coches);
+  await db.update(tentative).set({ correction, verdict }).where(eq(tentative.id, last.id));
   return last;
 }
 
-// [Relire puis refaire] : seulement depuis la correction de la tentative 1.
-// Les erreurs candidates non rejetées sont enregistrées en quittant l'écran.
-export async function relire(userId: string, cycleId: string, rejectedIndexes: number[] = []): Promise<void> {
+// [Relire puis refaire] : seulement depuis la comparaison de la tentative 1.
+export async function relire(userId: string, cycleId: string, coches: number[] = []): Promise<void> {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
-  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à quitter.");
-  const last = await correctionPrete(cycleId);
-  if (last.numero !== 1) throw new WrongCycleStateError("Une seule relecture par session.");
-
-  await errorService.commitCandidates(userId, last.id, rejectedIndexes);
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune comparaison à quitter.");
+  if ((await prochaineTentative(cycleId)) - 1 !== 1) {
+    throw new WrongCycleStateError("Une seule relecture par session.");
+  }
+  await enregistrerCoches(cycleId, cycle.ficheId, coches);
   await db.update(studyCycle).set({ etat: "lecture" }).where(eq(studyCycle.id, cycleId));
 }
 
@@ -244,15 +206,14 @@ export async function notesPermises(cycleId: string): Promise<Note[]> {
 
 // Clôture : la note de l'utilisateur (jamais le verdict) pilote FSRS. Après une
 // relecture, seules Again/Hard sont admises : le rappel à froid a échoué.
-export async function noter(userId: string, cycleId: string, note: Note, rejectedIndexes: number[] = []) {
+export async function noter(userId: string, cycleId: string, note: Note, coches: number[] = []) {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
-  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune correction à noter.");
-  const last = await correctionPrete(cycleId);
+  if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune comparaison à noter.");
   if (!(await notesPermises(cycleId)).includes(note)) {
     throw new WrongCycleStateError("Après une relecture, la note est Again ou Hard.");
   }
 
-  await errorService.commitCandidates(userId, last.id, rejectedIndexes);
+  await enregistrerCoches(cycleId, cycle.ficheId, coches);
   await reviewService.createOrRate(userId, cycle.ficheId, note);
   await db.update(fiche).set({ statut: "en_revision" }).where(eq(fiche.id, cycle.ficheId));
   if (note === "again") await plannerService.refile(cycle.type, cycle.ficheId);

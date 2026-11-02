@@ -6,7 +6,7 @@ import { client, cleanupAll, seedSet, SAMPLE_SET } from "@/test/fixtures";
 // @canary — invariant du ré-import (ARCHITECTURE.md v2 §5, §8) : une fiche
 // appariée garde son identité, donc sa carte et son historique FSRS, même quand
 // une fiche insérée avant elle décale toute la numérotation. Un canari rouge
-// invalide la modification qui l'a cassé, jamais l'inverse (AGENTS §2.5).
+// invalide la modification qui l'a cassé, jamais l'inverse (AGENTS §2.4).
 
 afterAll(cleanupAll);
 

@@ -3,11 +3,9 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { login } from "./login";
 
-// Parcours v2 jusqu'au seuil de l'appel LLM, sur le vrai set de fiches de
-// l'utilisateur (Semaine 1 ADMIN) : matière → import (aperçu, 23 fiches) →
-// curriculum → file du jour → lecture → puzzle → blurting. La correction
-// (fetch serveur vers OpenRouter) n'est pas exercée ici : page.route ne voit
-// pas les appels serveur.
+// Parcours v2 complet sur le vrai set de fiches de l'utilisateur (Semaine 1
+// ADMIN) : matière → import (aperçu, 23 fiches) → curriculum → file du jour →
+// lecture → puzzle → blurting → comparaison (cases) → note → retour à la file.
 
 const fixture = readFileSync(join(__dirname, "evals/fixtures/Semaine 1 ADMIN.md"), "utf8");
 
@@ -53,6 +51,15 @@ test("importer un set de fiches puis ouvrir une session", async ({ page, request
   await expect(page.getByPlaceholder(/sans la regarder/)).toBeVisible();
   await expect(page.getByText("tentative n°1")).toBeVisible();
 
-  await page.getByRole("button", { name: "Abandonner la tentative" }).dispatchEvent("click");
+  await page.getByPlaceholder(/sans la regarder/).fill("Le droit administratif date du XIXe siècle ; bien commun et res publica.");
+  await page.getByRole("button", { name: "Comparer avec la fiche" }).click();
+
+  await expect(page.getByText("Coche ce que tu as restitué")).toBeVisible();
+  await expect(page.getByText("Il manque un point essentiel")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Thèse" }).check();
+  await expect(page.getByText("L'essentiel y est")).toBeVisible();
+
+  await page.getByRole("button", { name: /^Good/ }).click();
   await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText("2. De la remontrance à la séparation des pouvoirs : la résistance des parlements", { exact: true })).toBeVisible();
 });

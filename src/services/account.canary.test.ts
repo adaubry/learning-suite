@@ -5,7 +5,7 @@ import { client, cleanupAll, seedSet } from "@/test/fixtures";
 
 // @canary — export JSON re-parsable complet : rien perdu au round-trip,
 // archives comprises. Un canari rouge invalide la modification qui l'a cassé
-// (AGENTS §2.5).
+// (AGENTS §2.4).
 
 afterAll(cleanupAll);
 
@@ -32,7 +32,6 @@ describe("account · exportUserData (@canary)", () => {
       "studyCycles",
       "tentatives",
       "errorEntries",
-      "promptLogs",
     ] as const;
     for (const key of collections) {
       expect(Array.isArray(roundTripped[key]), key).toBe(true);

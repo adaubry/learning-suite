@@ -1,56 +1,24 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import * as session from "./session";
 import * as review from "./review";
 import { client, cleanupAll, seedSet } from "@/test/fixtures";
 
-// SessionService — cycle unique (ARCHITECTURE.md v2 §2). LLM mocké (fetch
-// intercepté), Postgres réel. Fiche 1 du set d'exemple : 3 points (thèse,
-// définition, cause).
-
-const MODEL = "test/session";
-
-function llmReply(statuts: ("couvert" | "manquant" | "deforme")[], erreurs: object[] = []) {
-  return {
-    ok: true,
-    json: async () => ({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              diff: statuts.map((statut, i) => ({ point_index: i + 1, statut, explication: "x" })),
-              erreurs_candidates: erreurs,
-            }),
-          },
-        },
-      ],
-      usage: { prompt_tokens: 1, completion_tokens: 1 },
-    }),
-  };
-}
-
-const fetchMock = () => fetch as ReturnType<typeof vi.fn>;
-const TOUT_COUVERT = llmReply(["couvert", "couvert", "couvert"]);
-const THESE_MANQUANTE = llmReply(["manquant", "couvert", "couvert"]);
+// SessionService — cycle unique avec auto-évaluation (ARCHITECTURE.md v2 §2),
+// Postgres réel, aucun LLM. Fiche 1 du set d'exemple : 3 points (thèse,
+// définition, cause) ; le complément hors cours n'en est pas un.
 
 let userId: string;
 let ficheId: string;
 let fiches: { id: string }[];
 
 beforeEach(async () => {
-  process.env.LLM_MODEL_CORRECTION_ERREURS = MODEL;
-  vi.stubGlobal("fetch", vi.fn());
   const s = await seedSet();
   userId = s.userId;
   fiches = s.fiches;
   ficheId = s.fiches[0].id;
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 afterAll(async () => {
-  await client`delete from prompt_log where model = ${MODEL}`;
   await cleanupAll();
 });
 
@@ -59,12 +27,11 @@ async function cycleRow(cycleId: string) {
   return row;
 }
 
-async function jusquaCorrection(reply = TOUT_COUVERT) {
+async function jusquaComparaison() {
   const cycle = await session.start(userId, ficheId);
   if (cycle.etat === "lecture") await session.terminerLecture(userId, cycle.id);
-  fetchMock().mockResolvedValueOnce(reply);
-  const correction = await session.submitBlurting(userId, cycle.id, "ma restitution");
-  return { cycleId: cycle.id, correction };
+  await session.submitBlurting(userId, cycle.id, "ma restitution");
+  return { cycleId: cycle.id };
 }
 
 describe("session · démarrage", () => {
@@ -102,106 +69,68 @@ describe("session · démarrage", () => {
   });
 });
 
-describe("session · blurting et correction", () => {
+describe("session · blurting et comparaison", () => {
   it("submitBlurting refusé pendant la lecture", async () => {
     const cycle = await session.start(userId, ficheId);
     await expect(session.submitBlurting(userId, cycle.id, "x")).rejects.toThrow(session.WrongCycleStateError);
   });
 
-  it("correction : points résolus en code, verdict bon si les critiques sont couverts", async () => {
-    const { correction } = await jusquaCorrection(llmReply(["couvert", "couvert", "manquant"]));
-    expect(correction.verdict).toBe("bon");
-    expect(correction.points.map((p) => [p.etiquette, p.statut])).toEqual([
-      ["Thèse", "couvert"],
-      ["Définition", "couvert"],
-      ["Cause", "manquant"],
-    ]);
+  it("submitBlurting enregistre la tentative et passe à la comparaison, sans appel réseau", async () => {
+    const { cycleId } = await jusquaComparaison();
+    expect(await cycleRow(cycleId)).toMatchObject({ etat: "correction" });
+    const [t] = await client`select numero, input, correction, verdict from tentative where cycle_id = ${cycleId}`;
+    expect(t).toMatchObject({ numero: 1, input: "ma restitution", correction: null, verdict: null });
   });
 
-  it("verdict insuffisant si un point critique manque", async () => {
-    const { correction } = await jusquaCorrection(THESE_MANQUANTE);
-    expect(correction.verdict).toBe("insuffisant");
+  it("getComparaison : restitution, fiche, points (sans complément) et erreurs connues", async () => {
+    const { cycleId } = await jusquaComparaison();
+    const c = await session.getComparaison(userId, cycleId);
+    expect(c).toMatchObject({ numero: 1, input: "ma restitution", erreursConnues: [] });
+    expect(c.contenu).toContain("Complément (hors cours)");
+    expect(c.points.map((p) => p.etiquette)).toEqual(["Thèse", "Définition", "Cause"]);
   });
 
-  it("les compléments hors cours ne sont jamais envoyés au LLM", async () => {
-    await jusquaCorrection();
-    const body = JSON.parse(fetchMock().mock.calls[0][1].body);
-    expect(body.messages[0].content).not.toContain("art. 52");
-  });
-
-  it("tentative sauvegardée AVANT l'appel LLM : échec ⇒ ligne sans correction, retryCorrection la rejoue", async () => {
-    const cycle = await session.start(userId, ficheId);
-    await session.terminerLecture(userId, cycle.id);
-    fetchMock().mockRejectedValue(new Error("réseau"));
-    await expect(session.submitBlurting(userId, cycle.id, "texte précieux")).rejects.toThrow();
-
-    const rows = await client`select input, correction from tentative where cycle_id = ${cycle.id}`;
-    expect(rows).toEqual([{ input: "texte précieux", correction: null }]);
-    expect(await session.getCurrentCorrection(userId, cycle.id)).toEqual({ status: "pending", numero: 1 });
-
-    fetchMock().mockReset();
-    fetchMock().mockResolvedValueOnce(TOUT_COUVERT);
-    const ok = await session.retryCorrection(userId, cycle.id);
-    expect(ok.verdict).toBe("bon");
-    const current = await session.getCurrentCorrection(userId, cycle.id);
-    expect(current).toMatchObject({ status: "ready", numero: 1, input: "texte précieux", verdict: "bon" });
-    expect(await client`select id from tentative where cycle_id = ${cycle.id}`).toHaveLength(1);
-  });
-
-  it("récidive : recidive_index résolu vers l'erreur active de la fiche", async () => {
-    const { subject } = await client`select subject_id from fiche_set where id = (select set_id from fiche where id = ${ficheId})`.then(
-      ([r]) => ({ subject: r.subject_id }),
-    );
-    const { cycleId } = await jusquaCorrection();
-    const [t] = await client`select id from tentative where cycle_id = ${cycleId}`;
-    const [err] = await client`insert into error_entry (subject_id, fiche_id, tentative_id, type, description) values (${subject}, ${ficheId}, ${t.id}, 'confusion', 'ancienne') returning id`;
-    await session.noter(userId, cycleId, "good");
-
-    await client`update fiche set statut = 'en_revision' where id = ${ficheId}`;
-    const { correction } = await jusquaCorrection(
-      llmReply(["couvert", "couvert", "couvert"], [{ type: "confusion", description: "encore", recidive_index: 1 }]),
-    );
-    expect(correction.erreursCandidates).toEqual([{ type: "confusion", description: "encore", idErreurExistante: err.id }]);
+  it("les erreurs actives de la fiche remontent dans la comparaison", async () => {
+    const { cycleId } = await jusquaComparaison();
+    const { tentativeId } = await session.getComparaison(userId, cycleId);
+    await client`insert into error_entry (subject_id, fiche_id, tentative_id, type, description)
+      select fs.subject_id, f.id, ${tentativeId}, 'confusion', 'confond retenue et déléguée'
+      from fiche f join fiche_set fs on fs.id = f.set_id where f.id = ${ficheId}`;
+    const c = await session.getComparaison(userId, cycleId);
+    expect(c.erreursConnues).toEqual([{ type: "confusion", description: "confond retenue et déléguée", occurrences: 1 }]);
   });
 });
 
 describe("session · relecture et 2ᵉ passe", () => {
-  it("relire : retour à la lecture, 2ᵉ blurting possible, pas de 3ᵉ", async () => {
-    const { cycleId } = await jusquaCorrection(THESE_MANQUANTE);
+  it("relire enregistre les cases cochées et le verdict, puis retourne à la lecture", async () => {
+    const { cycleId } = await jusquaComparaison();
+    await session.relire(userId, cycleId, [1, 2, 2, 9]);
+    const [t] = await client`select correction, verdict from tentative where cycle_id = ${cycleId}`;
+    expect(t).toEqual({ correction: { coches: [1, 2] }, verdict: "insuffisant" });
+    expect(await cycleRow(cycleId)).toMatchObject({ etat: "lecture" });
+  });
+
+  it("2ᵉ passe possible après relecture, puis plus de relecture", async () => {
+    const { cycleId } = await jusquaComparaison();
     await session.relire(userId, cycleId);
-    expect((await cycleRow(cycleId)).etat).toBe("lecture");
-    expect(await session.prochaineTentative(cycleId)).toBe(2);
-
     await session.terminerLecture(userId, cycleId);
-    fetchMock().mockResolvedValueOnce(TOUT_COUVERT);
-    const c2 = await session.submitBlurting(userId, cycleId, "mieux");
-    expect(c2.verdict).toBe("bon");
-
+    await session.submitBlurting(userId, cycleId, "seconde");
+    expect((await session.getComparaison(userId, cycleId)).numero).toBe(2);
     await expect(session.relire(userId, cycleId)).rejects.toThrow(session.WrongCycleStateError);
   });
 
-  it("relire enregistre les erreurs candidates non rejetées", async () => {
-    const { cycleId } = await jusquaCorrection(
-      llmReply(["manquant", "couvert", "couvert"], [
-        { type: "confusion", description: "garde" },
-        { type: "imprecision", description: "rejetée" },
-      ]),
-    );
-    await session.relire(userId, cycleId, [1]);
-    const rows = await client`select description from error_entry where fiche_id = ${ficheId}`;
-    expect(rows.map((r) => r.description)).toEqual(["garde"]);
-  });
-
   it("notesPermises : les 4 à la tentative 1", async () => {
-    const { cycleId } = await jusquaCorrection();
+    const { cycleId } = await jusquaComparaison();
     expect(await session.notesPermises(cycleId)).toEqual(["again", "hard", "good", "easy"]);
   });
 });
 
 describe("session · clôture", () => {
-  it("noter : crée la carte, passe la fiche en révision, ferme le cycle avec la note", async () => {
-    const { cycleId } = await jusquaCorrection();
-    await session.noter(userId, cycleId, "good");
+  it("noter : enregistre les cases, crée la carte, passe la fiche en révision, ferme le cycle avec la note", async () => {
+    const { cycleId } = await jusquaComparaison();
+    await session.noter(userId, cycleId, "good", [0, 1]);
+    const [t] = await client`select correction, verdict from tentative where cycle_id = ${cycleId}`;
+    expect(t).toEqual({ correction: { coches: [0, 1] }, verdict: "bon" });
 
     const [f] = await client`select statut from fiche where id = ${ficheId}`;
     expect(f.statut).toBe("en_revision");
@@ -212,7 +141,7 @@ describe("session · clôture", () => {
   });
 
   it("noter again ⇒ re-file du jour", async () => {
-    const { cycleId } = await jusquaCorrection();
+    const { cycleId } = await jusquaComparaison();
     await session.noter(userId, cycleId, "again");
     const rows = await client`select item_type from refile_item where item_id = ${ficheId}`;
     expect(rows.map((r) => r.item_type)).toEqual(["etude"]);
@@ -221,19 +150,19 @@ describe("session · clôture", () => {
   it("noter sur une carte existante la note sans en recréer", async () => {
     await review.createOrRate(userId, ficheId, "good");
     await client`update fiche set statut = 'en_revision' where id = ${ficheId}`;
-    const { cycleId } = await jusquaCorrection();
+    const { cycleId } = await jusquaComparaison();
     await session.noter(userId, cycleId, "good");
     const rows = await client`select reps from review_card where fiche_id = ${ficheId}`;
     expect(rows).toEqual([{ reps: 2 }]);
   });
 
-  it("noter refusé tant que la correction n'est pas prête", async () => {
+  it("noter refusé avant la comparaison", async () => {
     const cycle = await session.start(userId, ficheId);
     await expect(session.noter(userId, cycle.id, "good")).rejects.toThrow(session.WrongCycleStateError);
   });
 
   it("abandon : ferme sans note, sans carte, la fiche reste nouvelle", async () => {
-    const { cycleId } = await jusquaCorrection();
+    const { cycleId } = await jusquaComparaison();
     await session.abandon(userId, cycleId);
     expect(await cycleRow(cycleId)).toMatchObject({ etat: "clos", note: null });
     expect(await client`select 1 from review_card where fiche_id = ${ficheId}`).toEqual([]);
@@ -243,7 +172,7 @@ describe("session · clôture", () => {
   });
 
   it("une autre fiche peut démarrer une fois la session close", async () => {
-    const { cycleId } = await jusquaCorrection();
+    const { cycleId } = await jusquaComparaison();
     await session.abandon(userId, cycleId);
     await expect(session.start(userId, fiches[1].id)).resolves.toMatchObject({ ficheId: fiches[1].id });
   });

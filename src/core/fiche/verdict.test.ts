@@ -1,31 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { computeVerdict, resumeRaisonnement, type PointCorrige } from "./verdict";
+import { bilanAutoEvaluation, normaliserCoches } from "./verdict";
+import type { PointFiche } from "./extractPoints";
 
-const p = (type: PointCorrige["type"], statut: PointCorrige["statut"], raisonnement = false): PointCorrige => ({
+const p = (type: PointFiche["type"], raisonnement = false): PointFiche => ({
   type,
-  statut,
   raisonnement,
   etiquette: "x",
   intitule: "x",
   attendu: "x",
-  explication: "",
 });
 
-describe("computeVerdict", () => {
-  it("bon si tous les critiques sont couverts, quel que soit le reste", () => {
-    expect(computeVerdict([p("critique", "couvert"), p("important", "manquant"), p("secondaire", "deforme")])).toBe("bon");
+// thèse (0), définition (1), cause (2), constat (3), lien (4)
+const points = [p("critique"), p("critique"), p("important", true), p("important"), p("secondaire")];
+
+describe("bilanAutoEvaluation", () => {
+  it("bon si tous les points essentiels sont cochés, quel que soit le reste", () => {
+    expect(bilanAutoEvaluation(points, [0, 1])).toEqual({
+      verdict: "bon",
+      points: { couverts: 2, total: 5 },
+      essentiels: { couverts: 2, total: 2 },
+      raisonnement: { couverts: 0, total: 1 },
+    });
   });
 
-  it("insuffisant si un critique est manquant ou déformé", () => {
-    expect(computeVerdict([p("critique", "manquant")])).toBe("insuffisant");
-    expect(computeVerdict([p("critique", "deforme"), p("critique", "couvert")])).toBe("insuffisant");
+  it("insuffisant dès qu'un point essentiel n'est pas coché", () => {
+    expect(bilanAutoEvaluation(points, [0, 2, 3, 4]).verdict).toBe("insuffisant");
+  });
+
+  it("une fiche sans point essentiel n'est jamais insuffisante", () => {
+    expect(bilanAutoEvaluation([p("important")], []).verdict).toBe("bon");
+  });
+
+  it("ignore les indices invalides ou en double", () => {
+    expect(bilanAutoEvaluation(points, [0, 0, 1, 9, -1]).points).toEqual({ couverts: 2, total: 5 });
   });
 });
 
-describe("resumeRaisonnement", () => {
-  it("compte les points de raisonnement couverts", () => {
-    expect(
-      resumeRaisonnement([p("important", "couvert", true), p("important", "manquant", true), p("critique", "couvert")]),
-    ).toEqual({ couverts: 1, total: 2 });
+describe("normaliserCoches", () => {
+  it("garde les indices entiers dans les bornes, sans doublon, triés", () => {
+    expect(normaliserCoches([3, 1, 1, 7, -2, 1.5], 5)).toEqual([1, 3]);
   });
 });

@@ -30,8 +30,6 @@ export const noteFsrsEnum = pgEnum("note_fsrs", ["again", "hard", "good", "easy"
 export const errorEntryTypeEnum = pgEnum("error_entry_type", ["omission", "deformation", "confusion", "imprecision"]);
 export const errorEntryStatutEnum = pgEnum("error_entry_statut", ["active", "resolue"]);
 export const refileItemTypeEnum = pgEnum("refile_item_type", ["revision", "etude"]);
-export const promptLogAppelEnum = pgEnum("prompt_log_appel", ["correction_erreurs"]);
-export const promptLogStatutEnum = pgEnum("prompt_log_statut", ["ok", "retry", "echec"]);
 export const deadlineTypeEnum = pgEnum("deadline_type", ["examen", "controle_continu", "autre"]);
 export const alertTypeEnum = pgEnum("alert_type", [
   "echeance_j7",
@@ -211,18 +209,6 @@ export const refileItem = pgTable("refile_item", {
 export const queueOrder = pgTable("queue_order", {
   date: date("date").primaryKey(),
   order: jsonb("order").notNull(),
-});
-
-export const promptLog = pgTable("prompt_log", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  appel: promptLogAppelEnum("appel").notNull(),
-  promptVersion: text("prompt_version").notNull(),
-  model: text("model").notNull(),
-  inputTokens: integer("input_tokens").notNull(),
-  outputTokens: integer("output_tokens").notNull(),
-  dureeMs: integer("duree_ms").notNull(),
-  statut: promptLogStatutEnum("statut").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // --- Régularité (IMPLEMENT_SCHEDULE.md §3) — mono-utilisateur ---

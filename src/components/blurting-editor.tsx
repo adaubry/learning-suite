@@ -90,7 +90,7 @@ export function BlurtingEditor({
           type="submit"
           className="self-end"
           isDisabled={submitting}
-          label={pending ? "Correction…" : "Soumettre"}
+          label={pending ? "Enregistrement…" : "Comparer avec la fiche"}
         />
         {state?.error && <p className="text-sm text-error">{state.error}</p>}
       </form>

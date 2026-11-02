@@ -1,6 +1,6 @@
 # Learning Suite
 
-Webapp personnelle de révision du droit, autour de **fiches** : chaque fiche importée devient une carte de répétition espacée (FSRS), révisée par blurting (rappel écrit sans la fiche), corrigée par un LLM contre les points de la fiche, puis notée par l'étudiant.
+Webapp personnelle de révision du droit, autour de **fiches** : chaque fiche importée devient une carte de répétition espacée (FSRS), révisée par blurting (rappel écrit sans la fiche), comparée côte à côte avec la fiche en cochant ses points, puis notée par l'étudiant. Aucun LLM.
 
 Documentation : `src/docs/` (ARCHITECTURE, FORMAT, USER_FLOW, TECH_MAPPING, DECISIONS). Contrat des agents de code : `AGENTS.md`.
 
@@ -10,7 +10,7 @@ Prérequis : Node 20+, Docker.
 
 ```bash
 docker compose up -d        # Postgres local sur le port 5433
-cp .env.example .env.local  # puis remplir les secrets (OpenRouter, Better-Auth…)
+cp .env.example .env.local  # puis remplir les secrets (Better-Auth, Resend…)
 npm install
 npm run db:migrate
 npm run dev                 # http://localhost:3000

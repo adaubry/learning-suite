@@ -1,48 +1,22 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import * as session from "./session";
 import { client, cleanupAll, seedSet } from "@/test/fixtures";
 
 // @canary — invariants du cycle (ARCHITECTURE.md v2 §2, §8) : une seule session
 // ouverte ; ≤ 2 blurtings ; après relecture la note est Again ou Hard (le rappel
 // à froid a échoué). Un canari rouge invalide la modification qui l'a cassé,
-// jamais l'inverse (AGENTS §2.5).
-
-const MODEL = "test/session-canary";
-
-const reply = {
-  ok: true,
-  json: async () => ({
-    choices: [
-      {
-        message: {
-          content: JSON.stringify({
-            diff: [1, 2, 3].map((i) => ({ point_index: i, statut: "couvert", explication: "x" })),
-            erreurs_candidates: [],
-          }),
-        },
-      },
-    ],
-    usage: { prompt_tokens: 1, completion_tokens: 1 },
-  }),
-};
+// jamais l'inverse (AGENTS §2.4).
 
 let userId: string;
 let fiches: { id: string }[];
 
 beforeEach(async () => {
-  process.env.LLM_MODEL_CORRECTION_ERREURS = MODEL;
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply));
   const s = await seedSet();
   userId = s.userId;
   fiches = s.fiches;
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 afterAll(async () => {
-  await client`delete from prompt_log where model = ${MODEL}`;
   await cleanupAll();
 });
 

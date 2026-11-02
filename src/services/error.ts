@@ -1,15 +1,13 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { errorEntry, tentative, subject } from "@/db/schema";
 import { loadOwnedFiche } from "./ownership";
-import type { CorrectionData } from "./session";
 import type { ErreurType } from "@/core/fiche/verdict";
 
-// ErrorService : le carnet d'erreurs. `activeForFiche` alimente la correction
-// (détection de récidive) ; `commitCandidates` enregistre les erreurs candidates
-// non rejetées quand on quitte l'écran de correction ; CRUD du carnet.
+// ErrorService : le carnet d'erreurs. Ajout manuel depuis la comparaison
+// (`addManual`), rappel des erreurs connues d'une fiche (`activeForFiche`), CRUD.
 
-const MAX_ERREURS_ACTIVES_CONTEXTE = 20; // ponytail: plafond arbitraire, à ajuster si le contexte LLM déborde
+const MAX_ERREURS_ACTIVES_AFFICHEES = 20; // ponytail: plafond arbitraire, la liste reste lisible
 
 async function assertErrorOwnership(errorId: string, userId: string) {
   const err = await db.query.errorEntry.findFirst({ where: eq(errorEntry.id, errorId) });
@@ -22,39 +20,25 @@ async function assertErrorOwnership(errorId: string, userId: string) {
 export async function activeForFiche(ficheId: string) {
   return db.query.errorEntry.findMany({
     where: and(eq(errorEntry.ficheId, ficheId), eq(errorEntry.statut, "active")),
-    limit: MAX_ERREURS_ACTIVES_CONTEXTE,
+    limit: MAX_ERREURS_ACTIVES_AFFICHEES,
   });
 }
 
-// Les candidates NON rejetées sont acceptées telles quelles (clic explicite ou
-// simple sortie de l'écran : même résultat). Récidive (`idErreurExistante`) :
-// incrémente `occurrences` au lieu de créer un doublon. Appelée une seule fois par
-// tentative (relire ou noter, chacune sortie unique de son écran de correction).
-export async function commitCandidates(userId: string, tentativeId: string, rejectedIndexes: number[] = []) {
+// Ajout manuel depuis l'écran de comparaison : l'étudiant consigne une erreur
+// qu'il vient de constater, rattachée à sa tentative (et donc à la fiche).
+export async function addManual(
+  userId: string,
+  tentativeId: string,
+  input: { type: ErreurType; description: string },
+) {
   const t = await db.query.tentative.findFirst({ where: eq(tentative.id, tentativeId) });
   if (!t) throw new Error("Tentative introuvable.");
   const { subject: subj } = await loadOwnedFiche(t.ficheId, userId);
-
-  const candidates = (t.correction as CorrectionData | null)?.erreursCandidates ?? [];
-  const rejected = new Set(rejectedIndexes);
-
-  for (const [index, candidate] of candidates.entries()) {
-    if (rejected.has(index)) continue;
-    if (candidate.idErreurExistante) {
-      await db
-        .update(errorEntry)
-        .set({ occurrences: sql`${errorEntry.occurrences} + 1` })
-        .where(eq(errorEntry.id, candidate.idErreurExistante));
-    } else {
-      await db.insert(errorEntry).values({
-        subjectId: subj.id,
-        ficheId: t.ficheId,
-        tentativeId: t.id,
-        type: candidate.type,
-        description: candidate.description,
-      });
-    }
-  }
+  const [created] = await db
+    .insert(errorEntry)
+    .values({ subjectId: subj.id, ficheId: t.ficheId, tentativeId: t.id, ...input })
+    .returning();
+  return created;
 }
 
 export interface ErrorListFilters {

@@ -9,19 +9,18 @@ import * as reviewService from "@/services/review";
 import { FocusShell } from "@/components/focus-shell";
 import { LectureView } from "@/components/lecture-view";
 import { BlurtingEditor } from "@/components/blurting-editor";
-import { CorrectionView } from "@/components/correction-view";
-import { Button } from "@astryxdesign/core/Button";
+import { ComparaisonView } from "@/components/comparaison-view";
 import {
   terminerLectureAction,
   submitBlurtingAction,
-  retryCorrectionAction,
   relireAction,
   noterAction,
   abandonAction,
+  addErrorAction,
 } from "./actions";
 
 // Session sur une fiche (ARCHITECTURE.md v2 §2) — lecture → blurting →
-// correction → note, la page rend l'état persisté du cycle.
+// comparaison côte à côte (auto-évaluation) → note ; la page rend l'état persisté du cycle.
 
 function Message({ titre, children }: { titre: string; children: React.ReactNode }) {
   return (
@@ -108,42 +107,27 @@ export default async function EtudePage({ params }: { params: Promise<{ ficheId:
   }
 
   if (cycle.etat === "correction") {
-    const current = await session.getCurrentCorrection(userId, cycle.id);
-
-    if (current.status === "pending") {
-      return (
-        <Message titre={titre}>
-          <p className="text-sm text-error">La correction a échoué. Ta restitution est sauvegardée.</p>
-          <div className="flex flex-wrap gap-2">
-            <form action={retryCorrectionAction.bind(null, cycle.id, ficheId)}>
-              <Button type="submit" size="sm" label="Relancer la correction" />
-            </form>
-            <form action={abandonAction.bind(null, cycle.id)}>
-              <Button type="submit" size="sm" variant="ghost" label="Abandonner" />
-            </form>
-          </div>
-        </Message>
-      );
-    }
-
-    const [notes, preview] = await Promise.all([
+    const [comparaison, notes, preview] = await Promise.all([
+      session.getComparaison(userId, cycle.id),
       session.notesPermises(cycle.id),
       reviewService.preview(userId, ficheId),
     ]);
     return (
-      <FocusShell>
-        <CorrectionView
+      <FocusShell wide>
+        <ComparaisonView
           ficheTitre={titre}
-          numero={current.numero}
-          verdict={current.verdict}
-          input={current.input}
-          points={current.points}
-          erreursCandidates={current.erreursCandidates}
+          tentativeId={comparaison.tentativeId}
+          numero={comparaison.numero}
+          input={comparaison.input}
+          contenu={comparaison.contenu}
+          points={comparaison.points}
+          erreursConnues={comparaison.erreursConnues}
           notes={notes}
           preview={preview}
-          relireAction={current.numero === 1 ? relireAction.bind(null, cycle.id, ficheId) : undefined}
+          relireAction={comparaison.numero === 1 ? relireAction.bind(null, cycle.id, ficheId) : undefined}
           noterAction={noterAction.bind(null, cycle.id)}
           abandonAction={abandonAction.bind(null, cycle.id)}
+          addErrorAction={addErrorAction}
         />
       </FocusShell>
     );

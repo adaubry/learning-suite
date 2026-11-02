@@ -37,7 +37,7 @@ Pour briser la résistance des tribunaux, la Constituante interdit aux juges …
 ## 3. Ce que l'app en fait
 
 - Le corps de la fiche (tout ce qui suit le titre 2, jusqu'au titre 2 suivant) est stocké tel quel et affiché tel quel en lecture.
-- Les **points de contrôle** de la correction en sont dérivés en code (ARCHITECTURE §6). Les « Complément (hors cours) » ne sont jamais exigés dans un blurting.
+- La **liste à cocher** de la comparaison en est dérivée en code (ARCHITECTURE §6). Les « Complément (hors cours) » n'y figurent jamais.
 - Les commentaires Word/Google ne passent pas l'export Markdown : ils restent dans le document source.
 
 ## 4. Ré-import

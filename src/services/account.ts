@@ -130,8 +130,7 @@ export async function updatePlannerConfig(userId: string, nouvellesParJour: numb
   return row;
 }
 
-// Export JSON complet, archives comprises. prompt_log n'a pas de user_id
-// (mono-utilisateur) : exporté en entier.
+// Export JSON complet, archives comprises.
 export async function exportUserData(userId: string) {
   const subjects = await db.query.subject.findMany({ where: eq(subject.userId, userId) });
   const subjectIds = subjects.map((s) => s.id);
@@ -142,13 +141,12 @@ export async function exportUserData(userId: string) {
   const fiches = setIds.length ? await db.query.fiche.findMany({ where: inArray(fiche.setId, setIds) }) : [];
   const ficheIds = fiches.map((f) => f.id);
 
-  const [reviewCards, studyCycles, tentatives, errorEntries, plannerCfg, promptLogs] = await Promise.all([
+  const [reviewCards, studyCycles, tentatives, errorEntries, plannerCfg] = await Promise.all([
     ficheIds.length ? db.query.reviewCard.findMany({ where: inArray(reviewCard.ficheId, ficheIds) }) : [],
     ficheIds.length ? db.query.studyCycle.findMany({ where: inArray(studyCycle.ficheId, ficheIds) }) : [],
     ficheIds.length ? db.query.tentative.findMany({ where: inArray(tentative.ficheId, ficheIds) }) : [],
     ficheIds.length ? db.query.errorEntry.findMany({ where: inArray(errorEntry.ficheId, ficheIds) }) : [],
     getPlannerConfig(userId),
-    db.query.promptLog.findMany(),
   ]);
 
   return {
@@ -162,6 +160,5 @@ export async function exportUserData(userId: string) {
     studyCycles,
     tentatives,
     errorEntries,
-    promptLogs,
   };
 }

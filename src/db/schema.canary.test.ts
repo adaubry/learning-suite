@@ -39,7 +39,6 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
   deferral_log: ["id", "date", "item_type", "item_id", "created_at", "avance"],
   refile_item: ["id", "date", "item_type", "item_id", "created_at"],
   queue_order: ["date", "order"],
-  prompt_log: ["id", "appel", "prompt_version", "model", "input_tokens", "output_tokens", "duree_ms", "statut", "created_at"],
   deadline: [
     "id",
     "subject_id",
@@ -81,7 +80,7 @@ describe("intégrité du schéma v2 (@canary)", () => {
 
     const v1 = await client`
       select table_name from information_schema.tables where table_schema = 'public'
-      and table_name in ('chapter', 'section', 'correction_guide', 'study_session', 'audit_event', 'prompt_config')
+      and table_name in ('chapter', 'section', 'correction_guide', 'study_session', 'audit_event', 'prompt_config', 'prompt_log')
     `;
     expect(v1).toEqual([]);
   });
