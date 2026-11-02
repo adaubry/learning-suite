@@ -108,7 +108,8 @@ export function extractPoints(contenu: string): PointFiche[] {
         const complement = suite.map((n) => nodeText(n)).join(" ");
         ajouterEtiquete(lu.etiquette, [lu.reste, complement].filter(Boolean).join(" "));
       } else {
-        groupe.push(nodeText(item));
+        // Ponctuation de fin d'item (« ; ») retirée : la jointure la remet.
+        groupe.push(nodeText(item).replace(/\s*[;,.]$/, ""));
       }
     }
     vider();
@@ -136,6 +137,8 @@ export function extractPoints(contenu: string): PointFiche[] {
 
   for (const node of root.children as RootContent[]) {
     if (node.type === "heading") {
+      // Titre vide (paragraphe de mise en page exporté par Google Docs) : sans effet.
+      if (nodeText(node) === "") continue;
       if (node.depth >= 3) sousTitre = nodeText(node);
       premierBloc = false;
       continue;

@@ -39,7 +39,7 @@ type Heading = { start: number; level: number; text: string };
 // Titres top-level de la fiche, avec les mêmes offsets que `data-md-start` (même parseur).
 function headingsOf(markdown: string): Heading[] {
   return parseMarkdown(markdown).children.flatMap((n) =>
-    n.type === "heading" ? [{ start: n.position!.start.offset!, level: n.depth, text: nodeText(n) }] : [],
+    n.type === "heading" && nodeText(n) ? [{ start: n.position!.start.offset!, level: n.depth, text: nodeText(n) }] : [],
   );
 }
 

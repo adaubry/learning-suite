@@ -58,6 +58,11 @@ describe("extractPoints", () => {
     });
   });
 
+  it("un sous-titre vide ne remplace pas le sous-titre courant", () => {
+    const points = extractPoints("Thèse.\n\n### Pourquoi\n\n### \n\n- **Cause :** x");
+    expect(points[1].intitule).toBe("Cause — Pourquoi");
+  });
+
   it("préfixe l'intitulé par le sous-titre courant", () => {
     const points = extractPoints("Thèse.\n\n### Pourquoi\n\n- **Cause :** x");
     expect(points[1].intitule).toBe("Cause — Pourquoi");
@@ -66,7 +71,7 @@ describe("extractPoints", () => {
   it("regroupe les puces non étiquetées consécutives en un point", () => {
     const points = extractPoints("Thèse.\n\n### Ce qu'elle crée\n\n- le préfet ;\n- les conseils ;\n- **Constat :** x");
     expect(points.slice(1).map((p) => [p.etiquette, p.attendu])).toEqual([
-      ["Liste", "le préfet ; ; les conseils ;"],
+      ["Liste", "le préfet ; les conseils"],
       ["Constat", "x"],
     ]);
   });

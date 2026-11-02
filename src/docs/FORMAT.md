@@ -27,6 +27,7 @@ Pour briser la résistance des tribunaux, la Constituante interdit aux juges …
 ```
 
 - **Titre 2 = une fiche.** Le numéro fait partie du texte (`## 3. Titre`, `## **3\. Titre**` à l'export Google : accepté). Sans numéro, la position dans le document en tient lieu.
+- **Titre 2 vide** (`## ` seul) : c'est le paragraphe qui porte le saut de page entre deux fiches (une fiche = une page) ; Google Docs l'exporte avec le style Titre 2 mais sans texte. Il clôt la fiche précédente sans en ouvrir une.
 - **Titre 3 = sous-partie** de la fiche. Il donne son contexte aux points qui suivent.
 - **Thèse** : le premier paragraphe non étiqueté qui suit le titre 2.
 - **Étiquettes** : un paragraphe ou une puce qui commence par un passage en gras terminé par « : » (`**Cause :**`). Étiquettes reconnues : Définition, Texte, Exemple, Piège, Constat, Cause, Conséquence, Nuance, Logique, Lien, Complément (hors cours). Le gras ne sert à rien d'autre.

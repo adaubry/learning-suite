@@ -36,6 +36,21 @@ describe("parseFicheSet", () => {
     expect(avertissements).toEqual(["Numéro 1 utilisé par plusieurs fiches."]);
   });
 
+  it("un titre 2 vide (saut de page exporté par Google Docs) clôt la fiche sans en ouvrir une", () => {
+    const { fiches, avertissements } = parseFicheSet("## **1\\. A**\n\nThèse A.\n\n## \n\n## **2\\. B**\n\nThèse B.\n\n## \n");
+    expect(avertissements).toEqual([]);
+    expect(fiches.map((f) => [f.numero, f.titre, f.contenu])).toEqual([
+      [1, "A", "Thèse A."],
+      [2, "B", "Thèse B."],
+    ]);
+  });
+
+  it("signale du texte orphelin après un saut de page", () => {
+    const { fiches, avertissements } = parseFicheSet("## 1. A\n\nThèse.\n\n## \n\nOrphelin.\n\n## 2. B\n\nx\n");
+    expect(fiches[0].contenu).toBe("Thèse.");
+    expect(avertissements).toEqual(["Du texte suit un titre vide (saut de page) : il est ignoré."]);
+  });
+
   it("aucune fiche si aucun titre 2", () => {
     expect(parseFicheSet("# Titre\n\nTexte\n").fiches).toEqual([]);
   });

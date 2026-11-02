@@ -47,6 +47,8 @@ function renderBlock(node: RootContent, key: string, fontClassName?: string): Re
   const anchorProps = { "data-md-start": start, "data-md-end": end };
 
   if (node.type === "heading") {
+    // Titre vide (saut de page exporté par Google Docs) : rien à afficher.
+    if (!node.children.length) return null;
     const Tag = headingTag[node.depth - 1];
     return (
       <Tag key={key} className={cn(headingClass[node.depth], fontClassName)} {...anchorProps}>
