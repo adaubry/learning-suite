@@ -75,7 +75,10 @@ export async function deleteSetAction(setId: string) {
 }
 
 export async function updatePlannerConfigAction(_prevState: unknown, formData: FormData) {
-  const parsed = plannerConfigInputSchema.safeParse({ nouvellesParJour: formData.get("nouvellesParJour") });
+  const parsed = plannerConfigInputSchema.safeParse({
+    limiter: formData.get("limiter") ?? undefined,
+    nouvellesParJour: formData.get("nouvellesParJour") ?? 3,
+  });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const userId = await requireUserId();
   await account.updatePlannerConfig(userId, parsed.data.nouvellesParJour);

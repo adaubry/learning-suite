@@ -48,7 +48,8 @@ export const plannerConfig = pgTable("planner_config", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => user.id),
-  nouvellesParJour: integer("nouvelles_par_jour").notNull().default(3),
+  // Plafond de nouvelles fiches par jour ; null = aucun plafond (toutes les fiches).
+  nouvellesParJour: integer("nouvelles_par_jour"),
   // Régularité (IMPLEMENT_SCHEDULE.md §3) : lundi de la semaine 1 du S3/S4.
   debutS3: date("debut_s3"),
   debutS4: date("debut_s4"),

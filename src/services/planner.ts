@@ -158,7 +158,8 @@ export async function todayQueue(userId: string, date: string = todayIso()): Pro
     (r) => r.avance || allStudyCandidates.some((c) => c.ficheId === r.itemId),
   ).length;
   const newStudyCandidates = allStudyCandidates.filter((c) => !deferredEtudeIds.has(c.ficheId));
-  const nouvellesParJour = Math.max(0, config.nouvellesParJour - slotsLost - etudieesAujourdhui);
+  const nouvellesParJour =
+    config.nouvellesParJour === null ? null : Math.max(0, config.nouvellesParJour - slotsLost - etudieesAujourdhui);
 
   const raw = buildDailyQueue({
     today: date,

@@ -93,13 +93,15 @@ describe("account · matières", () => {
 
 describe("account · réglages", () => {
   it("getPlannerConfig renvoie le défaut tant qu'aucune ligne n'existe", async () => {
-    expect(await account.getPlannerConfig(userId)).toMatchObject({ nouvellesParJour: 3, gelsSerieRestants: 2 });
+    expect(await account.getPlannerConfig(userId)).toMatchObject({ nouvellesParJour: null, gelsSerieRestants: 2 });
   });
 
   it("updatePlannerConfig fait un upsert idempotent", async () => {
     await account.updatePlannerConfig(userId, 5);
     await account.updatePlannerConfig(userId, 2);
     expect((await account.getPlannerConfig(userId)).nouvellesParJour).toBe(2);
+    await account.updatePlannerConfig(userId, null);
+    expect((await account.getPlannerConfig(userId)).nouvellesParJour).toBeNull();
     expect(await client`select 1 from planner_config where user_id = ${userId}`).toHaveLength(1);
   });
 

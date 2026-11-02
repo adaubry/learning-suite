@@ -4,11 +4,11 @@
 
 ## Accueil — la file du jour (`/`)
 
-- Liste ordonnée : révisions dues, puis nouvelles fiches (plafond du jour), puis re-file. Chaque ligne : titre de la fiche, set, matière, badge (Révision — retard / Nouvelle / À repasser).
+- Liste ordonnée : révisions dues, puis toutes les nouvelles fiches (ou le plafond du jour s'il est fixé dans Réglages), puis re-file. Chaque ligne : titre de la fiche, set, matière, badge (Révision — retard / Nouvelle / À repasser).
 - Actions par ligne : [Commencer] → cycle ; monter / descendre / en tête ; [Reporter].
 - Horizon 7/30 j sous la file.
 - **Sans aucune fiche** : « Importer un premier set de fiches » → `/importer`.
-- **File vide** : « Rien à faire aujourd'hui », prochaine échéance, [Avancer une fiche de demain].
+- **File vide** : « Rien à faire aujourd'hui », prochaine échéance, et, si un plafond est fixé, [Avancer une fiche de demain].
 - Bandeau de reprise si une session est ouverte.
 
 ## Import (`/importer`)
@@ -41,4 +41,4 @@ Filtres matière / statut / type. Par erreur : description, fiche d'origine, ré
 
 ## Réglages (`/reglages`)
 
-Nouvelles fiches par jour, export JSON, déconnexion.
+Plafond de nouvelles fiches par jour (optionnel, désactivé par défaut), export JSON, déconnexion.

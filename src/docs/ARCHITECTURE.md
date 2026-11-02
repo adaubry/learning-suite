@@ -57,20 +57,20 @@ file_du_jour =
                         triées par (retard DESC, proximité d'examen)
   + nouvelles_fiches    fiches `nouvelle` jamais étudiées
                         triées par (proximité d'examen, ordre : matière → set importé → numéro)
-                        plafonnées à config.nouvelles_par_jour
+                        toutes par défaut ; plafonnées à config.nouvelles_par_jour s'il est fixé
   + re_file             notes Again du jour, en fin de file
 ```
 
 - Les révisions passent toujours avant les nouvelles fiches.
-- Réordonnancement manuel du jour (QueueOrder) ; report (DeferralLog) : révision reportée = reste due ; nouvelle fiche reportée = slot perdu.
-- « Avancer une fiche de demain » depuis l'état vide : emprunte un slot de demain.
+- **Plafond optionnel** (Réglages, désactivé par défaut) : sans plafond, toutes les nouvelles fiches sont dans la file. Avec un plafond, une nouvelle fiche étudiée ou reportée dans la journée consomme son slot ; « avancer une fiche de demain » (état vide) emprunte un slot de demain.
+- Réordonnancement manuel du jour (QueueOrder) ; report (DeferralLog) : révision reportée = reste due ; nouvelle fiche reportée = retirée de la file du jour.
 - Horizon 7/30 j : charge de révisions, dette, examens.
 
 ## 4. Modèle de données (Drizzle, `src/db/schema.ts`)
 
 ```
 user              Better-Auth (src/db/auth-schema.ts)
-planner_config    user_id PK, nouvelles_par_jour, debut_s3/debut_s4,
+planner_config    user_id PK, nouvelles_par_jour (NULL = sans plafond), debut_s3/debut_s4,
                   gels_serie_restants, heure_alerte_serie, seuil_dette_reports
 subject           matière : nom, semestre, ordre, date_examen, statut active|archivee, archived_at
 fiche_set         set de fiches importé : subject_id, titre, markdown (dernier import),

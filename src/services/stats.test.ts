@@ -65,15 +65,17 @@ describe("stats · detteReports", () => {
 });
 
 describe("stats · chargeParJour", () => {
-  it("compte les ReviewCards dues non gelées, en ajoutant nouvellesParJour à chaque jour", async () => {
+  it("compte les ReviewCards dues non gelées, plus le plafond de nouvelles fiches s'il y en a un", async () => {
     await client`update fiche set statut = 'en_revision' where id = ${ficheId}`;
     const [card] = await db
       .insert(reviewCard)
       .values({ ficheId, due: "2026-07-20", stability: 1, difficulty: 1, gelee: false })
       .returning();
 
+    expect((await stats.chargeParJour(userId, "2026-07-20"))["2026-07-20"]).toBe(1); // sans plafond : révisions seules
+    await account.updatePlannerConfig(userId, 3);
     const charge = await stats.chargeParJour(userId, "2026-07-20");
-    expect(charge["2026-07-20"]).toBe(1 + 3); // nouvellesParJour par défaut = 3
+    expect(charge["2026-07-20"]).toBe(1 + 3);
     expect(Object.keys(charge)).toContain("2026-07-19");
     expect(Object.keys(charge)).toContain("2026-08-03");
 

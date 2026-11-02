@@ -83,7 +83,9 @@ export function BlurtingEditor({
           value={blurting}
           onChange={setBlurting}
           placeholder={instruction}
-          className="min-h-[50vh] flex-1"
+          // La hauteur va sur le <textarea> lui-même : sur le wrapper Astryx,
+          // le champ gardait ses 3 lignes par défaut dans une boîte plus grande.
+          className="flex-1 [&_textarea]:min-h-[60vh]"
           hasAutoFocus
         />
         <Button

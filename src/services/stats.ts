@@ -132,7 +132,8 @@ export async function chargeParJour(
 
   const result: Record<string, number> = {};
   for (let d = from; d <= to; d = addDays(d, 1)) {
-    result[d] = (parJour.get(d) ?? 0) + config.nouvellesParJour;
+    // Sans plafond, les nouvelles fiches n'ont pas de date : seules les révisions comptent.
+    result[d] = (parJour.get(d) ?? 0) + (config.nouvellesParJour ?? 0);
   }
   return result;
 }

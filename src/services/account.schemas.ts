@@ -16,7 +16,11 @@ export const subjectInputSchema = z.object({
 });
 export type SubjectInput = z.infer<typeof subjectInputSchema>;
 
-export const plannerConfigInputSchema = z.object({
-  nouvellesParJour: z.coerce.number().int().min(1).max(10),
-});
+// `limiter` absent (case décochée) ⇒ aucun plafond.
+export const plannerConfigInputSchema = z
+  .object({
+    limiter: z.literal("on").optional(),
+    nouvellesParJour: z.coerce.number().int().min(1).max(50),
+  })
+  .transform(({ limiter, nouvellesParJour }) => ({ nouvellesParJour: limiter ? nouvellesParJour : null }));
 export type PlannerConfigInput = z.infer<typeof plannerConfigInputSchema>;

@@ -1,6 +1,6 @@
 // P7 · buildDailyQueue (ARCHITECTURE.md v2 §3) — pur, sans I/O.
 // Compose la file du jour : révisions dues (retard DESC, proximité d'examen) →
-// nouvelles fiches plafonnées (proximité d'examen, ordre curriculum) → re-file
+// nouvelles fiches (proximité d'examen, ordre curriculum), plafonnées si un plafond est fixé → re-file
 // intra-journée en queue. `newStudyCandidates` est déjà filtré par l'appelant
 // (fiches `nouvelle` d'un set actif) ; le tri et le plafond restent ici.
 
@@ -44,7 +44,8 @@ export interface BuildDailyQueueInput {
   refileToday: RefileToday[];
   /** subjectId -> date d'examen ISO, ou null/absent si aucune. */
   examDates: Record<string, string | null | undefined>;
-  nouvellesParJour: number;
+  /** null = aucun plafond : toutes les nouvelles fiches. */
+  nouvellesParJour: number | null;
 }
 
 function daysBetween(fromIso: string, toIso: string): number {
@@ -96,7 +97,7 @@ export function buildDailyQueue(input: BuildDailyQueueInput): QueueItem[] {
       (a, b) =>
         (a.joursAvantExamen ?? INFINI) - (b.joursAvantExamen ?? INFINI) || a.ordreCurriculum - b.ordreCurriculum,
     )
-    .slice(0, Math.max(0, nouvellesParJour))
+    .slice(0, nouvellesParJour === null ? undefined : Math.max(0, nouvellesParJour))
     .map((c) => ({
       kind: "nouvelle_etude" as const,
       ficheId: c.ficheId,

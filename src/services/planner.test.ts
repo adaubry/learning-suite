@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import * as planner from "./planner";
+import * as account from "./account";
 import { client, cleanupAll, createSubject, createUser } from "@/test/fixtures";
 import type { QueueItem } from "@/core/planner/buildDailyQueue";
 
@@ -36,6 +37,11 @@ async function insertCard(ficheId: string, due: string, gelee = false) {
   await client`insert into review_card (fiche_id, due, stability, difficulty, reps, gelee) values (${ficheId}, ${due}, 1, 5, 1, ${gelee})`;
 }
 
+// Les tests du plafond le fixent explicitement : par défaut, il n'y en a pas.
+async function plafond(n: number) {
+  await account.updatePlannerConfig(userId, n);
+}
+
 const ids = (queue: QueueItem[]) => queue.map((i) => (i.kind === "re_file" ? i.itemId : i.ficheId));
 
 describe("planner · todayQueue", () => {
@@ -65,13 +71,20 @@ describe("planner · todayQueue", () => {
     expect(await planner.todayQueue(userId, TODAY)).toEqual([]);
   });
 
-  it("nouvelles fiches dans l'ordre des numéros, plafonnées", async () => {
+  it("sans plafond (défaut) : toutes les nouvelles fiches, dans l'ordre des numéros", async () => {
+    const fiches = [await insertFiche(), await insertFiche(), await insertFiche(), await insertFiche(), await insertFiche()];
+    expect(ids(await planner.todayQueue(userId, TODAY))).toEqual(fiches);
+  });
+
+  it("avec un plafond : nouvelles fiches dans l'ordre des numéros, plafonnées", async () => {
+    await plafond(3);
     const [a, b, c] = [await insertFiche(), await insertFiche(), await insertFiche()];
     await insertFiche();
     expect(ids(await planner.todayQueue(userId, TODAY))).toEqual([a, b, c]);
   });
 
   it("une nouvelle fiche étudiée aujourd'hui consomme son slot : le plafond tient", async () => {
+    await plafond(3);
     const [a, b, c, d] = [await insertFiche(), await insertFiche(), await insertFiche(), await insertFiche()];
     // `a` étudiée et notée aujourd'hui : elle passe en révision (carte due demain).
     await client`update fiche set statut = 'en_revision' where id = ${a}`;
@@ -84,6 +97,7 @@ describe("planner · todayQueue", () => {
   });
 
   it("defer(etude) : le slot du jour est perdu, jamais remplacé", async () => {
+    await plafond(3);
     const [a, b, c] = [await insertFiche(), await insertFiche(), await insertFiche()];
     await insertFiche();
     const date = "2026-07-13";
@@ -116,6 +130,7 @@ describe("planner · avancer une fiche de demain", () => {
   });
 
   it("advanceFromBacklog consomme un slot de DEMAIN, jamais aujourd'hui", async () => {
+    await plafond(3);
     const [a, b] = [await insertFiche(), await insertFiche()];
     await planner.advanceFromBacklog(a, "2026-07-16");
     expect(ids(await planner.todayQueue(userId, "2026-07-16"))).toEqual([a, b]);

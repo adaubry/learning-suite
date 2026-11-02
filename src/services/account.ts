@@ -98,7 +98,7 @@ export async function getPlannerConfig(userId: string) {
   return (
     row ?? {
       userId,
-      nouvellesParJour: 3,
+      nouvellesParJour: null,
       debutS3: null,
       debutS4: null,
       gelsSerieRestants: 2,
@@ -121,7 +121,8 @@ export async function updateSemesterConfig(
   return row;
 }
 
-export async function updatePlannerConfig(userId: string, nouvellesParJour: number) {
+// null = aucun plafond.
+export async function updatePlannerConfig(userId: string, nouvellesParJour: number | null) {
   const [row] = await db
     .insert(plannerConfig)
     .values({ userId, nouvellesParJour })
