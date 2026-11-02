@@ -6,18 +6,18 @@ import * as errorService from "./error";
 import * as reviewService from "./review";
 import * as plannerService from "./planner";
 import { extractPoints, type PointFiche } from "@/core/fiche/extractPoints";
-import { bilanAutoEvaluation, normaliserCoches } from "@/core/fiche/verdict";
+import { bilanAutoEvaluation, normaliserCoches, type Verdict } from "@/core/fiche/verdict";
 import type { Note } from "@/core/fsrs/fsrsCore";
 
 // SessionService — le cycle unique (ARCHITECTURE.md v2 §2). Propriétaire des
 // invariants : une seule session ouverte par utilisateur ; ≤ 2 blurtings, le 2ᵉ
-// seulement après relecture ; note limitée à Again/Hard après relecture. La
+// seulement après relecture. La
 // correction est une auto-évaluation : comparaison côte à côte avec la fiche et
 // cases cochées par l'étudiant (état `correction`), aucun appel LLM.
 //
 //   nouvelle :  lecture → blurting(1) → correction ─┬─ noter → clos
 //   révision :            blurting(1) → correction ─┤
-//                                                  └─ relire → lecture → blurting(2) → correction → noter (again|hard) → clos
+//                                                  └─ relire → lecture → blurting(2) → correction → noter → clos
 
 export class FicheNonEtudiableError extends Error {
   constructor() {
@@ -38,8 +38,6 @@ export class NoCycleOpenError extends Error {
 }
 
 export class WrongCycleStateError extends Error {}
-
-export const NOTES_APRES_RELECTURE: Note[] = ["again", "hard"];
 
 // Ce que l'étudiant a coché en se corrigeant (indices dans extractPoints de la
 // fiche telle qu'elle était à cette tentative, cf. `ficheHash`).
@@ -86,6 +84,26 @@ export async function findOpenCycle(userId: string): Promise<OpenCycleInfo | nul
     .where(and(eq(studyCycle.userId, userId), isNull(studyCycle.closedAt)));
   if (!row) return null;
   return { cycleId: row.cycle.id, ficheId: row.cycle.ficheId, ficheTitre: row.titre, type: row.cycle.type };
+}
+
+export type EtatSessionFiche =
+  | { kind: "en_cours"; cycle: typeof studyCycle.$inferSelect }
+  | { kind: "autre_session"; open: OpenCycleInfo }
+  | { kind: "non_etudiable" }
+  | { kind: "a_demarrer" };
+
+// Lecture seule, pour l'écran /etude/[ficheId] : l'afficher ne démarre jamais de
+// session (un préchargement de lien ne doit rien créer) ; le démarrage passe par
+// `start`, appelé depuis un formulaire.
+export async function etatSessionFiche(userId: string, ficheId: string): Promise<EtatSessionFiche> {
+  const { fiche: f, set, subject } = await loadOwnedFiche(ficheId, userId);
+  const open = await db.query.studyCycle.findFirst({
+    where: and(eq(studyCycle.userId, userId), isNull(studyCycle.closedAt)),
+  });
+  if (open?.ficheId === ficheId) return { kind: "en_cours", cycle: open };
+  if (open) return { kind: "autre_session", open: (await findOpenCycle(userId))! };
+  if (f.statut === "archivee" || set.statut !== "actif" || subject.statut !== "active") return { kind: "non_etudiable" };
+  return { kind: "a_demarrer" };
 }
 
 // Crée le cycle, ou reprend celui déjà ouvert sur cette fiche. Une révision
@@ -152,6 +170,8 @@ export interface Comparaison {
   contenu: string;
   points: PointFiche[];
   erreursConnues: { type: string; description: string; occurrences: number }[];
+  /** À la 2ᵉ passe : le bilan du rappel à froid (1ʳᵉ passe), pour éclairer la note. */
+  verdictPremierePasse: Verdict | null;
 }
 
 // Écran de comparaison : la restitution, la fiche, ses points à cocher, et les
@@ -163,7 +183,7 @@ export async function getComparaison(userId: string, cycleId: string): Promise<C
   if (!last) throw new WrongCycleStateError("Aucune tentative pour cette session.");
   const f = await db.query.fiche.findFirst({ where: eq(fiche.id, cycle.ficheId) });
   if (!f) throw new FicheNonEtudiableError();
-  const erreurs = await errorService.activeForFiche(f.id);
+  const [erreurs, passes] = await Promise.all([errorService.activeForFiche(f.id), tentatives(cycleId)]);
   return {
     tentativeId: last.id,
     numero: last.numero,
@@ -171,6 +191,7 @@ export async function getComparaison(userId: string, cycleId: string): Promise<C
     contenu: f.contenu,
     points: extractPoints(f.contenu),
     erreursConnues: erreurs.map((e) => ({ type: e.type, description: e.description, occurrences: e.occurrences })),
+    verdictPremierePasse: last.numero === 2 ? (passes.find((t) => t.numero === 1)?.verdict ?? null) : null,
   };
 }
 
@@ -198,20 +219,12 @@ export async function relire(userId: string, cycleId: string, coches: number[] =
   await db.update(studyCycle).set({ etat: "lecture" }).where(eq(studyCycle.id, cycleId));
 }
 
-// Notes proposées à la clôture : toutes, sauf après une relecture (Again/Hard).
-export async function notesPermises(cycleId: string): Promise<Note[]> {
-  const n = (await tentatives(cycleId)).length;
-  return n >= 2 ? NOTES_APRES_RELECTURE : ["again", "hard", "good", "easy"];
-}
-
-// Clôture : la note de l'utilisateur (jamais le verdict) pilote FSRS. Après une
-// relecture, seules Again/Hard sont admises : le rappel à froid a échoué.
+// Clôture : la note de l'utilisateur pilote FSRS. Les 4 notes sont toujours
+// proposées, y compris après une relecture (DECISIONS.md 2026-11-02) : l'écran
+// rappelle alors le bilan de la 1ʳᵉ passe, à froid.
 export async function noter(userId: string, cycleId: string, note: Note, coches: number[] = []) {
   const cycle = await loadOwnedOpenCycle(userId, cycleId);
   if (cycle.etat !== "correction") throw new WrongCycleStateError("Aucune comparaison à noter.");
-  if (!(await notesPermises(cycleId)).includes(note)) {
-    throw new WrongCycleStateError("Après une relecture, la note est Again ou Hard.");
-  }
 
   await enregistrerCoches(cycleId, cycle.ficheId, coches);
   await reviewService.createOrRate(userId, cycle.ficheId, note);

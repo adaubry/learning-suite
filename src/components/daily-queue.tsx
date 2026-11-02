@@ -32,6 +32,7 @@ export function DailyQueue({
   nextDeadline,
   backlogCandidate,
   advanceAction,
+  startAction,
 }: {
   queue: QueueItem[];
   infoById: Map<string, QueueFicheInfo>;
@@ -44,6 +45,8 @@ export function DailyQueue({
   backlogCandidate: { ficheId: string; titre: string } | null;
   /** Avance la candidate à aujourd'hui en empruntant un slot de demain. */
   advanceAction: (ficheId: string) => Promise<void>;
+  /** Démarre la session (POST) : un lien serait préchargé et rendrait la page de session. */
+  startAction: (ficheId: string) => Promise<void>;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const lockSubmit = () => setSubmitting(true);
@@ -124,7 +127,9 @@ export function DailyQueue({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" label="Commencer" href={`/etude/${ficheId}`} as={Link} />
+              <form action={startAction.bind(null, ficheId)} onSubmit={lockSubmit}>
+                <Button type="submit" size="sm" isDisabled={submitting} label="Commencer" />
+              </form>
               <form action={deferAction.bind(null, itemType, ficheId)} onSubmit={lockSubmit}>
                 <Button type="submit" size="sm" variant="ghost" isDisabled={submitting} label="Reporter" />
               </form>

@@ -75,6 +75,7 @@ export function AppShell({
                 endContent={
                   <Link
                     href={resumeHref}
+                    prefetch={false}
                     className="font-medium underline whitespace-nowrap"
                   >
                     Reprendre la session

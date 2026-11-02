@@ -28,7 +28,7 @@
 2. **Blurting** : titre seul, aucun accès à la fiche. Badge « Nouvelle » ou « Révision — Nᵉ rappel », tentative n°1/2, chrono discret. [Soumettre] ; [Abandonner].
 3. **Comparaison** (auto-évaluation, aucun LLM) : à gauche ta restitution puis la liste des points de la fiche à cocher (badge « essentiel » / « raisonnement », lien « Au carnet d'erreurs » par point), puis tes erreurs déjà relevées sur cette fiche ; à droite la fiche complète. Bilan en direct : points, essentiels, raisonnement cochés.
    - Tentative 1 : [Relire puis refaire] et la notation, la relecture est mise en avant s'il manque un point essentiel.
-   - Notation : Again / Hard / Good / Easy avec l'échéance prévue sous chaque bouton. Après une relecture : Again / Hard seulement.
+   - Notation : Again / Hard / Good / Easy avec l'échéance prévue sous chaque bouton. Après une relecture, rappel du bilan de la 1ʳᵉ passe (à froid).
 4. Après la note : retour à l'accueil.
 
 ## Carnet d'erreurs (`/erreurs`)

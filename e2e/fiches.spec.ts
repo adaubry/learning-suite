@@ -40,7 +40,7 @@ test("importer un set de fiches puis ouvrir une session", async ({ page, request
 
   await page.goto("/");
   await expect(page.getByText("1. Les notions anciennes : bien commun et res publica", { exact: true }).first()).toBeVisible();
-  await page.getByRole("link", { name: "Commencer" }).first().dispatchEvent("click");
+  await page.getByRole("button", { name: "Commencer" }).first().click();
 
   await expect(page.getByText("Lecture", { exact: true })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Origine" })).toBeVisible();

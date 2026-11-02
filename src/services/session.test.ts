@@ -69,6 +69,25 @@ describe("session · démarrage", () => {
   });
 });
 
+describe("session · état de l'écran (lecture seule)", () => {
+  it("etatSessionFiche ne crée jamais de session (un préchargement ne doit rien démarrer)", async () => {
+    expect(await session.etatSessionFiche(userId, ficheId)).toEqual({ kind: "a_demarrer" });
+    expect(await session.findOpenCycle(userId)).toBeNull();
+  });
+
+  it("en_cours sur la fiche ouverte, autre_session ailleurs, non_etudiable si archivée", async () => {
+    const cycle = await session.start(userId, ficheId);
+    expect(await session.etatSessionFiche(userId, ficheId)).toMatchObject({ kind: "en_cours", cycle: { id: cycle.id } });
+    expect(await session.etatSessionFiche(userId, fiches[1].id)).toMatchObject({
+      kind: "autre_session",
+      open: { ficheId },
+    });
+    await session.abandon(userId, cycle.id);
+    await client`update fiche set statut = 'archivee' where id = ${fiches[1].id}`;
+    expect(await session.etatSessionFiche(userId, fiches[1].id)).toEqual({ kind: "non_etudiable" });
+  });
+});
+
 describe("session · blurting et comparaison", () => {
   it("submitBlurting refusé pendant la lecture", async () => {
     const cycle = await session.start(userId, ficheId);
@@ -119,9 +138,13 @@ describe("session · relecture et 2ᵉ passe", () => {
     await expect(session.relire(userId, cycleId)).rejects.toThrow(session.WrongCycleStateError);
   });
 
-  it("notesPermises : les 4 à la tentative 1", async () => {
+  it("verdictPremierePasse : null à la 1ʳᵉ passe, bilan de la 1ʳᵉ à la 2ᵉ", async () => {
     const { cycleId } = await jusquaComparaison();
-    expect(await session.notesPermises(cycleId)).toEqual(["again", "hard", "good", "easy"]);
+    expect((await session.getComparaison(userId, cycleId)).verdictPremierePasse).toBeNull();
+    await session.relire(userId, cycleId, [0, 1]);
+    await session.terminerLecture(userId, cycleId);
+    await session.submitBlurting(userId, cycleId, "seconde");
+    expect((await session.getComparaison(userId, cycleId)).verdictPremierePasse).toBe("bon");
   });
 });
 

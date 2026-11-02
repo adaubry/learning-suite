@@ -3,8 +3,8 @@ import * as session from "./session";
 import { client, cleanupAll, seedSet } from "@/test/fixtures";
 
 // @canary — invariants du cycle (ARCHITECTURE.md v2 §2, §8) : une seule session
-// ouverte ; ≤ 2 blurtings ; après relecture la note est Again ou Hard (le rappel
-// à froid a échoué). Un canari rouge invalide la modification qui l'a cassé,
+// ouverte ; ≤ 2 blurtings ; la note reste libre après relecture (décision de
+// l'humain, DECISIONS.md 2026-11-02, qui remplace « Again/Hard seulement »). Un canari rouge invalide la modification qui l'a cassé,
 // jamais l'inverse (AGENTS §2.4).
 
 let userId: string;
@@ -31,12 +31,10 @@ async function deuxPasses(ficheId: string) {
 }
 
 describe("session (@canary)", () => {
-  it("après relecture, seules Again et Hard sont acceptées", async () => {
+  it("après relecture, les 4 notes restent acceptées ; la 1ʳᵉ passe est rappelée", async () => {
     const cycleId = await deuxPasses(fiches[0].id);
-    expect(await session.notesPermises(cycleId)).toEqual(["again", "hard"]);
-    await expect(session.noter(userId, cycleId, "good")).rejects.toThrow(session.WrongCycleStateError);
-    await expect(session.noter(userId, cycleId, "easy")).rejects.toThrow(session.WrongCycleStateError);
-    await expect(session.noter(userId, cycleId, "hard")).resolves.toBeUndefined();
+    expect((await session.getComparaison(userId, cycleId)).verdictPremierePasse).toBe("insuffisant");
+    await expect(session.noter(userId, cycleId, "good")).resolves.toBeUndefined();
   });
 
   it("deux blurtings maximum : pas de 3ᵉ passe", async () => {

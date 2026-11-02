@@ -5,6 +5,7 @@ import { FicheIntrouvableError } from "@/services/ownership";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { MarkdownViewer } from "@/components/markdown-viewer";
+import { commencerAction } from "../../../(focus)/etude/[ficheId]/actions";
 
 // Fiche en lecture seule (USER_FLOW.md v2) : contenu, prochaine révision,
 // historique des sessions notées. Hors session : rien n'y est mesuré.
@@ -45,7 +46,11 @@ export default async function FichePage({ params }: { params: Promise<{ id: stri
           {card && fiche.statut === "en_revision" && (
             <Badge variant="neutral" label={`prochaine révision : ${formatDate(card.due)}`} />
           )}
-          {etudiable && <Button size="sm" label="Étudier maintenant" href={`/etude/${fiche.id}`} />}
+          {etudiable && (
+            <form action={commencerAction.bind(null, fiche.id)}>
+              <Button type="submit" size="sm" label="Étudier maintenant" />
+            </form>
+          )}
         </div>
       </div>
 

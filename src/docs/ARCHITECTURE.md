@@ -34,7 +34,7 @@
           relecture (fiche complète)
                │ [Je suis prêt] → 30 s + puzzle d'échecs
                ▼
-          blurting n°2 → comparaison n°2 ─▶ [Noter] Again/Hard uniquement ─▶ clos
+          blurting n°2 → comparaison n°2 ─▶ [Noter] Again/Hard/Good/Easy ─▶ clos
 ```
 
 Règles :
@@ -42,7 +42,8 @@ Règles :
 - **Révision = rappel à froid** : une fiche `en_revision` commence directement au blurting, sans lecture.
 - **2 blurtings maximum** par cycle ; le 2ᵉ n'existe qu'après une relecture.
 - **Comparaison** : la restitution et la fiche côte à côte ; sous la restitution, les points de la fiche (§6) à cocher. Le **bilan** (calculé en code, `core/fiche/verdict`) donne points cochés, essentiels cochés, raisonnement coché, et un verdict : `insuffisant` si un point `critique` (thèse, Définition, Texte) n'est pas coché, sinon `bon`. Il choisit le bouton primaire : `insuffisant` → [Relire puis refaire], `bon` → [Noter]. Les deux restent toujours disponibles à la tentative 1. Les cases sont enregistrées sur la tentative en quittant l'écran.
-- **Note après relecture : Again ou Hard uniquement.** Avoir eu besoin de relire, c'est un rappel à froid raté ; c'est ce que FSRS doit enregistrer. La 2ᵉ passe sert à apprendre, pas à mesurer. (Invariant tenu par SessionService.)
+- **Note libre, y compris après relecture** (décision de l'humain, remplace « Again/Hard seulement ») : l'écran de la 2ᵉ passe rappelle le bilan de la 1ʳᵉ, à froid, pour que la note reflète le rappel réel.
+- **Démarrer une session est une action explicite** (formulaire [Commencer]) ; afficher `/etude/[ficheId]` ne démarre jamais rien (lecture seule de l'état), pour qu'un préchargement de lien ne crée pas de session.
 - **Raisonnement** : les points étiquetés Cause/Conséquence/Logique sont comptés à part (« raisonnement : x/y »), pour distinguer « j'ai donné la règle » de « j'ai dit pourquoi ».
 - **Carnet d'erreurs** : depuis chaque point, l'étudiant consigne une erreur (oubli, déformation, confusion, imprécision) ; les erreurs actives de la fiche s'affichent à la comparaison suivante.
 - **Again ⇒ re-file** : la fiche revient en fin de file du jour même.
@@ -125,7 +126,6 @@ v2.0 corrigeait chaque blurting par un appel OpenRouter (~10 s, ~6 000 tokens). 
 |---|---|---|
 | Une seule session ouverte par utilisateur | SessionService | index unique partiel |
 | ≤ 2 blurtings par cycle ; relecture seulement après la tentative 1 | SessionService | — |
-| Note après relecture ∈ {Again, Hard} | SessionService | test canari |
 | FSRS piloté par la note utilisateur | ReviewService | test canari |
 | Ré-import : historique FSRS conservé pour les fiches appariées | FicheService | test canari |
 | Gel/dégel des cartes | ReviewService | — |

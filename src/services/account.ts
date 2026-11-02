@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -93,7 +94,8 @@ export async function deleteSubject(userId: string, subjectId: string) {
   await db.delete(subject).where(eq(subject.id, subjectId));
 }
 
-export async function getPlannerConfig(userId: string) {
+// `cache` : lue une fois par requête (layout, file du jour, Régularité la demandent tous).
+export const getPlannerConfig = cache(async (userId: string) => {
   const row = await db.query.plannerConfig.findFirst({ where: eq(plannerConfig.userId, userId) });
   return (
     row ?? {
@@ -106,7 +108,7 @@ export async function getPlannerConfig(userId: string) {
       seuilDetteReports: 3,
     }
   );
-}
+});
 
 // Régularité (IMPLEMENT_SCHEDULE.md §3) : debutS3/debutS4 configurés depuis l'écran Régularité.
 export async function updateSemesterConfig(

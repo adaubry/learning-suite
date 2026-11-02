@@ -12,6 +12,7 @@
 | Répétition espacée | ts-fsrs (`enable_short_term: false`) |
 | UI | Astryx (`@astryxdesign/core`), Tailwind 4, lucide-react |
 | Distracteur | chess.js + react-chessboard (puzzles hors ligne, CHESS.md) |
+| Hébergement | Vercel, fonctions en `fra1` (Francfort, `vercel.json`) au plus près de Neon `eu-central-1` |
 | Tâches de fond | Route Handler `/api/cron` + Vercel Cron |
 | Tests | Vitest (unitaires + services contre Postgres local), Playwright (e2e) |
 

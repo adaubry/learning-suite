@@ -8,6 +8,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { DailyQueue, type QueueFicheInfo } from "@/components/daily-queue";
 import { HorizonChart } from "@/components/horizon-chart";
 import { deferAction, reorderAction, advanceFromBacklogAction } from "./planner-actions";
+import { commencerAction } from "../(focus)/etude/[ficheId]/actions";
 
 // Accueil = la file du jour (ARCHITECTURE.md v2 §3, USER_FLOW.md v2).
 
@@ -74,6 +75,7 @@ export default async function HomePage() {
         nextDeadline={nextDeadline}
         backlogCandidate={backlogCandidate}
         advanceAction={advanceFromBacklogAction}
+        startAction={commencerAction}
       />
       <HorizonChart horizon={horizon} subjectNomById={subjectNomById} />
     </div>

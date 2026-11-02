@@ -22,6 +22,19 @@ function parseCoches(formData: FormData): number[] {
   }
 }
 
+// [Commencer] (file du jour, page fiche, écran d'accueil de la session) : seul
+// point qui démarre une session. Une session déjà ouverte ailleurs ou une fiche
+// archivée sont expliquées par la page elle-même, d'où la redirection dans tous les cas.
+export async function commencerAction(ficheId: string) {
+  const userId = await requireUserId();
+  try {
+    await session.start(userId, ficheId);
+  } catch (e) {
+    if (!(e instanceof session.SessionAlreadyOpenError || e instanceof session.FicheNonEtudiableError)) throw e;
+  }
+  redirect(`/etude/${ficheId}`);
+}
+
 export async function terminerLectureAction(cycleId: string, ficheId: string) {
   const userId = await requireUserId();
   await session.terminerLecture(userId, cycleId);

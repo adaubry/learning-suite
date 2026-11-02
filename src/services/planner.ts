@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { reviewCard, fiche, ficheSet, subject, deferralLog, refileItem, queueOrder, studyCycle } from "@/db/schema";
@@ -22,7 +23,9 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-async function loadExamDates(userId: string) {
+// Chargements partagés par todayQueue/horizon/nextDeadline/nextBacklogCandidate,
+// tous appelés par l'accueil : `cache` les exécute une fois par requête.
+const loadExamDates = cache(async (userId: string) => {
   const subjects = await db.query.subject.findMany({
     where: and(eq(subject.userId, userId), eq(subject.statut, "active")),
   });
@@ -30,10 +33,10 @@ async function loadExamDates(userId: string) {
     subjects,
     examDates: Object.fromEntries(subjects.map((s) => [s.id, s.dateExamen])) as Record<string, string | null>,
   };
-}
+});
 
 // Cartes non gelées des fiches actives (set actif, matière active).
-async function loadActiveReviewCards(userId: string): Promise<ReviewCardInput[]> {
+const loadActiveReviewCards = cache(async (userId: string): Promise<ReviewCardInput[]> => {
   return db
     .select({ ficheId: reviewCard.ficheId, due: reviewCard.due, subjectId: subject.id })
     .from(reviewCard)
@@ -49,7 +52,7 @@ async function loadActiveReviewCards(userId: string): Promise<ReviewCardInput[]>
         eq(reviewCard.gelee, false),
       ),
     );
-}
+});
 
 // Nouvelles fiches déjà étudiées (cycle `etude` noté) ce jour-là : elles ont quitté
 // le vivier, mais leur slot du jour est consommé — sans ce décompte, chaque fiche
@@ -69,13 +72,13 @@ async function countNewFichesStudied(userId: string, date: string): Promise<numb
   return row?.n ?? 0;
 }
 
-async function loadDeferredToday(date: string) {
-  return db.query.deferralLog.findMany({ where: eq(deferralLog.date, date) });
-}
+const loadDeferredToday = cache(async (date: string) =>
+  db.query.deferralLog.findMany({ where: eq(deferralLog.date, date) }),
+);
 
 // Vivier COMPLET des nouvelles fiches (jamais filtré par les reports du jour ici) :
 // todayQueue a besoin de la liste entière pour compter les slots perdus.
-async function loadNewFicheCandidates(userId: string) {
+const loadNewFicheCandidates = cache(async (userId: string) => {
   const rows = await db
     .select({
       ficheId: fiche.id,
@@ -99,7 +102,7 @@ async function loadNewFicheCandidates(userId: string) {
   return rows
     .sort(compareOrdreCurriculum)
     .map((r, i) => ({ ficheId: r.ficheId, subjectId: r.subjectId, ordreCurriculum: i }));
-}
+});
 
 // Exportée : l'UI sérialise l'ordre courant dans les formulaires de
 // réordonnancement (boutons monter/descendre).

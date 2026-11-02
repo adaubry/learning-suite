@@ -9,15 +9,18 @@ import { Selector } from "@astryxdesign/core/Selector";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { MarkdownViewer } from "@/components/markdown-viewer";
 import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
-import { bilanAutoEvaluation, type ErreurType } from "@/core/fiche/verdict";
+import { bilanAutoEvaluation, type ErreurType, type Verdict } from "@/core/fiche/verdict";
 import type { PointFiche } from "@/core/fiche/extractPoints";
 import type { Note } from "@/core/fsrs/fsrsCore";
 
 // ComparaisonView (ARCHITECTURE.md v2 §2) — auto-évaluation : la restitution et
 // la fiche côte à côte, les points de la fiche à cocher, puis la sortie :
-// tentative 1 → [Relire puis refaire] ou noter ; tentative 2 → noter (Again/Hard).
+// tentative 1 → [Relire puis refaire] ou noter ; tentative 2 → noter (rappel du
+// bilan de la 1ʳᵉ passe, à froid, pour éclairer la note).
 // Le bilan se recalcule à chaque case ; s'il manque un point essentiel, la
 // relecture est mise en avant, l'étudiant décide.
+
+const NOTES: Note[] = ["again", "hard", "good", "easy"];
 
 const TYPE_LABEL: Record<ErreurType, string> = {
   omission: "Oubli",
@@ -78,7 +81,7 @@ export function ComparaisonView({
   contenu,
   points,
   erreursConnues,
-  notes,
+  verdictPremierePasse,
   preview,
   relireAction,
   noterAction,
@@ -92,7 +95,7 @@ export function ComparaisonView({
   contenu: string;
   points: PointFiche[];
   erreursConnues: { type: string; description: string; occurrences: number }[];
-  notes: Note[];
+  verdictPremierePasse: Verdict | null;
   preview: Record<Note, { due: string }>;
   /** Tentative 1 seulement. */
   relireAction?: (formData: FormData) => Promise<void>;
@@ -195,12 +198,16 @@ export function ComparaisonView({
           </form>
         )}
         <p className="text-sm font-medium">
-          {numero === 2
-            ? "Après une relecture, le rappel à froid n'a pas tenu : Again ou Hard."
-            : "À quel point c'était difficile de t'en souvenir ?"}
+          À quel point c&apos;était difficile de t&apos;en souvenir ?
+          {verdictPremierePasse && (
+            <span className="block font-normal text-secondary">
+              Note ton rappel à froid : à la 1ʳᵉ passe,{" "}
+              {verdictPremierePasse === "bon" ? "l'essentiel y était" : "il manquait un point essentiel"}.
+            </span>
+          )}
         </p>
         <FsrsRatingBar
-          notes={notes}
+          notes={NOTES}
           preview={preview}
           rateAction={noterAction}
           hiddenFields={{ coches: cochesField }}

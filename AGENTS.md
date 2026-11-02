@@ -34,7 +34,7 @@ Specs de composants encore en vigueur : CHESS.md / CHESS2.md (puzzle distracteur
 2. **Aucune logique métier dans une Server Action.** Gabarit strict : auth → validation zod → appel d'UN service → retour. Tout dépassement descend dans `src/services/`.
 3. **Aucun appel LLM.** L'humain a retiré la correction LLM (coût, lenteur) au profit de l'auto-évaluation ; réintroduire un LLM se décide avec lui. Le cas échéant : un seul point d'accès serveur, sorties validées par zod, prompts versionnés dans `/prompts` (voir l'historique git et PROMPTS_CHANGELOG.md).
 4. **Ne jamais modifier un test tagué `@canary`** ni assouplir une assertion pour « faire passer » — un canari rouge invalide la modification, pas le test. Le déplacement/renommage d'un canari requiert une autorisation humaine explicite.
-5. **Ne jamais réimplémenter un invariant.** Chaque invariant a UN propriétaire (ARCHITECTURE §8) : session unique ouverte, ≤ 2 blurtings, note Again/Hard après relecture → SessionService ; note FSRS de l'utilisateur, gel des cartes → ReviewService ; historique FSRS conservé au ré-import → FicheService.
+5. **Ne jamais réimplémenter un invariant.** Chaque invariant a UN propriétaire (ARCHITECTURE §8) : session unique ouverte, ≤ 2 blurtings, démarrage seulement par action explicite → SessionService ; note FSRS de l'utilisateur, gel des cartes → ReviewService ; historique FSRS conservé au ré-import → FicheService.
 6. **Hors périmètre, refus par défaut** (ARCHITECTURE §10) : génération de fiches dans l'app, dialogue oral / Feynman, multi-utilisateur, mobile natif, import PDF. Le proposer = scope creep.
 
 ## 3. Architecture — rappels opposables

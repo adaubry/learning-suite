@@ -5,12 +5,15 @@ import { db } from "@/db";
 import { fiche, reviewCard } from "@/db/schema";
 import { requireUserId } from "@/lib/auth";
 import * as session from "@/services/session";
+import { FicheIntrouvableError } from "@/services/ownership";
 import * as reviewService from "@/services/review";
 import { FocusShell } from "@/components/focus-shell";
 import { LectureView } from "@/components/lecture-view";
 import { BlurtingEditor } from "@/components/blurting-editor";
 import { ComparaisonView } from "@/components/comparaison-view";
+import { Button } from "@astryxdesign/core/Button";
 import {
+  commencerAction,
   terminerLectureAction,
   submitBlurtingAction,
   relireAction,
@@ -41,35 +44,45 @@ export default async function EtudePage({ params }: { params: Promise<{ ficheId:
   if (!f) notFound();
   const titre = `${f.numero}. ${f.titre}`;
 
-  let cycle;
+  let etat;
   try {
-    cycle = await session.start(userId, ficheId);
+    etat = await session.etatSessionFiche(userId, ficheId);
   } catch (e) {
-    if (e instanceof session.SessionAlreadyOpenError) {
-      const open = await session.findOpenCycle(userId);
-      return (
-        <Message titre={titre}>
-          <p className="text-sm text-secondary">
-            Une autre session est déjà ouverte{open ? ` (${open.ficheTitre})` : ""} — termine-la ou abandonne-la d&apos;abord.
-          </p>
-          <Link href={open ? `/etude/${open.ficheId}` : "/"} className="self-start text-sm underline">
-            Reprendre cette session
-          </Link>
-        </Message>
-      );
-    }
-    if (e instanceof session.FicheNonEtudiableError) {
-      return (
-        <Message titre={titre}>
-          <p className="text-sm text-secondary">{e.message}</p>
-          <Link href="/" className="self-start text-sm underline">
-            Retour à l&apos;accueil
-          </Link>
-        </Message>
-      );
-    }
+    if (e instanceof FicheIntrouvableError) notFound();
     throw e;
   }
+  if (etat.kind === "autre_session") {
+    return (
+      <Message titre={titre}>
+        <p className="text-sm text-secondary">
+          Une autre session est déjà ouverte ({etat.open.ficheTitre}) — termine-la ou abandonne-la d&apos;abord.
+        </p>
+        <Link href={`/etude/${etat.open.ficheId}`} prefetch={false} className="self-start text-sm underline">
+          Reprendre cette session
+        </Link>
+      </Message>
+    );
+  }
+  if (etat.kind === "non_etudiable") {
+    return (
+      <Message titre={titre}>
+        <p className="text-sm text-secondary">Cette fiche n&apos;est pas à étudier (archivée).</p>
+        <Link href="/" className="self-start text-sm underline">
+          Retour à l&apos;accueil
+        </Link>
+      </Message>
+    );
+  }
+  if (etat.kind === "a_demarrer") {
+    return (
+      <Message titre={titre}>
+        <form action={commencerAction.bind(null, ficheId)}>
+          <Button type="submit" label="Commencer la session" />
+        </form>
+      </Message>
+    );
+  }
+  const { cycle } = etat;
 
   if (cycle.etat === "lecture") {
     const numero = await session.prochaineTentative(cycle.id);
@@ -107,9 +120,8 @@ export default async function EtudePage({ params }: { params: Promise<{ ficheId:
   }
 
   if (cycle.etat === "correction") {
-    const [comparaison, notes, preview] = await Promise.all([
+    const [comparaison, preview] = await Promise.all([
       session.getComparaison(userId, cycle.id),
-      session.notesPermises(cycle.id),
       reviewService.preview(userId, ficheId),
     ]);
     return (
@@ -122,7 +134,7 @@ export default async function EtudePage({ params }: { params: Promise<{ ficheId:
           contenu={comparaison.contenu}
           points={comparaison.points}
           erreursConnues={comparaison.erreursConnues}
-          notes={notes}
+          verdictPremierePasse={comparaison.verdictPremierePasse}
           preview={preview}
           relireAction={comparaison.numero === 1 ? relireAction.bind(null, cycle.id, ficheId) : undefined}
           noterAction={noterAction.bind(null, cycle.id)}
@@ -133,6 +145,6 @@ export default async function EtudePage({ params }: { params: Promise<{ ficheId:
     );
   }
 
-  // clos : start() reprend un cycle ouvert ou en crée un, jamais un cycle clos.
+  // clos : etatSessionFiche ne renvoie jamais un cycle clos.
   notFound();
 }
