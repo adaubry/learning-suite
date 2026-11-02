@@ -1,21 +1,13 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
-import { unified } from "unified";
-import remarkParse from "remark-parse";
-import remarkFrontmatter from "remark-frontmatter";
-import type { Root, RootContent, Paragraph, Text } from "mdast";
+import type { Root, RootContent, Paragraph, Text, Table } from "mdast";
+import { parseMarkdown } from "@/core/fiche/markdown";
 import { cn } from "@/lib/utils";
 
-// U3 MarkdownViewer (FUNCTIONS §6.1) : rendu maison depuis l'AST remark — gras
-// (important) et italique (commentaire étudiant) stylés distinctement, mêmes
-// couleurs partout (FORMAT §2.2/§2.3). TECH_MAPPING §4.1 : pas de lib HTML,
-// composants custom pour les 2 constructions stylées.
-//
-// `data-md-start`/`data-md-end` sur chaque bloc top-level : ancrage utilisé par
-// U5 AnomalyPanel pour le scroll-to-occurrence.
-
-const processor = unified().use(remarkParse).use(remarkFrontmatter);
+// MarkdownViewer : rendu maison depuis l'AST remark (GFM : tableaux des fiches,
+// FORMAT.md v2). Pas de lib HTML. `data-md-start`/`data-md-end` sur chaque bloc
+// top-level : ancrage du sommaire de lecture (AnnotatedCourse).
 
 function offsets(node: RootContent) {
   return { start: node.position!.start.offset!, end: node.position!.end.offset! };
@@ -26,19 +18,12 @@ function renderInline(nodes: RootContent[], key: string): ReactNode {
     const k = `${key}-${i}`;
     if (node.type === "text") return (node as Text).value;
     if (node.type === "strong") {
-      return (
-        <strong key={k} className="rounded-none bg-yellow-subtle px-0.5">
-          {renderInline(node.children as RootContent[], k)}
-        </strong>
-      );
+      return <strong key={k}>{renderInline(node.children as RootContent[], k)}</strong>;
     }
     if (node.type === "emphasis") {
-      return (
-        <em key={k} className="rounded-none bg-blue-subtle px-0.5 not-italic text-blue-vivid">
-          {renderInline(node.children as RootContent[], k)}
-        </em>
-      );
+      return <em key={k}>{renderInline(node.children as RootContent[], k)}</em>;
     }
+    if (node.type === "inlineCode") return <code key={k}>{node.value}</code>;
     if (node.type === "break") return <br key={k} />;
     if ("children" in node && Array.isArray(node.children)) {
       return <span key={k}>{renderInline(node.children as RootContent[], k)}</span>;
@@ -90,7 +75,8 @@ function renderBlock(node: RootContent, key: string, fontClassName?: string): Re
       </Tag>
     );
   }
-  // Contenu ordinaire toléré (FORMAT §2.6, ex. blockquote/table) : transmis en bloc brut minimal.
+  if (node.type === "table") return renderTable(node, key, anchorProps, fontClassName);
+  // Autre contenu (blockquote…) : bloc brut minimal.
   if ("children" in node && Array.isArray(node.children)) {
     return (
       <div key={key} {...anchorProps}>
@@ -101,10 +87,45 @@ function renderBlock(node: RootContent, key: string, fontClassName?: string): Re
   return null;
 }
 
+function renderTable(
+  node: Table,
+  key: string,
+  anchorProps: Record<string, number>,
+  fontClassName?: string,
+): ReactNode {
+  const [head, ...body] = node.children;
+  return (
+    <div key={key} className="overflow-x-auto" {...anchorProps}>
+      <table className={cn("w-full border-collapse text-left", fontClassName)}>
+        <thead>
+          <tr>
+            {head.children.map((cell, i) => (
+              <th key={i} className="border border-border bg-muted px-2 py-1 font-semibold">
+                {renderInline(cell.children as RootContent[], `${key}-h${i}`)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, r) => (
+            <tr key={r}>
+              {row.children.map((cell, i) => (
+                <td key={i} className="border border-border px-2 py-1 align-top">
+                  {renderInline(cell.children as RootContent[], `${key}-${r}-${i}`)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function MarkdownViewer({ markdown, className }: { markdown: string; className?: string }) {
   // Mémoïsé sur `markdown` : sans ça, tout re-render du parent (ex. frappe
-  // dans une note de marge, AnnotatedCourse) reparse tout le chapitre.
-  const root = useMemo(() => processor.parse(markdown) as Root, [markdown]);
+  // dans une note de marge, AnnotatedCourse) reparse toute la fiche.
+  const root = useMemo(() => parseMarkdown(markdown) as Root, [markdown]);
   return (
     <div className={cn("max-w-none space-y-3 text-sm", className)}>
       {root.children

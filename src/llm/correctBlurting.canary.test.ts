@@ -3,15 +3,15 @@ import postgres from "postgres";
 import { correctBlurting } from "./correctBlurting";
 import type { CorrectionContext } from "@/llm/context/correction";
 
-// @canary FUNCTIONS §2 L3 : couverture incomplète du diff ⇒ rejet + retry (bout en
-// bout via callLLM, LLM mocké, PromptLog réel).
+// @canary : couverture incomplète du diff ⇒ rejet + retry (bout en bout via
+// callLLM, LLM mocké, PromptLog réel).
 
 const client = postgres(process.env.DATABASE_URL!);
 
 const context: CorrectionContext = {
   points: [
-    { intitule: "Point 1", attendu: "Attendu 1" },
-    { intitule: "Point 2", attendu: "Attendu 2" },
+    { type: "critique", raisonnement: false, intitule: "Point 1", attendu: "Attendu 1" },
+    { type: "important", raisonnement: true, intitule: "Point 2", attendu: "Attendu 2" },
   ],
   blurting: "Ma restitution.",
   tentative: 1,

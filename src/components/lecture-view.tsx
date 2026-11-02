@@ -7,15 +7,10 @@ import { AnnotatedCourse } from "@/components/annotated-course";
 import { GapPuzzle } from "@/components/gap-puzzle";
 import { ScrollToBottomButton } from "@/components/scroll-to-bottom-button";
 
-// U25 LectureView (FUNCTIONS §6.2, USER_FLOW É3.1, REVAMP v2 2026-07-15 ;
-// minuteur DECISIONS.md 2026-07-15 « Retour sur lecture structurelle ») —
-// écran de Machine B : la lecture du cours est une étape de l'app, deux
-// occurrences par cycle (initiale avant blurting_1, ciblée avant blurting_2).
-// `[Je suis prêt, je blurte]` bascule vers un compte à rebours de 30s ;
-// `[Passer maintenant]` l'interrompt, sinon il déclenche lui-même
-// S4.terminerLecture (seule transition lecture→blurting) à expiration. Appel
-// hors <form> → useTransition (obligatoire, même pattern que
-// feynman-chat.tsx/closeFeynmanAction).
+// LectureView (ARCHITECTURE.md v2 §2) — lecture de la fiche (nouvelle fiche) ou
+// relecture (avant le 2ᵉ blurting). `[Je suis prêt, je blurte]` bascule vers 30 s
+// de puzzle d'échecs (distracteur, CHESS.md) ; `[Passer maintenant]` l'interrompt,
+// sinon l'expiration déclenche terminerLecture. Appel hors <form> → useTransition.
 //
 // `[Abandonner]` vit ici pour la même raison qu'en blurting-editor.tsx : verrou
 // de soumission partagé, les deux mutent le même StudyCycle. Disponible aussi
@@ -72,15 +67,15 @@ function useCalibrationGapPuzzle() {
 }
 
 export function LectureView({
-  sectionTitre,
+  ficheTitre,
   contenu,
   relecture,
   action,
   abandonAction,
 }: {
-  sectionTitre: string;
+  ficheTitre: string;
   contenu: string;
-  /** Relecture ciblée (2ᵉ passe, avant blurting_2) vs lecture initiale — cosmétique (badge). */
+  /** Relecture (avant le 2ᵉ blurting) vs lecture initiale — badge seulement. */
   relecture?: boolean;
   action: () => Promise<void>;
   abandonAction: () => Promise<void>;
@@ -94,7 +89,7 @@ export function LectureView({
   if (pret) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4">
-        <h1 className="text-lg font-semibold">{sectionTitre}</h1>
+        <h1 className="text-lg font-semibold">{ficheTitre}</h1>
         <p className="text-sm text-secondary">
           Passage au blurting dans {secondes}s…
         </p>
@@ -125,10 +120,10 @@ export function LectureView({
   return (
     <div className="flex flex-1 flex-col gap-4">
       <div className="flex items-center gap-2 xl:mx-auto xl:w-full xl:max-w-[40rem]">
-        <h1 className="text-lg font-semibold">{sectionTitre}</h1>
+        <h1 className="text-lg font-semibold">{ficheTitre}</h1>
         <Badge
           variant="neutral"
-          label={relecture ? "Relecture ciblée" : "Lecture"}
+          label={relecture ? "Relecture" : "Lecture"}
         />
       </div>
 

@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/auth";
 import * as errorService from "@/services/error";
 
-// É5.1 (S7.resolve/edit/delete, FUNCTIONS §4) : adaptateurs minces — un point
-// d'entrée par action, aucune logique métier ici (AGENTS §2).
+// Adaptateurs minces vers ErrorService — aucune logique métier ici (AGENTS §2).
 
 export async function resolveErrorAction(errorId: string) {
   const userId = await requireUserId();

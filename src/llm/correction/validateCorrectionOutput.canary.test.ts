@@ -2,10 +2,9 @@ import { describe, expect, it } from "vitest";
 import { validateCorrectionOutput } from "./validateCorrectionOutput";
 import type { CorrectionOutput } from "@/llm/schemas/correction";
 
-// @canary FUNCTIONS §2 L3 / PLAN Bloc 5.1 : le diff couvre TOUS les points de la
-// rubrique exactement une fois (un point omis n'est jamais silencieusement traité
-// comme couvert) ; tout recidive_index référence une erreur active fournie.
-// Numérotation 1-based (correction_erreurs.v1.md).
+// @canary : le diff couvre TOUS les points de la fiche exactement une fois (un
+// point omis n'est jamais silencieusement traité comme couvert) ; tout
+// recidive_index référence une erreur active fournie. Numérotation 1-based.
 
 const diffPoint = (point_index: number, statut: CorrectionOutput["diff"][number]["statut"] = "couvert") =>
   ({ point_index, statut, explication: "x" }) as CorrectionOutput["diff"][number];
@@ -16,7 +15,7 @@ describe("validateCorrectionOutput", () => {
     expect(validateCorrectionOutput(output, 2, 0)).toBeNull();
   });
 
-  it("rejette avec les numéros manquants quand un point de la rubrique est absent du diff", () => {
+  it("rejette avec les numéros manquants quand un point de la fiche est absent du diff", () => {
     const output: CorrectionOutput = { diff: [diffPoint(1)], erreurs_candidates: [] };
     const error = validateCorrectionOutput(output, 3, 0);
     expect(error).toContain("2");

@@ -1,35 +1,22 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import postgres from "postgres";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { deferralLog, refileItem, reviewCard, section, chapter, plannerConfig, serieGel } from "@/db/schema";
+import { deferralLog, refileItem, reviewCard, plannerConfig, serieGel } from "@/db/schema";
 import * as account from "./account";
 import * as stats from "./stats";
+import { client, cleanupAll, seedSet } from "@/test/fixtures";
 
-// S11 · StatsService — Postgres réel (pattern review.test.ts).
+// StatsService — Postgres réel.
 
-const client = postgres(process.env.DATABASE_URL!);
-const createdUserIds: string[] = [];
 let itemIds: string[] = [];
 let gelDates: string[] = [];
-
-async function createUser() {
-  const [user] = await client`insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id`;
-  createdUserIds.push(user.id);
-  return user.id as string;
-}
-
 let userId: string;
-let chapterId: string;
+let ficheId: string;
 
 beforeEach(async () => {
-  userId = await createUser();
-  const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-  const [c] = await db
-    .insert(chapter)
-    .values({ subjectId: s.id, titre: "Chap 1", markdown: "# x", contentHash: "h" })
-    .returning();
-  chapterId = c.id;
+  const s = await seedSet();
+  userId = s.userId;
+  ficheId = s.fiches[0].id;
 });
 
 afterEach(async () => {
@@ -44,27 +31,9 @@ afterEach(async () => {
   gelDates = [];
 });
 
-afterAll(async () => {
-  for (const id of createdUserIds) {
-    await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
-    await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from subject where user_id = ${id}`;
-    await client`delete from planner_config where user_id = ${id}`;
-    await client`delete from "user" where id = ${id}`;
-  }
-  await client.end();
-});
+afterAll(cleanupAll);
 
-async function createSection(importance = 3) {
-  const [sec] = await db
-    .insert(section)
-    .values({ chapterId, chapterVersion: 1, titre: "Sec", ordre: 1, niveauSource: 1, contenu: "...", importance, statut: "en_revision" })
-    .returning();
-  return sec;
-}
-
-describe("stats · S11 · detteReports", () => {
+describe("stats · detteReports", () => {
   it("compte un item reporté (avance=false) encore présent dans la re-file à une date <= aujourd'hui", async () => {
     const itemId = crypto.randomUUID();
     itemIds.push(itemId);
@@ -95,12 +64,12 @@ describe("stats · S11 · detteReports", () => {
   });
 });
 
-describe("stats · S11 · chargeParJour", () => {
+describe("stats · chargeParJour", () => {
   it("compte les ReviewCards dues non gelées, en ajoutant nouvellesParJour à chaque jour", async () => {
-    const sec = await createSection();
+    await client`update fiche set statut = 'en_revision' where id = ${ficheId}`;
     const [card] = await db
       .insert(reviewCard)
-      .values({ sectionId: sec.id, due: "2026-07-20", stability: 1, difficulty: 1, gelee: false })
+      .values({ ficheId, due: "2026-07-20", stability: 1, difficulty: 1, gelee: false })
       .returning();
 
     const charge = await stats.chargeParJour(userId, "2026-07-20");
@@ -112,7 +81,7 @@ describe("stats · S11 · chargeParJour", () => {
   });
 });
 
-describe("stats · S11 · useStreakFreeze", () => {
+describe("stats · useStreakFreeze", () => {
   it("insère un gel et décrémente le compteur", async () => {
     await account.updatePlannerConfig(userId, 3);
     gelDates.push("2026-07-20");
@@ -132,5 +101,16 @@ describe("stats · S11 · useStreakFreeze", () => {
       .onConflictDoUpdate({ target: plannerConfig.userId, set: { gelsSerieRestants: 0 } });
 
     await expect(stats.useStreakFreeze(userId, "2026-07-20")).rejects.toThrow();
+  });
+});
+
+describe("stats · sessions par jour et série", () => {
+  it("compte les tentatives de l'utilisateur par jour, et en déduit la série", async () => {
+    const [cycle] = await client`insert into study_cycle (user_id, fiche_id, type, etat, closed_at) values (${userId}, ${ficheId}, 'etude', 'clos', now()) returning id`;
+    await client`insert into tentative (cycle_id, fiche_id, fiche_hash, numero, input, created_at) values
+      (${cycle.id}, ${ficheId}, 'h', 1, 'a', '2026-07-19T10:00:00Z'), (${cycle.id}, ${ficheId}, 'h', 2, 'b', '2026-07-20T10:00:00Z')`;
+
+    expect(await stats.sessionCountsByDay(userId, "2026-07-19", "2026-07-20")).toEqual({ "2026-07-19": 1, "2026-07-20": 1 });
+    expect((await stats.streak(userId, "2026-07-20")).streak).toBe(2);
   });
 });

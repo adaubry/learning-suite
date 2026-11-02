@@ -1,13 +1,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { errorEntry, studySession, chapter, subject } from "@/db/schema";
-import { assertSectionOwnership } from "./guide";
-import type { MergedErrorCandidate, ErreurType } from "@/core/correction/verdict";
+import { errorEntry, tentative, subject } from "@/db/schema";
+import { loadOwnedFiche } from "./ownership";
+import type { CorrectionData } from "./session";
+import type { ErreurType } from "@/core/fiche/verdict";
 
-// S7 · ErrorService (FUNCTIONS §3, §7) : le carnet. `activeFor`/`activeForSection`
-// (Bloc 5.1) servent les ContextBuilders L2/L3. Bloc 5.3 ajoute commitCandidates
-// (Règle de commit USER_FLOW É3.2) et le CRUD du carnet (list/resolve/edit/delete,
-// É5.1).
+// ErrorService : le carnet d'erreurs. `activeForFiche` alimente la correction
+// (détection de récidive) ; `commitCandidates` enregistre les erreurs candidates
+// non rejetées quand on quitte l'écran de correction ; CRUD du carnet.
 
 const MAX_ERREURS_ACTIVES_CONTEXTE = 20; // ponytail: plafond arbitraire, à ajuster si le contexte LLM déborde
 
@@ -19,51 +19,27 @@ async function assertErrorOwnership(errorId: string, userId: string) {
   return err;
 }
 
-// L2 (rubrique) : erreurs actives de la MATIÈRE entière (orientent les pièges).
-export async function activeFor(subjectId: string) {
+export async function activeForFiche(ficheId: string) {
   return db.query.errorEntry.findMany({
-    where: and(eq(errorEntry.subjectId, subjectId), eq(errorEntry.statut, "active")),
+    where: and(eq(errorEntry.ficheId, ficheId), eq(errorEntry.statut, "active")),
     limit: MAX_ERREURS_ACTIVES_CONTEXTE,
   });
 }
 
-// L3 (correction) : erreurs actives de la SECTION uniquement (ARCHITECTURE §9
-// ligne 3+4 — détection de récidive, périmètre plus étroit que L2).
-export async function activeForSection(sectionId: string) {
-  return db.query.errorEntry.findMany({
-    where: and(eq(errorEntry.sectionId, sectionId), eq(errorEntry.statut, "active")),
-    limit: MAX_ERREURS_ACTIVES_CONTEXTE,
-  });
-}
+// Les candidates NON rejetées sont acceptées telles quelles (clic explicite ou
+// simple sortie de l'écran : même résultat). Récidive (`idErreurExistante`) :
+// incrémente `occurrences` au lieu de créer un doublon. Appelée une seule fois par
+// tentative (relire ou noter, chacune sortie unique de son écran de correction).
+export async function commitCandidates(userId: string, tentativeId: string, rejectedIndexes: number[] = []) {
+  const t = await db.query.tentative.findFirst({ where: eq(tentative.id, tentativeId) });
+  if (!t) throw new Error("Tentative introuvable.");
+  const { subject: subj } = await loadOwnedFiche(t.ficheId, userId);
 
-// USER_FLOW É3.2 « Règle de commit » : les candidates NON rejetées (index absent
-// de `rejectedIndexes`) sont acceptées telles quelles — que l'utilisateur ait
-// cliqué [Tout accepter] ou simplement quitté l'écran sans statuer, le résultat
-// est identique. Pas d'édition de texte ici (DECISIONS.md bloc 5.3, révisé
-// ponytail-review) : corriger une description reste le rôle de S7.edit, depuis
-// le carnet, qu'il s'agisse d'une récidive ou d'une candidate fraîchement
-// committée. Récidive (`idErreurExistante` non-nul, résolu par S4 dès la
-// correction, DECISIONS.md bloc 5.1) : incrémente `occurrences` au lieu de créer
-// un doublon. Idempotence : confiée aux appelants (S4 resolveOutcome/
-// validateSection ne rejouent jamais cette fonction sur un cycle déjà
-// refermé).
-export async function commitCandidates(userId: string, sessionId: string, rejectedIndexes: number[] = []) {
-  const sess = await db.query.studySession.findFirst({ where: eq(studySession.id, sessionId) });
-  if (!sess) throw new Error("Session introuvable.");
-  const sec = await assertSectionOwnership(sess.sectionId, userId);
-
-  const correction = sess.correction as { erreursCandidates: MergedErrorCandidate[] } | null;
-  const candidates = correction?.erreursCandidates ?? [];
-  if (candidates.length === 0) return;
-
-  const chap = await db.query.chapter.findFirst({ where: eq(chapter.id, sec.chapterId) });
-  if (!chap) throw new Error("Section introuvable.");
-
+  const candidates = (t.correction as CorrectionData | null)?.erreursCandidates ?? [];
   const rejected = new Set(rejectedIndexes);
 
   for (const [index, candidate] of candidates.entries()) {
     if (rejected.has(index)) continue;
-
     if (candidate.idErreurExistante) {
       await db
         .update(errorEntry)
@@ -71,9 +47,9 @@ export async function commitCandidates(userId: string, sessionId: string, reject
         .where(eq(errorEntry.id, candidate.idErreurExistante));
     } else {
       await db.insert(errorEntry).values({
-        subjectId: chap.subjectId,
-        sectionId: sess.sectionId,
-        sessionId: sess.id,
+        subjectId: subj.id,
+        ficheId: t.ficheId,
+        tentativeId: t.id,
         type: candidate.type,
         description: candidate.description,
       });
@@ -85,15 +61,14 @@ export interface ErrorListFilters {
   subjectId?: string;
   statut?: "active" | "resolue";
   type?: ErreurType;
-  sectionId?: string;
-  /** Pagination (É5.1, carnet) — omis = pas de limite (usage L2/L3 existant, inchangé). */
+  ficheId?: string;
+  /** Pagination du carnet — omis = pas de limite. */
   limit?: number;
   offset?: number;
 }
 
-// É5.1 : filtres matière/statut/type/section — toujours scopé aux matières de
-// l'utilisateur (ErrorEntry ne porte pas directement le userId, résolu via
-// `subject.user_id`, même précédent que account.listSubjects).
+// Filtres matière/statut/type/fiche — toujours scopé aux matières de l'utilisateur
+// (error_entry ne porte pas le userId, résolu via subject.user_id).
 export async function list(userId: string, filters: ErrorListFilters = {}) {
   let subjectIds: string[];
   if (filters.subjectId) {
@@ -109,7 +84,7 @@ export async function list(userId: string, filters: ErrorListFilters = {}) {
   const conditions = [inArray(errorEntry.subjectId, subjectIds)];
   if (filters.statut) conditions.push(eq(errorEntry.statut, filters.statut));
   if (filters.type) conditions.push(eq(errorEntry.type, filters.type));
-  if (filters.sectionId) conditions.push(eq(errorEntry.sectionId, filters.sectionId));
+  if (filters.ficheId) conditions.push(eq(errorEntry.ficheId, filters.ficheId));
 
   return db.query.errorEntry.findMany({
     where: and(...conditions),
@@ -129,8 +104,7 @@ export async function resolve(userId: string, errorId: string) {
   return updated;
 }
 
-// Symétrique de `resolve` — corrige un clic accidentel sur [Marquer résolue]
-// (É5.1, contrôle utilisateur : pas de statut terminal sans retour possible).
+// Symétrique de `resolve` : corrige un clic accidentel sur [Résolue].
 export async function reopen(userId: string, errorId: string) {
   await assertErrorOwnership(errorId, userId);
   const [updated] = await db
@@ -151,9 +125,7 @@ export async function edit(
   return updated;
 }
 
-// Confirmation légère côté UI (U8 ConfirmDialog) — « erreur créée à tort »,
-// suppression réelle (pas d'archivage, contrairement aux matières/chapitres :
-// une ErrorEntry n'a pas de dépendants).
+// « Erreur créée à tort » : suppression réelle (une erreur n'a pas de dépendants).
 export async function deleteEntry(userId: string, errorId: string) {
   await assertErrorOwnership(errorId, userId);
   await db.delete(errorEntry).where(eq(errorEntry.id, errorId));

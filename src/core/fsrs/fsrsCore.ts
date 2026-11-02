@@ -1,6 +1,6 @@
 import { fsrs, generatorParameters, createEmptyCard, Rating, type CardInput, type Card } from "ts-fsrs";
 
-// P9 · fsrsCore (FUNCTIONS §1, ARCHITECTURE §8/§11 ADR3) — pur, sans I/O.
+// P9 · fsrsCore (ARCHITECTURE §8/§11 ADR3) — pur, sans I/O.
 // Wrapper mince autour de ts-fsrs (TECH_MAPPING). `enable_short_term: false` :
 // aucune étape d'apprentissage à court terme (Learning/Relearning) — le domaine
 // (révision espacée de sections de cours, pas de flashcards) n'en a pas l'usage,

@@ -4,9 +4,9 @@
 
 > **AGENTS.md est le contrat canonique : le lire intégralement et s'y conformer. En cas de divergence, AGENTS.md prime.** Ce fichier ajoute uniquement le protocole de session propre à Claude Code.
 
-## 1. Protocole de session — travail par tâche (post-plan)
+## 1. Protocole de session — travail par tâche
 
-**PLAN.md est clos** (Phase 9 terminée, Phase 10 volontairement abandonnée — voir DECISIONS.md et l'en-tête de PLAN.md). L'app est en usage quotidien réel : il n'y a plus de « bloc » ni de session pré-découpée par le plan. Chaque session traite la tâche donnée par l'humain, à sa taille propre — pas de récitation formelle obligatoire, pas de règle « une session = un bloc ».
+L'app est en **v2** (fiches, cycle unique, un seul appel LLM — voir ARCHITECTURE.md et DECISIONS.md 2026-11-02). Chaque session traite la tâche donnée par l'humain, à sa taille propre.
 
 Ce qui reste non négociable :
 
@@ -21,7 +21,8 @@ Ce qui reste non négociable :
 - **Anti-scope-creep actif** : ne pas proposer de fonctionnalités, d'abstractions « pour plus tard », de généralisations multi-utilisateurs, ni de refactors non demandés. Le périmètre est celui de la tâche demandée, point.
 - **Prompts = code critique** : toute modification d'un fichier de `/prompts` exige nouvelle version du fichier (`.vN+1.md`), entrée PROMPTS_CHANGELOG.md, passage des evals, et verdict consigné.
 - **Vérifier avant d'affirmer** : ne jamais prétendre qu'un test passe sans l'avoir exécuté ; ne jamais décrire un comportement du code sans l'avoir lu dans cette session.
-- **Données réelles** : les fixtures de parsing/correction proviennent de `e2e/evals/` et des vrais cours de l'utilisateur — ne pas inventer de faux cours de droit pour les tests d'intégration (les exemples juridiques hallucinés sont précisément ce qu'on chasse).
+- **Données réelles** : les fixtures de parsing/correction proviennent de `e2e/evals/fixtures/` et des vraies fiches de l'utilisateur — ne pas inventer de faux cours de droit pour les tests d'intégration (les exemples juridiques hallucinés sont précisément ce qu'on chasse).
+- **Base locale uniquement** : `.env.local` doit pointer sur le Postgres Docker (`docker compose up -d`, port 5433) ; les tests écrivent et suppriment des lignes. Ne jamais lancer tests ou `db:migrate` contre Neon.
 
 ## 3. Commandes du projet
 
@@ -37,26 +38,22 @@ Ce qui reste non négociable :
 ## 4. Carte du dépôt
 
 ```
-src/docs/      FORMAT, ARCHITECTURE, USER_FLOW, FUNCTIONS, TECH_MAPPING ← sources de vérité
+src/docs/      FORMAT, ARCHITECTURE, USER_FLOW, TECH_MAPPING ← sources de vérité (v2)
                DECISIONS.md, PROMPTS_CHANGELOG.md   ← toujours actifs
-               PLAN.md ← clos (historique de construction, ne gouverne plus les sessions)
-prompts/       *.vN.md — versionnés, jamais inline
-e2e/           tout ce qui touche aux tests e2e/ia, un seul dossier :
-                 *.spec.ts / *.canary.spec.ts  — specs Playwright (navigateur)
-                 evals/                        — jeu d'or + canaris LLM (vraie API)
-                 test-results/, playwright-report/ — artefacts générés, ignorés
-proxy.ts       protection des routes (ex-middleware.ts, Next 16) — redirige vers
-               /login si pas de session, sauf /login et /auth/callback
-app/(auth)/    login (magic link) + server actions signIn/signOut
-app/auth/callback/  échange le code magic link contre une session
-app/(app)/     écrans avec navigation
-app/(focus)/   écrans sanctuarisés (blurting, feynman, révision) — pas de nav
-src/core/      cœurs purs P1–P10 — tests exhaustifs
-src/services/  domaine S1–S9 — propriétaires des invariants (FUNCTIONS §7)
-src/lib/supabase/  clients Supabase (browser/server) + helper de proxy
-src/db/        Drizzle : schéma + migrations (supabase/ = stack local, `supabase start`)
-src/llm/       L0 unique point d'accès OpenRouter + ContextBuilders + schemas
-src/components/ U1–U24 — shadcn uniquement
+               CHESS*.md, IMPLEMENT_SCHEDULE.md     ← specs du puzzle et de Régularité
+prompts/       *.vN.md — versionnés, jamais inline (correction_fiche.vN.md)
+e2e/           *.spec.ts / *.canary.spec.ts — specs Playwright ; login.ts — connexion dev
+               evals/fixtures/ — vraies fiches de l'utilisateur
+proxy.ts       protection des routes — redirige vers /login sans session
+app/(auth)/    login (magic link Better-Auth) + server actions signIn/signOut
+app/(app)/     écrans avec navigation : file du jour, fiches, import, erreurs, régularité, réglages
+app/(focus)/   session sur une fiche (/etude/[ficheId]) — pas de nav
+src/core/      cœurs purs : fiche (parseur, points, appariement, verdict), planner, fsrs
+src/services/  domaine : fiche, session, planner, review, error, account, stats, alert, deadline
+src/llm/       client.ts (unique accès OpenRouter) + context/ + schemas/ + correctBlurting
+src/db/        Drizzle : schéma + migrations (local : Docker Postgres, docker-compose.yml)
+src/test/      fixtures partagées des tests de services
+src/components/ composants Astryx
 ```
 
 <!-- ASTRYX:START -->

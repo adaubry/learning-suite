@@ -1,143 +1,27 @@
-# TECH_MAPPING.md — Délégation : natif Next.js d'abord, librairies spécialisées ensuite, code maison en dernier
+# TECH_MAPPING.md — v2 : stack et délégations
 
-> **Statut** : v0.5
-> **Rôle** : pour chaque brique de FUNCTIONS.md, décide dans l'ordre de priorité imposé : **(1) natif Next.js / React / TypeScript / plateforme web → (2) librairie spécialisée → (3) code maison.** Le code maison est réservé à ce qu'aucune librairie ne peut savoir : le domaine.
-> **Dépend de** : FUNCTIONS.md. **Répercuté dans** : ARCHITECTURE.md v0.3 (stack + modèle), USER_FLOW.md v0.3, FUNCTIONS.md v0.3.
+> **Statut** : v2.0 (2026-11-02). Doctrine inchangée : natif > librairie listée ici > maison. Une librairie absente de cette liste se propose à l'humain, elle ne s'installe pas.
 
----
+| Besoin | Choix |
+|---|---|
+| Framework | Next.js 16 (App Router, Server Actions, `proxy.ts`), React 19, TypeScript strict |
+| BDD / ORM | Postgres (Neon en prod, Docker en local) + Drizzle (`postgres` driver) |
+| Auth | Better-Auth (magic link via Resend, Google OAuth) |
+| Markdown | unified + remark-parse + **remark-gfm** (tableaux des fiches) + remark-frontmatter ; rendu maison depuis l'AST |
+| Validation | zod |
+| Répétition espacée | ts-fsrs (`enable_short_term: false`) |
+| LLM | OpenRouter via `fetch` natif, uniquement dans `src/llm/client.ts` |
+| UI | Astryx (`@astryxdesign/core`), Tailwind 4, lucide-react |
+| Distracteur | chess.js + react-chessboard (puzzles hors ligne, CHESS.md) |
+| Tâches de fond | Route Handler `/api/cron` + Vercel Cron |
+| Tests | Vitest (unitaires + services contre Postgres local), Playwright (e2e) |
 
-## 0. Doctrine de délégation
+## Dépendances retirées en v2
 
-1. **Natif d'abord** : App Router, Server Actions, layouts, Suspense/streaming, `error.tsx`/`loading.tsx`, `after()`, cache/revalidation, proxy (`proxy.ts`, anciennement `middleware.ts`) ; React 19 (`useActionState`, `useOptimistic`, `useFormStatus`) ; TypeScript (unions discriminées pour les machines à états) ; plateforme web (`crypto.subtle`, `Intl`, `MediaRecorder`, `speechSynthesis`, Web Speech API, **drag & drop HTML5**).
-2. **Librairies spécialisées retenues** :
-   - **Markdown** : `unified/remark` (AST `mdast` avec positions) — voir §0bis pour le choix face à MDX ;
-   - **WYSIWYG façon Google Docs** : `Tiptap` (base ProseMirror) + sérialisation Markdown ;
-   - **UI** : **`Astryx`** (`@astryxdesign/cli`, `@astryxdesign/core`, `@astryxdesign/theme-neutral`) — remplace intégralement `shadcn/ui`/Radix/tokens Tailwind shadcn (migration achevée, DECISIONS.md 2026-07-13/14). `shadcn`, `@base-ui/react`, `class-variance-authority`, `tw-animate-css` retirés du projet ; `src/components/ui/` supprimé. Pas de lib de charts, pas de lib de drag & drop, pas de lib de calendrier tierces (§4.2) ;
-   - `jsdiff` (diff textuel), `ts-fsrs` (SRS), `zod` (validation), `Tailwind` (imposé).
-3. **Code maison = le domaine uniquement** : appariement de sections, composition de la file, divulgation contrôlée, services, prompts. C'est la valeur du projet ; tout le reste se délègue.
+Tiptap (`@tiptap/*`) : plus d'édition de cours dans l'app, les fiches se modifient dans leur document source. `diff`/`@types/diff` : plus de diff de versions de chapitre.
 
-## 0bis. Pourquoi remark et pas MDX (`@next/mdx`) ?
+## Journal
 
-MDX résout un autre problème. C'est un **compilateur de contenu en composants React** (Markdown + JSX, transformé au build) — fait pour des blogs et des docs qui vivent dans le repo. Nos chapitres sont des **données utilisateur dynamiques en base**, à parser à l'exécution pour en extraire arbre, positions et segments : de la manipulation programmatique d'AST, pas du rendu de contenu. Trois raisons rédhibitoires :
-
-1. MDX compile au **build** ; nos cours arrivent au **runtime**.
-2. MDX **exécute du JSX embarqué** dans le contenu — sur des données utilisateur, c'est une surface d'injection.
-3. MDX utilise **remark en interne** : choisir remark, c'est prendre directement la couche utile, sans l'étage de compilation dont on ne se servirait pas.
-
----
-
-## 1. Cœurs purs (P1–P10)
-
-| Brique                      | 1. Natif                         | 2. Librairie                                                                                                       | 3. Reste maison                                                                               |
-| --------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **P1 parseChapter**         | —                                | **remark** : parsing entièrement délégué ; `mdast` fournit les positions exactes de chaque heading/strong/emphasis | Couche fine de règles : projection mdast → notre modèle, réversibilité via `remark-stringify` |
-| **P2 validateDocument**     | —                                | positions fournies par l'AST                                                                                       | **Règles métier** (hiérarchie descendante, gras+italique) — aucune lib ne connaît FORMAT.md   |
-| **P3 computeContentHash**   | **`crypto.subtle.digest` natif** | —                                                                                                                  | 5 lignes de normalisation                                                                     |
-| **P4 matchSections**        | —                                | —                                                                                                                  | **100 % maison, assumé** — la logique de domaine critique, tests maximaux                     |
-| **P5 diffChapterVersions**  | —                                | **jsdiff** pour le diff textuel                                                                                    | Alignement par titres au-dessus de jsdiff                                                     |
-| **P6 mechanicalSectioning** | —                                | trivial sur l'AST remark                                                                                           | Cascade T2 → T1 → chapitre                                                                    |
-| **P7 buildDailyQueue**      | TypeScript pur                   | —                                                                                                                  | **100 % maison** — la composition de la file EST le produit                                   |
-| **P8 computeHorizon**       | —                                | —                                                                                                                  | Calcul maison (simple) ; rendu en barres Tailwind (§4.2)                                      |
-| **P9 fsrsCore**             | —                                | **ts-fsrs** (algorithme + preview)                                                                                 | Wrapper mince                                                                                 |
-| **P10 presentCorrection**   | —                                | —                                                                                                                  | **100 % maison** — règle pédagogique, pas problème technique                                  |
-
-## 2. Appels LLM (L0–L6)
-
-| Brique                 | 1. Natif                                                                   | 2. Librairie | 3. Reste maison                                                       |
-| ---------------------- | -------------------------------------------------------------------------- | ------------ | --------------------------------------------------------------------- |
-| **L0 callLLM**         | `fetch` natif (OpenRouter = POST JSON) ; streaming via `ReadableStream`    | `zod`        | Retry avec réinjection d'erreur de schéma, PromptLog, ContextBuilders |
-| **L1–L5**              | —                                                                          | —            | **Prompts et ContextBuilders : le cœur maison, non délégable**        |
-| **L6 transcribeAudio** | **`MediaRecorder` natif** (capture) ; **Web Speech API native** (fallback) | —            | Appel du modèle audio OpenRouter + destruction de l'audio             |
-
-## 3. Services (S1–S9) & Server Actions
-
-| Brique         | 1. Natif                                                                                        | 2. Librairie                                                                                | 3. Reste maison                                   |
-| -------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Server Actions | **natives** + `useActionState`/`useFormStatus` ; `revalidatePath`/`revalidateTag`               | schémas `zod` partagés client/serveur                                                       | Rien (adaptateurs minces)                         |
-| Auth           | **proxy natif** (`proxy.ts`, protection des routes)                                              | Better-Auth (self-hosted, magic link + Google OAuth)                                        | —                                                 |
-| S1–S9          | transactions Drizzle ; `after()` pour les effets non bloquants (audit, déclenchement paresseux) | Drizzle                                                                                     | **Toute la logique de domaine — c'est le projet** |
-| Tâches de fond | **Route Handlers natifs** frappés par un cron                                                   | **Vercel Cron** ou `pg_cron` (Next.js n'a pas de scheduler interne — limite native assumée) | Logique des tâches                                |
-
-## 4. UI (U1–U24)
-
-> **Migration Astryx achevée (2026-07-14)** : shadcn/ui (Radix) + tokens Tailwind shadcn intégralement remplacés par **Astryx**, écran par écran (DECISIONS.md 2026-07-13/14). Plus aucun import `@/components/ui/*` ni `@base-ui/react` dans le code applicatif ; `src/components/ui/`, `components.json` supprimés ; `shadcn`, `@base-ui/react`, `class-variance-authority`, `tw-animate-css` retirés de `package.json`.
-
-### 4.1 Coquilles & primitives
-
-| Brique                          | 1. Natif                                                                                                                                                                                                        | 2. Librairie                                                                  | 3. Reste maison                             |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------- |
-| **U1 AppShell / U2 FocusShell** | **Layouts + route groups natifs** : `(app)/layout.tsx` porte la sidebar, `(focus)/layout.tsx` porte le mode focus — le sanctuaire est un **layout de route**, la navigation ne peut pas s'afficher par accident | Astryx `AppShell`/`SideNav`                                                   | Indicateur « session en cours »             |
-| **U9 EmptyState/ErrorState**    | **`error.tsx`, `loading.tsx`, `not-found.tsx` natifs** par segment                                                                                                                                              | habillage Astryx (`Button`, tokens)                                           | Messages didactiques + voies de secours LLM |
-| **U8 ConfirmDialog**            | —                                                                                                                                                                                                                | **Astryx `Dialog`** (`confirm-dialog.tsx`, `consequences-dialog.tsx`)          | Contenus (nom à retaper, archivage d'abord) |
-| **U3 MarkdownViewer**           | —                                                                                                                                                                                                                | rendu depuis l'AST remark, composants custom pour les 2 constructions stylées | Styles                                      |
-| **U4 CourseEditor (WYSIWYG)**   | —                                                                                                                                                                                                                | **Tiptap façon Google Docs** — §5, barre d'outils Astryx `Button`             | Extensions de validation + mapping FORMAT   |
-| **U5 AnomalyPanel**             | —                                                                                                                                                                                                                | positions remark/Tiptap, Astryx `Button`/`Badge`                              | Rendu + scroll-to                           |
-| **U6 DiffViewer**               | —                                                                                                                                                                                                                | jsdiff + rendu maison léger, tokens Astryx                                    | Surlignage « sera écrasé »                  |
-| **U7 ConsequencesDialog**       | —                                                                                                                                                                                                                | Astryx `Dialog`                                                               | Bilan de simulation (domaine)               |
-
-### 4.2 Planning — **tout Astryx, zéro lib tierce supplémentaire**
-
-| Brique                                         | 1. Natif                                                                                                                                                                                                                        | 2. Librairie                                                                                                                                      | 3. Reste maison                                        |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| **U10 DailyQueue — réordonnancement**          | **v1 : boutons/poignées de réordonnancement** (accessible, mobile-friendly) ; **amélioration progressive : drag & drop HTML5 natif** (attributs `draggable`, événements standards — conforme à la doctrine « natif d'abord ») | composants Astryx (`Button`, `Badge`)                                                                                                                 | Persistance de l'ordre (S5.reorder), cartes de domaine  |
-| **U11 HorizonChart**                           | **Barres pures Tailwind/CSS** : un graphe de charge par jour = des divs à hauteurs proportionnelles, tokens Astryx — zéro dépendance                                                                                           | (option future : lib de charts, en sachant que la plupart encapsulent une dépendance transitive lourde — assumé et documenté si un jour activé)      | Mise en forme des données (P8)                          |
-| **U18 FsrsRatingBar**                          | —                                                                                                                                                                                                                                | Astryx `Button`                                                                                                                                        | Preview d'intervalles (P9)                              |
-| **U28 ActivityHeatmap** (Régularité)           | **CSS grid pure** : mêmes tokens sémantiques que HorizonChart, zéro dépendance                                                                                                                                                 | —                                                                                                                                                       | Buckets d'intensité, labels de semaine (P12)             |
-| **U29 ChargeChart** (Régularité)               | **Barres pures CSS/Tailwind**, même doctrine que U11                                                                                                                                                                            | —                                                                                                                                                       | Mise en forme des données (S11)                         |
-| **U27 DeadlineChecklist / U31 AlertBell / U32 AlertBanner-ToastHost** (Régularité) | —                                                                                                                                                                                                                | Astryx `List`/`Item`/`CheckboxInput`/`Badge`/`Popover`/`DropdownMenu`/`Dialog`/`Selector`/`DateInput`/`NumberInput`/`Banner`/`Toast` (`useToast`, gère déjà positionnement/stacking/auto-dismiss/dédup) | Règle produit pile max 3 + FIFO au-dessus de `useToast` ; sélection de la bannière la plus urgente (P13) |
-
-### 4.3 Domaine (peu délégable, par nature)
-
-| Brique                                       | Délégation                                                                                                                               | Reste maison                                     |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
-| **U13 TriageList**                           | Astryx (`TextInput`, `TextArea`, `Button` — édition inline)                                                                                 | logique fusion/scission                          |
-| **U14, U16, U17, U21, U24**                  | primitives Astryx (`TextInput`/`TextArea`/`Selector`/`NumberInput`/`FileInput`, `Badge`, `Collapsible`)                                     | **tout le contenu — ces écrans SONT le produit** |
-| **U15 BlurtingEditor**                       | Astryx `TextArea` (autogrow via CSS) — Tiptap réservé à U4                                                                                  | garantie « aucun accès au cours » (composition)  |
-| **U19 FeynmanChat / U20 PushToTalkRecorder** | **MediaRecorder natif** ; Suspense/streaming pour les relances ; **`speechSynthesis` natif** pour le TTS v1 ; Astryx `Button`/`TextArea`   | orchestration + transcript éditable              |
-| **U22 CurriculumTree / U23 ImportWizard**    | routes natives, **`searchParams` pour l'étape du wizard** (reprise gratuite par URL), Astryx `Selector`/`FileInput`/`TextArea`              | contenu                                          |
-
----
-
-## 5. Décision structurante : édition WYSIWYG (Tiptap), Markdown = stockage/échange
-
-1. **Tiptap configuré avec EXACTEMENT nos trois constructions** : Heading 1–3, Bold, Italic — rien d'autre. **La barre d'outils EST la convention FORMAT.md** ; un document invalide par emphase devient impossible à saisir (le gras+italique interdit à la frappe par extension). Seule la hiérarchie des titres reste à valider (P2).
-2. **Le Markdown change de rôle sans disparaître** : stockage (`Chapter.markdown`, sur lequel P3/P5 continuent d'opérer) et échange (import Google Docs). Sérialisation bidirectionnelle Tiptap ↔ Markdown, fiable précisément parce que le vocabulaire se limite à trois constructions.
-3. **É6.2 s'aligne sur Google Docs** : mêmes gestes (Ctrl+B, menus de titres) ; la prévisualisation devient inutile, le WYSIWYG EST la vue.
-4. **Vigilance** : tests de **round-trip** (doc → éditeur → doc, identique au hash près) exigés dès l'installation — LE risque de cette délégation, faible avec trois constructions, non nul.
-
-## 6. Stack consolidée (reprise dans ARCHITECTURE v0.3)
-
-| Couche                           | Choix                                                                      | Statut       |
-| -------------------------------- | -------------------------------------------------------------------------- | ------------ |
-| Framework                        | Next.js App Router + TypeScript + Tailwind                                 | imposé       |
-| Auth / BDD / ORM                 | Neon (Postgres) + Better-Auth + Drizzle ; magic link via Resend            | acté         |
-| Parsing Markdown                 | **unified/remark** (jamais MDX — §0bis)                                    | acté         |
-| Éditeur de cours                 | **Tiptap** (Heading 1–3, Bold, Italic uniquement) + sérialisation Markdown | acté         |
-| UI                               | **Astryx**, remplace shadcn/ui (Radix) + tokens Tailwind shadcn            | acté         |
-| Réordonnancement file            | boutons Astryx v1 → **drag & drop HTML5 natif**                            | acté         |
-| Graphes horizon                  | **barres Tailwind pures** (zéro lib)                                       | acté         |
-| Calendrier échéances (option)    | Astryx Calendar/DateInput                                                  | v1.1         |
-| Diff                             | **jsdiff** + alignement par titres maison                                  | acté         |
-| LLM                              | OpenRouter via `fetch` natif + zod                                         | acté (ADR 9) |
-| Audio / TTS                      | MediaRecorder + speechSynthesis + Web Speech API (natifs)                  | acté         |
-| SRS                              | ts-fsrs                                                                    | acté         |
-| Hash                             | `crypto.subtle` natif                                                      | acté         |
-| Erreurs/chargement/layouts/focus | mécanismes natifs App Router                                               | doctrine     |
-| Formulaires                      | Server Actions + `useActionState` + zod partagé                            | doctrine     |
-| Tâches de fond                   | Route Handlers + Vercel Cron (ou pg_cron) + `after()`                      | doctrine     |
-
-## 7. Ce qui reste maison — la carte du territoire
-
-**Domaine pur (irremplaçable)** : P4 appariement, P7 file du jour, P10 divulgation, règles FORMAT sur l'AST (P2), alignement de diff par titres, services S1–S9, prompts + ContextBuilders, contenu des écrans de domaine. Tout le reste est délégué. Si une session de vibecoding propose d'écrire ce qu'une ligne de ce document délègue (un parseur Markdown, une lib de charts, un dialogue modal) **ou d'introduire une lib que ce document ne liste pas**, c'est un refus par défaut — la lib se discute ici d'abord.
-
-## Journal des versions
-
-| Version | Date       | Changement                                                                                                                                                                                                                                                                       |
-| ------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.7     | 2026-07-20 | §3/§6 : migration Supabase → **Neon (Postgres) + Better-Auth + Resend**, local dev sur Docker Postgres. Motif : 504 systématiques sur toute session authentifiée tracés à un pooler Supabase mal configuré, puis limites du free tier atteintes (voir incident live, DECISIONS.md). Better-Auth backé par la même base Postgres qu'`src/db` (adapter Drizzle, tables générées `src/db/auth-schema.ts`) — plus de vendor d'auth séparé, plus de plafond MAU à revenir heurter. `@supabase/ssr`, `@supabase/supabase-js`, CLI `supabase` retirés ; `better-auth`, `resend` ajoutés. |
-| 0.6     | 2026-07-20 | §4.2 : remplacement de la ligne « Vue calendrier des échéances (option v1.1) », jamais construite, par les délégations réellement retenues pour l'écran Régularité (IMPLEMENT_SCHEDULE.md) — heatmap/charge en CSS pur (même doctrine qu'HorizonChart), reste en primitives Astryx existantes (Toast/Banner/Popover/DropdownMenu/Dialog inclus), aucune nouvelle dépendance. Voir DECISIONS.md. |
-| 0.5     | 2026-07-14 | UI : migration Astryx **achevée** — dernier écran migré, `src/components/ui/` (14 fichiers) et `components.json` supprimés, `shadcn`/`@base-ui/react`/`class-variance-authority`/`tw-animate-css` retirés de `package.json`, tokens couleur shadcn retirés de `globals.css` (remplacés par les tokens Astryx + un default `border-color` sur l'utilitaire Tailwind nu, Astryx ne le fixe pas — DECISIONS.md). §0/§4/§6 réécrits en « acté ». |
-| 0.4     | 2026-07-13 | UI : migration actée de shadcn/ui (Radix) + Tailwind vers **Astryx** (`@astryxdesign/cli`/`core`/`theme-neutral`), surface par surface (DECISIONS.md). §0/§4/§6 mis à jour ; §4.1–4.3 restent décrits en shadcn jusqu'à migration effective de chaque ligne.                     |
-| 0.3     | 2026-07-08 | U13 TriageList : retrait de « réordonnancement comme U10 » — ce document de délégation technique n'a pas vocation à créer une exigence produit ; ni FUNCTIONS §6.2 ni USER_FLOW É1.4 ne décrivent de réordonnancement manuel du tri, l'ordre suit celui des bornes du plan (DECISIONS.md, bloc 3.3). |
-| 0.1     | 2026-07-02 | Création (remark, Tiptap, dnd-kit, Recharts, FullCalendar)                                                                                                                                                                                                                       |
-| 0.2     | 2026-07-02 | §0bis remark vs MDX ; **UI 100 % shadcn** : dnd-kit remplacé par boutons shadcn + drag & drop HTML5 natif, Recharts remplacé par barres Tailwind pures (note transitive honnête sur shadcn Charts), FullCalendar remplacé par shadcn Calendar ; règle anti-lib non listée en §7. |
+| Version | Date | Changement |
+|---|---|---|
+| 2.0 | 2026-11-02 | Réécriture v2 (fiches). Ajout de remark-gfm ; retrait de Tiptap et jsdiff. Voir DECISIONS.md. |

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Schémas partagés Server Actions ↔ formulaires (FUNCTIONS §4).
+// Schémas partagés Server Actions ↔ formulaires.
 
 // Champ texte optionnel de formulaire : "" -> undefined (au lieu d'une chaîne vide persistée).
 const optionalText = () =>
@@ -20,13 +20,3 @@ export const plannerConfigInputSchema = z.object({
   nouvellesParJour: z.coerce.number().int().min(1).max(10),
 });
 export type PlannerConfigInput = z.infer<typeof plannerConfigInputSchema>;
-
-export const methodologieGlobaleInputSchema = z.object({
-  methodologieTitresGlobale: optionalText(),
-});
-export type MethodologieGlobaleInput = z.infer<typeof methodologieGlobaleInputSchema>;
-
-export const subjectMethodologieInputSchema = z.object({
-  methodologieTitres: optionalText(),
-});
-export type SubjectMethodologieInput = z.infer<typeof subjectMethodologieInputSchema>;

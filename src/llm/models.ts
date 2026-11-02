@@ -1,17 +1,11 @@
-// L0 · models.ts (FUNCTIONS §2, TECH_MAPPING §2) — mapping appel → modèle OpenRouter,
-// configurable sans toucher au code. Un modèle par appel, lu depuis l'env : pas de
-// valeur par défaut devinée (le choix du modèle revient à l'humain, pas à un guess).
+// L0 · models.ts (ARCHITECTURE.md v2 §7) — mapping appel → modèle OpenRouter, lu
+// depuis l'env : pas de valeur par défaut devinée (le choix du modèle revient à l'humain).
 
-export type AppelLLM = "sectionnement" | "rubrique" | "correction_erreurs" | "feynman" | "transcription";
+export type AppelLLM = "correction_erreurs";
 
-// Exporté : réutilisé par la zone technique des Réglages (Bloc 9.1, USER_FLOW P7 — « modèle
-// par appel, lecture seule ») pour énumérer les appels sans dupliquer la liste.
+// Exporté : la zone technique des Réglages énumère les appels sans dupliquer la liste.
 export const ENV_KEY_BY_APPEL: Record<AppelLLM, string> = {
-  sectionnement: "LLM_MODEL_SECTIONNEMENT",
-  rubrique: "LLM_MODEL_RUBRIQUE",
   correction_erreurs: "LLM_MODEL_CORRECTION_ERREURS",
-  feynman: "LLM_MODEL_FEYNMAN",
-  transcription: "LLM_MODEL_TRANSCRIPTION",
 };
 
 export function resolveModel(appel: AppelLLM): string {

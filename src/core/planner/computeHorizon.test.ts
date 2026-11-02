@@ -21,7 +21,7 @@ describe("computeHorizon · P8", () => {
   it("carte due aujourd'hui ⇒ comptée dans J7 ET J30, pas en dette", () => {
     const h = computeHorizon({
       ...baseInput,
-      reviewCards: [{ sectionId: "a", due: "2026-07-09", subjectId: "s1" }],
+      reviewCards: [{ ficheId: "a", due: "2026-07-09", subjectId: "s1" }],
     });
     expect(h).toMatchObject({ chargeJ7: 1, chargeJ30: 1, dette: 0 });
   });
@@ -29,7 +29,7 @@ describe("computeHorizon · P8", () => {
   it("carte due hier ⇒ dette uniquement, absente des charges J7/J30", () => {
     const h = computeHorizon({
       ...baseInput,
-      reviewCards: [{ sectionId: "a", due: "2026-07-08", subjectId: "s1" }],
+      reviewCards: [{ ficheId: "a", due: "2026-07-08", subjectId: "s1" }],
     });
     expect(h).toMatchObject({ chargeJ7: 0, chargeJ30: 0, dette: 1 });
   });
@@ -38,8 +38,8 @@ describe("computeHorizon · P8", () => {
     const h = computeHorizon({
       ...baseInput,
       reviewCards: [
-        { sectionId: "in6", due: "2026-07-15", subjectId: "s1" },
-        { sectionId: "in7", due: "2026-07-16", subjectId: "s1" },
+        { ficheId: "in6", due: "2026-07-15", subjectId: "s1" },
+        { ficheId: "in7", due: "2026-07-16", subjectId: "s1" },
       ],
     });
     expect(h.chargeJ7).toBe(1);
@@ -50,8 +50,8 @@ describe("computeHorizon · P8", () => {
     const h = computeHorizon({
       ...baseInput,
       reviewCards: [
-        { sectionId: "in29", due: "2026-08-07", subjectId: "s1" },
-        { sectionId: "in30", due: "2026-08-08", subjectId: "s1" },
+        { ficheId: "in29", due: "2026-08-07", subjectId: "s1" },
+        { ficheId: "in30", due: "2026-08-08", subjectId: "s1" },
       ],
     });
     expect(h.chargeJ30).toBe(1);
@@ -61,8 +61,8 @@ describe("computeHorizon · P8", () => {
     const h = computeHorizon({
       today: "2026-07-09",
       reviewCards: [
-        { sectionId: "a", due: "2026-07-09", subjectId: "droit-civil" },
-        { sectionId: "b", due: "2026-07-08", subjectId: "droit-penal" },
+        { ficheId: "a", due: "2026-07-09", subjectId: "droit-civil" },
+        { ficheId: "b", due: "2026-07-08", subjectId: "droit-penal" },
       ],
       examDates: {},
     });

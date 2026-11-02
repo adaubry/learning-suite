@@ -3,37 +3,38 @@
 import { useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Badge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { ErrorCandidatesPanel } from "@/components/error-candidates-panel";
-import type { MergedDiffPoint, MergedErrorCandidate } from "@/core/correction/verdict";
+import { FsrsRatingBar } from "@/components/fsrs-rating-bar";
+import { resumeRaisonnement, type ErreurCandidate, type PointCorrige, type Verdict } from "@/core/fiche/verdict";
+import type { Note } from "@/core/fsrs/fsrsCore";
 
-// U16 CorrectionView (FUNCTIONS §6.2, USER_FLOW É3.3, REVAMP v2 2026-07-15 +
-// fusion Machine B/C 2026-07-15) — diff toujours affiché en entier (divulgation
-// toujours complète, P10 supprimé) ; verdict proposé purement informatif, ne
-// conditionne plus les boutons. Boutons d'issue selon la TENTATIVE : n°1 →
-// relire+refaire / Feynman / abandonner ; n°2 (dernière possible) → Feynman /
-// abandonner. Seul écran de correction depuis la fusion Machine B/C — étude ET
-// révision y passent identiquement (U18 FsrsRatingBar a déménagé sur le bilan,
-// É3.5, condition de clôture de tout cycle plutôt qu'alternative ici).
+// CorrectionView (ARCHITECTURE.md v2 §2, USER_FLOW.md v2) — restitution, verdict
+// proposé, raisonnement x/y, points corrigés, erreurs candidates, puis la sortie :
+// tentative 1 → [Relire puis refaire] ou noter ; tentative 2 → noter (Again/Hard).
+// Le verdict choisit le bouton mis en avant ; l'utilisateur décide.
 
-const statutDot: Record<MergedDiffPoint["statut"], { variant: "success" | "error" | "warning"; label: string }> = {
+const statutDot: Record<PointCorrige["statut"], { variant: "success" | "error" | "warning"; label: string }> = {
   couvert: { variant: "success", label: "Couvert" },
   manquant: { variant: "error", label: "Manquant" },
   deforme: { variant: "warning", label: "Déformé" },
 };
 
-// Exporté : réutilisé par la vue session lecture seule (/session/[id], U24).
-export function DiffList({ diff }: { diff: MergedDiffPoint[] }) {
+// Exporté : réutilisé par l'historique de la fiche (/fiche/[id]).
+export function PointList({ points }: { points: PointCorrige[] }) {
   return (
-    <ul className="flex flex-col gap-2">
-      {diff.map((p, i) => (
-        <li key={i} className="flex flex-col gap-1 rounded-none border p-3">
-          <div className="flex items-center gap-2">
+    <ul className="flex flex-col divide-y divide-border border border-border">
+      {points.map((p, i) => (
+        <li key={i} className="flex flex-col gap-1 p-3">
+          <div className="flex flex-wrap items-center gap-2">
             <StatusDot variant={statutDot[p.statut].variant} label={statutDot[p.statut].label} />
             <span className="font-medium">{p.intitule}</span>
+            {p.type === "critique" && <Badge variant="neutral" label="essentiel" />}
+            {p.raisonnement && <Badge variant="neutral" label="raisonnement" />}
           </div>
           {p.explication && <p className="text-sm text-secondary">{p.explication}</p>}
-          {p.attendu && <p className="text-sm">{p.attendu}</p>}
+          {p.statut !== "couvert" && <p className="text-sm">{p.attendu}</p>}
         </li>
       ))}
     </ul>
@@ -41,89 +42,102 @@ export function DiffList({ diff }: { diff: MergedDiffPoint[] }) {
 }
 
 export function CorrectionView({
-  sectionTitre,
-  tentative,
+  ficheTitre,
+  numero,
   verdict,
   input,
-  diff,
+  points,
   erreursCandidates,
+  notes,
+  preview,
   relireAction,
+  noterAction,
   abandonAction,
-  passerFeynmanAction,
 }: {
-  sectionTitre: string;
-  tentative: number;
-  verdict: "acquis" | "insuffisant";
-  /** Restitution de l'utilisateur (blurting) — affichée pour éviter de forcer un rappel de
-   *  mémoire au moment le plus chargé émotionnellement de l'app (relire ce qu'on a écrit,
-   *  pas s'en souvenir, pendant qu'on découvre ce qui a été mal jugé). */
+  ficheTitre: string;
+  numero: number;
+  verdict: Verdict;
   input: string;
-  diff: MergedDiffPoint[];
-  erreursCandidates: MergedErrorCandidate[];
-  /** Disponible seulement à la tentative 1 (pas de 3ᵉ passe). */
+  points: PointCorrige[];
+  erreursCandidates: ErreurCandidate[];
+  notes: Note[];
+  preview: Record<Note, { due: string }>;
+  /** Tentative 1 seulement. */
   relireAction?: (formData: FormData) => Promise<void>;
-  abandonAction?: () => Promise<void>;
-  passerFeynmanAction?: (formData: FormData) => Promise<void>;
+  noterAction: (note: Note, formData: FormData) => Promise<void>;
+  abandonAction: () => Promise<void>;
 }) {
-  // Les boutons d'issue sont des <form> INDÉPENDANTS — sans ce drapeau partagé,
-  // cliquer deux boutons en succession rapide envoie deux mutations concurrentes
-  // sur le même cycle (l'une gagne, l'autre plante sur le garde d'état : incident
-  // réel constaté en usage sur cet écran).
+  // Les sorties sont des <form> indépendants qui mutent le même cycle : un verrou
+  // commun empêche deux soumissions concurrentes (double clic sur deux boutons).
   const [submitting, setSubmitting] = useState(false);
   const lockSubmit = () => setSubmitting(true);
 
-  // USER_FLOW É3.3 « Règle de commit » : les index rejetés sont sérialisés dans un
-  // champ caché, dupliqué dans les formulaires de sortie qui committent (relire/Feynman).
+  // Erreurs candidates rejetées : sérialisées dans chaque formulaire de sortie, le
+  // reste est enregistré dans le carnet en quittant l'écran.
   const [rejected, setRejected] = useState<boolean[]>(() => erreursCandidates.map(() => false));
-  const rejectedIndexesField = JSON.stringify(rejected.flatMap((r, i) => (r ? [i] : [])));
+  const rejectedIndexes = JSON.stringify(rejected.flatMap((r, i) => (r ? [i] : [])));
+
+  const raisonnement = resumeRaisonnement(points);
+  const couverts = points.filter((p) => p.statut === "couvert").length;
+  const relirePrimaire = verdict === "insuffisant" && Boolean(relireAction);
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">{sectionTitre}</h1>
-        <Badge variant="neutral" label={`tentative n°${tentative}`} />
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-lg font-semibold">{ficheTitre}</h1>
+        <Badge variant="neutral" label={`tentative n°${numero}`} />
       </div>
 
-      <p className="text-sm">
-        Verdict proposé : <strong>{verdict}</strong>
-      </p>
+      <Banner
+        status={verdict === "bon" ? "success" : "warning"}
+        title={verdict === "bon" ? "L'essentiel y est" : "Il manque l'essentiel"}
+        description={`${couverts}/${points.length} points couverts${
+          raisonnement.total ? ` · raisonnement ${raisonnement.couverts}/${raisonnement.total}` : ""
+        }. Verdict proposé : c'est toi qui choisis la suite.`}
+      />
 
-      <details open className="flex flex-col gap-1 rounded-none border border-border p-3">
+      <details className="flex flex-col gap-1 rounded-none border border-border p-3">
         <summary className="cursor-pointer text-sm font-medium">Ta restitution</summary>
         <p className="mt-2 whitespace-pre-wrap text-sm text-secondary">{input}</p>
       </details>
 
-      <DiffList diff={diff} />
+      <PointList points={points} />
       <ErrorCandidatesPanel
         candidates={erreursCandidates}
         rejected={rejected}
         onChange={(i, r) => setRejected((prev) => prev.map((p, pi) => (pi === i ? r : p)))}
       />
 
-      <div className="flex flex-wrap gap-2">
-        {tentative === 1 && relireAction && (
+      <div className="flex flex-col gap-3 border-t border-border pt-4">
+        {relireAction && (
           <form action={relireAction} onSubmit={lockSubmit}>
-            <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
-            <Button type="submit" size="sm" isDisabled={submitting} label="Relire, puis refaire un blurting" />
-          </form>
-        )}
-        {passerFeynmanAction && (
-          <form action={passerFeynmanAction} onSubmit={lockSubmit}>
-            <input type="hidden" name="rejectedIndexes" value={rejectedIndexesField} />
+            <input type="hidden" name="rejectedIndexes" value={rejectedIndexes} />
             <Button
               type="submit"
-              size="sm"
-              variant={tentative === 1 ? "secondary" : "primary"}
+              variant={relirePrimaire ? "primary" : "secondary"}
               isDisabled={submitting}
-              label="Passer au Feynman"
+              label="Relire la fiche, puis refaire un blurting"
             />
           </form>
         )}
-        {abandonAction && (
-          <form action={abandonAction} onSubmit={lockSubmit}>
-            <Button type="submit" variant="ghost" size="sm" isDisabled={submitting} label="Abandonner" />
-          </form>
-        )}
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">
+            {numero === 2
+              ? "Après une relecture, le rappel à froid n'a pas tenu : Again ou Hard."
+              : "À quel point c'était difficile de t'en souvenir ?"}
+          </p>
+          <FsrsRatingBar
+            notes={notes}
+            preview={preview}
+            rateAction={noterAction}
+            hiddenFields={{ rejectedIndexes }}
+            disabled={submitting}
+            onSubmit={lockSubmit}
+          />
+        </div>
+        <form action={abandonAction} onSubmit={lockSubmit}>
+          <Button type="submit" variant="ghost" size="sm" isDisabled={submitting} label="Abandonner" />
+        </form>
       </div>
     </div>
   );

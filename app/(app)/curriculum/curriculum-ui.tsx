@@ -1,149 +1,33 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  useActionState,
-  useEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import { PencilIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { useActionState, useState } from "react";
+import { PencilIcon } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { TextInput } from "@astryxdesign/core/TextInput";
-import { TextArea } from "@astryxdesign/core/TextArea";
 import { DateInput } from "@astryxdesign/core/DateInput";
 import type { ISODateString } from "@astryxdesign/core/Calendar";
 import { Badge } from "@astryxdesign/core/Badge";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import {
-  Card,
-  HStack,
-  Layout,
-  LayoutContent,
-  LayoutFooter,
-  VStack,
-} from "@astryxdesign/core/Layout";
-import {
-  CollapsibleGroup,
-  useCollapsible,
-} from "@astryxdesign/core/Collapsible";
+import { Card, HStack, Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
+import { CollapsibleGroup, useCollapsible } from "@astryxdesign/core/Collapsible";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Text } from "@astryxdesign/core/Text";
 import { StrongConfirmDialog } from "@/components/confirm-dialog";
 import {
-  createRubricQueue,
-  isRubricSectionQueued,
-  type RubricQueueItem,
-} from "@/components/rubric-generation-queue";
-import {
   createSubjectAction,
   updateSubjectAction,
   archiveSubjectAction,
   unarchiveSubjectAction,
   deleteSubjectAction,
-  generateRubricAction,
-  createManualRubricAction,
+  archiveSetAction,
+  unarchiveSetAction,
+  deleteSetAction,
 } from "../actions";
 
-// Une seule file pour toute la page /curriculum (les sections en jeu peuvent
-// appartenir à des chapitres/matières différents) — instanciée une fois au
-// chargement du module, partagée par SectionRow et RubricQueuePanel. Les deux
-// actions Server ne redirigent plus (app/(app)/actions.ts) : c'est cette file
-// qui décide quand passer à la suivante.
-function sectionFormData(sectionId: string) {
-  const formData = new FormData();
-  formData.set("sectionId", sectionId);
-  return formData;
-}
-const rubricQueue = createRubricQueue(
-  (sectionId) => generateRubricAction(undefined, sectionFormData(sectionId)),
-  (sectionId) =>
-    createManualRubricAction(undefined, sectionFormData(sectionId)),
-);
-
-const EMPTY_RUBRIC_QUEUE: RubricQueueItem[] = [];
-function useRubricQueueItems() {
-  return useSyncExternalStore(
-    rubricQueue.subscribe,
-    rubricQueue.getSnapshot,
-    () => EMPTY_RUBRIC_QUEUE,
-  );
-}
-
-const rubricQueueStatusLabel: Record<RubricQueueItem["status"], string> = {
-  en_attente: "en attente",
-  en_cours: "génération…",
-  termine: "terminé",
-  erreur: "échec",
-};
-
-const rubricQueueKindLabel: Record<RubricQueueItem["kind"], string> = {
-  generer: "Générer la rubrique",
-  manuel: "Rédiger manuellement",
-};
-
-export function RubricQueuePanel() {
-  const router = useRouter();
-  const items = useRubricQueueItems();
-  const settledCount = useRef(0);
-
-  useEffect(() => {
-    const count = items.filter(
-      (i) => i.status === "termine" || i.status === "erreur",
-    ).length;
-    if (count !== settledCount.current) {
-      settledCount.current = count;
-      router.refresh();
-    }
-  }, [items, router]);
-
-  if (items.length === 0) return null;
-
-  return (
-    <ul className="flex flex-col gap-1 rounded-none border p-2 text-sm">
-      {items.map((item) => (
-        <li key={item.id} className="flex flex-col gap-0.5">
-          <div className="flex items-center gap-2">
-            <span className="flex-1">
-              {rubricQueueKindLabel[item.kind]} — {item.sectionTitre}
-            </span>
-            <Badge
-              variant={item.status === "erreur" ? "error" : "neutral"}
-              label={rubricQueueStatusLabel[item.status]}
-            />
-            {item.status === "en_attente" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                isIconOnly
-                icon={<XIcon size={14} />}
-                label="Annuler"
-                onClick={() => rubricQueue.cancel(item.id)}
-              />
-            )}
-            {(item.status === "termine" || item.status === "erreur") && (
-              <Button
-                variant="ghost"
-                size="sm"
-                isIconOnly
-                icon={<XIcon size={14} />}
-                label="Masquer"
-                onClick={() => rubricQueue.dismiss(item.id)}
-              />
-            )}
-          </div>
-          {item.status === "erreur" && item.error && (
-            <p className="text-xs text-error">{item.error}</p>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
+// Curriculum v2 (USER_FLOW.md v2) : matières → sets de fiches → fiches.
 
 type Subject = {
   id: string;
@@ -151,119 +35,41 @@ type Subject = {
   semestre: string;
   dateExamen: string | null;
   statut: "active" | "archivee";
-  methodologieTitres: string | null;
 };
 
-type SectionStatut =
-  | "importee"
-  | "a_trier"
-  | "active"
-  | "exclue"
-  | "rubrique_a_valider"
-  | "prete"
-  | "validee"
-  | "en_revision"
-  | "archivee";
-
-type Section = {
+type FicheRow = {
   id: string;
+  numero: number;
   titre: string;
-  importance: number;
-  statut: SectionStatut;
+  statut: "nouvelle" | "en_revision" | "archivee";
+  due: string | null;
 };
 
-type Chapter = {
+type FicheSet = {
   id: string;
   titre: string;
-  version: number;
   statut: "actif" | "archive";
-  sections: Section[];
+  importedAt: Date;
+  fiches: FicheRow[];
 };
 
-const sectionStatutLabel: Record<SectionStatut, string> = {
-  importee: "importée",
-  a_trier: "à trier",
-  active: "active",
-  exclue: "exclue",
-  rubrique_a_valider: "rubrique à valider",
-  prete: "prête",
-  validee: "validée",
-  en_revision: "en révision",
-  archivee: "archivée",
-};
+function formatDate(iso: string) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
+}
 
-// Code couleur de la pastille (USER_FLOW É6.0 : « statut (pastille) ») — warning pour tout ce
-// qui attend une action de l'utilisateur, success pour ce qui est prêt/validé, neutral pour ce
-// qui est hors-jeu (exclue/archivée) ou pas encore actionnable (importée, tri pas encore construit).
-const sectionStatusDotVariant: Record<
-  SectionStatut,
-  "success" | "warning" | "error" | "accent" | "neutral"
-> = {
-  importee: "neutral",
-  a_trier: "neutral",
-  active: "warning",
-  exclue: "neutral",
-  rubrique_a_valider: "warning",
-  prete: "success",
-  validee: "success",
-  en_revision: "accent",
-  archivee: "neutral",
-};
-
-function SectionRow({ section }: { section: Section }) {
-  const items = useRubricQueueItems();
-  // Les deux boutons créent une rubrique pour la MÊME section — un double-clic
-  // générer+rédiger manuellement viole la contrainte d'unicité en base (une
-  // rubrique non-obsolète par section, même classe de bug que
-  // correction-view.tsx). La file (rubric-generation-queue.ts) l'empêche déjà
-  // par construction (dédoublonnage par sectionId) ; désactiver les boutons ici
-  // évite en plus de laisser partir un clic pour rien.
-  const submitting = isRubricSectionQueued(items, section.id);
-
+function FicheItem({ fiche }: { fiche: FicheRow }) {
   return (
     <ListItem
-      label={section.titre}
+      label={`${fiche.numero}. ${fiche.titre}`}
+      href={`/fiche/${fiche.id}`}
       description={
-        <VStack gap={1} paddingBlock={1}>
-          <HStack gap={2} align="center" wrap="wrap">
-            <Text type="supporting">imp. {section.importance}</Text>
-            <StatusDot
-              variant={sectionStatusDotVariant[section.statut]}
-              label={sectionStatutLabel[section.statut]}
-            />
-          </HStack>
-          {section.statut === "active" ? (
-            <HStack gap={2} wrap="wrap">
-              <Button
-                size="sm"
-                variant="secondary"
-                isDisabled={submitting}
-                label="Générer la rubrique"
-                onClick={() =>
-                  rubricQueue.enqueue(section.id, section.titre, "generer")
-                }
-              />
-              <Button
-                size="sm"
-                variant="ghost"
-                isDisabled={submitting}
-                label="Rédiger manuellement"
-                onClick={() =>
-                  rubricQueue.enqueue(section.id, section.titre, "manuel")
-                }
-              />
-            </HStack>
-          ) : section.statut === "rubrique_a_valider" ? (
-            <HStack gap={2} wrap="wrap">
-              <Button
-                size="sm"
-                as={Link}
-                href={`/section/${section.id}/rubrique`}
-                label="Valider la rubrique"
-              />
-            </HStack>
-          ) : null}
-        </VStack>
+        <HStack gap={2} align="center" wrap="wrap" paddingBlock={1}>
+          {fiche.statut === "nouvelle" && <StatusDot variant="neutral" label="nouvelle" />}
+          {fiche.statut === "en_revision" && (
+            <StatusDot variant="accent" label={fiche.due ? `révision le ${formatDate(fiche.due)}` : "en révision"} />
+          )}
+          {fiche.statut === "archivee" && <StatusDot variant="neutral" label="retirée du set" />}
+        </HStack>
       }
     />
   );
@@ -383,9 +189,6 @@ function EditSubjectFields({
   const [dateExamen, setDateExamen] = useState<ISODateString | undefined>(
     (subject.dateExamen as ISODateString | null) ?? undefined,
   );
-  const [methodologieTitres, setMethodologieTitres] = useState(
-    subject.methodologieTitres ?? "",
-  );
 
   return (
     <form action={action}>
@@ -421,15 +224,6 @@ function EditSubjectFields({
                 onChange={setDateExamen}
                 isOptional
                 hasClear
-              />
-              <TextArea
-                label="Surcharge méthodologie des titres"
-                value={methodologieTitres}
-                onChange={setMethodologieTitres}
-                htmlName="methodologieTitres"
-                rows={3}
-                isOptional
-                description="Laisser vide pour utiliser la méthodologie globale"
               />
               {error && <p className="text-sm text-error">{error}</p>}
             </div>
@@ -495,71 +289,47 @@ function EditSubjectDialog({ subject }: { subject: Subject }) {
   );
 }
 
-function ChapterItem({ chapter }: { chapter: Chapter }) {
-  const { isOpen, toggle } = useCollapsible({
-    isCollapsible: { defaultIsOpen: false },
-    value: chapter.id,
-  });
-  const aTraiter = chapter.sections.filter(
-    (s) => s.statut === "active" || s.statut === "rubrique_a_valider",
-  ).length;
+function SetItem({ set }: { set: FicheSet }) {
+  const { isOpen, toggle } = useCollapsible({ isCollapsible: { defaultIsOpen: false }, value: set.id });
+  const visibles = set.fiches.filter((f) => f.statut !== "archivee");
+  const nouvelles = visibles.filter((f) => f.statut === "nouvelle").length;
 
   return (
     <div className="rounded-none border border-border bg-surface">
-      <HStack
-        gap={2}
-        align="center"
-        justify="between"
-        wrap="wrap"
-        paddingInline={3}
-        paddingBlock={1}
-      >
-        <HStack
-          gap={2}
-          align="center"
-          wrap="wrap"
-          paddingInline={3}
-          paddingBlock={1}
+      <HStack gap={2} align="center" justify="between" wrap="wrap" paddingInline={3} paddingBlock={1}>
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={isOpen}
+          className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm font-medium"
         >
-          <button
-            type="button"
-            onClick={toggle}
-            aria-expanded={isOpen}
-            className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left text-sm font-medium"
-          >
-            <Icon
-              icon="chevronDown"
-              size="sm"
-              className={isOpen ? "" : "-rotate-90"}
-            />
-            <span>{chapter.titre}</span>
-          </button>
-          <Badge variant="neutral" label={`v${chapter.version}`} />
-          {chapter.statut === "archive" && (
-            <Badge variant="neutral" label="archivé" />
-          )}
-          {aTraiter > 0 && (
-            <Badge variant="warning" label={`${aTraiter} à traiter`} />
-          )}
-          {chapter.sections.length === 0 && (
-            <Text type="supporting">Aucune section</Text>
-          )}
+          <Icon icon="chevronDown" size="sm" className={isOpen ? "" : "-rotate-90"} />
+          <span>{set.titre}</span>
+          <Badge variant="neutral" label={`${visibles.length} fiches`} />
+          {nouvelles > 0 && <Badge variant="neutral" label={`${nouvelles} nouvelles`} />}
+          {set.statut === "archive" && <Badge variant="neutral" label="archivé" />}
+        </button>
+        <HStack gap={1} wrap="wrap">
+          <Button variant="ghost" size="sm" label="Ré-importer" as={Link} href={`/importer?set=${set.id}`} />
+          <form action={set.statut === "actif" ? archiveSetAction.bind(null, set.id) : unarchiveSetAction.bind(null, set.id)}>
+            <Button type="submit" variant="ghost" size="sm" label={set.statut === "actif" ? "Archiver" : "Désarchiver"} />
+          </form>
+          <StrongConfirmDialog
+            trigger={<Button size="sm" variant="ghost" label="Supprimer" />}
+            title={`Supprimer définitivement « ${set.titre} » ?`}
+            description="Détruit les fiches de ce set et tout leur historique de révision. Irréversible — préfère l'archivage."
+            confirmWord={set.titre}
+            confirmLabel="Supprimer définitivement"
+            action={deleteSetAction.bind(null, set.id)}
+          />
         </HStack>
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<SquarePenIcon size={16} />}
-          label="Ouvrir"
-          as={Link}
-          href={`/curriculum/chapitre/${chapter.id}`}
-        />
       </HStack>
 
-      {isOpen && chapter.sections.length > 0 && (
+      {isOpen && (
         <div className="px-3 pb-2">
           <List hasDividers density="compact">
-            {chapter.sections.map((s) => (
-              <SectionRow key={s.id} section={s} />
+            {set.fiches.map((f) => (
+              <FicheItem key={f.id} fiche={f} />
             ))}
           </List>
         </div>
@@ -572,35 +342,28 @@ function matchesQuery(text: string, query: string) {
   return text.toLowerCase().includes(query.toLowerCase());
 }
 
-// Filtre client léger sur matière/chapitre/section — pas de nouvelle requête
-// serveur, la page a déjà tout chargé (ponytail: matières peu nombreuses,
-// mono-utilisateur, cf. commentaire page.tsx sur listChaptersBySubject).
-export function CurriculumFilter({
-  subjectsWithChapters,
-}: {
-  subjectsWithChapters: { subject: Subject; chapters: Chapter[] }[];
-}) {
+// Filtre client léger matière / set / fiche : la page a déjà tout chargé.
+export function CurriculumFilter({ subjectsWithSets }: { subjectsWithSets: { subject: Subject; sets: FicheSet[] }[] }) {
   const [query, setQuery] = useState("");
   const trimmed = query.trim();
 
   const filtered = trimmed
-    ? subjectsWithChapters.flatMap(({ subject, chapters }) => {
-        const subjectMatches = matchesQuery(subject.nom, trimmed);
-        if (subjectMatches) return [{ subject, chapters }];
-        const filteredChapters = chapters.flatMap((chapter) => {
-          if (matchesQuery(chapter.titre, trimmed)) return [chapter];
-          const sections = chapter.sections.filter((s) => matchesQuery(s.titre, trimmed));
-          return sections.length > 0 ? [{ ...chapter, sections }] : [];
+    ? subjectsWithSets.flatMap(({ subject, sets }) => {
+        if (matchesQuery(subject.nom, trimmed)) return [{ subject, sets }];
+        const filteredSets = sets.flatMap((set) => {
+          if (matchesQuery(set.titre, trimmed)) return [set];
+          const fiches = set.fiches.filter((f) => matchesQuery(f.titre, trimmed));
+          return fiches.length > 0 ? [{ ...set, fiches }] : [];
         });
-        return filteredChapters.length > 0 ? [{ subject, chapters: filteredChapters }] : [];
+        return filteredSets.length > 0 ? [{ subject, sets: filteredSets }] : [];
       })
-    : subjectsWithChapters;
+    : subjectsWithSets;
 
   return (
     <div className="flex flex-col gap-4">
-      {subjectsWithChapters.length > 0 && (
+      {subjectsWithSets.length > 0 && (
         <TextInput
-          label="Rechercher une matière, un chapitre ou une section"
+          label="Rechercher une matière, un set ou une fiche"
           isLabelHidden
           placeholder="Rechercher…"
           value={query}
@@ -610,42 +373,31 @@ export function CurriculumFilter({
       {trimmed && filtered.length === 0 ? (
         <Text type="supporting">Aucun résultat pour « {trimmed} ».</Text>
       ) : (
-        filtered.map(({ subject, chapters }) => (
-          <SubjectCard key={subject.id} subject={subject} chapters={chapters} />
-        ))
+        filtered.map(({ subject, sets }) => <SubjectCard key={subject.id} subject={subject} sets={sets} />)
       )}
     </div>
   );
 }
 
-export function SubjectCard({
-  subject,
-  chapters,
-}: {
-  subject: Subject;
-  chapters: Chapter[];
-}) {
+function SubjectCard({ subject, sets }: { subject: Subject; sets: FicheSet[] }) {
   return (
     <Card>
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-semibold">{subject.nom}</h3>
         <Badge variant="neutral" label={subject.semestre} />
-        {subject.statut === "archivee" && (
-          <Badge variant="neutral" label="archivée" />
-        )}
+        {subject.dateExamen && <Badge variant="neutral" label={`examen le ${formatDate(subject.dateExamen)}`} />}
+        {subject.statut === "archivee" && <Badge variant="neutral" label="archivée" />}
         <EditSubjectDialog subject={subject} />
       </div>
 
       <div className="mt-3 flex flex-col gap-2 border-t pt-3">
-        {chapters.length === 0 ? (
-          <p className="text-sm text-secondary">
-            Aucun chapitre pour l&apos;instant.
-          </p>
+        {sets.length === 0 ? (
+          <p className="text-sm text-secondary">Aucun set de fiches pour l&apos;instant.</p>
         ) : (
           <CollapsibleGroup type="multiple" defaultValue={[]}>
             <div className="flex flex-col gap-2">
-              {chapters.map((c) => (
-                <ChapterItem key={c.id} chapter={c} />
+              {sets.map((s) => (
+                <SetItem key={s.id} set={s} />
               ))}
             </div>
           </CollapsibleGroup>
@@ -654,25 +406,16 @@ export function SubjectCard({
           <form
             action={
               subject.statut === "active"
-                ? archiveSubjectAction
-                : unarchiveSubjectAction
+                ? archiveSubjectAction.bind(null, subject.id)
+                : unarchiveSubjectAction.bind(null, subject.id)
             }
           >
-            <input type="hidden" name="subjectId" value={subject.id} />
-            <Button
-              type="submit"
-              variant="secondary"
-              size="sm"
-              label={subject.statut === "active" ? "Archiver" : "Désarchiver"}
-            />
+            <Button type="submit" variant="secondary" size="sm" label={subject.statut === "active" ? "Archiver" : "Désarchiver"} />
           </form>
-          {/* USER_FLOW É6.4 : archivage toujours proposé avant la suppression. */}
           <StrongConfirmDialog
-            trigger={
-              <Button size="sm" variant="destructive" label="Supprimer" />
-            }
+            trigger={<Button size="sm" variant="destructive" label="Supprimer" />}
             title={`Supprimer définitivement « ${subject.nom} » ?`}
-            description="Détruit tous les chapitres, sections, rubriques et l'historique d'étude de cette matière. Irréversible — préfère l'archivage pour une matière terminée."
+            description="Détruit tous les sets de fiches et l'historique de révision de cette matière. Irréversible — préfère l'archivage pour une matière terminée."
             confirmWord={subject.nom}
             confirmLabel="Supprimer définitivement"
             action={deleteSubjectAction.bind(null, subject.id)}

@@ -5,8 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUserId } from "@/lib/auth";
 import * as planner from "@/services/planner";
 
-// S5.defer/reorder (FUNCTIONS §4) : adaptateurs minces — un point d'entrée par
-// action, aucune logique métier ici (AGENTS §2).
+// Adaptateurs minces vers PlannerService — aucune logique métier ici (AGENTS §2).
 
 export async function deferAction(itemType: "etude" | "revision", itemId: string) {
   await requireUserId();
@@ -32,11 +31,10 @@ export async function reorderAction(index: number, direction: "up" | "down" | "t
   revalidatePath("/");
 }
 
-// État vide É2.0 (USER_FLOW) : avance une candidate du backlog en empruntant un
-// slot de demain, puis démarre l'étude tout de suite (S4.start, via la page focus
-// — même chemin qu'un clic [Commencer] normal).
-export async function advanceFromBacklogAction(sectionId: string) {
+// État vide de l'accueil : avance une nouvelle fiche en empruntant un slot de
+// demain, puis ouvre la session (même chemin qu'un clic [Commencer]).
+export async function advanceFromBacklogAction(ficheId: string) {
   await requireUserId();
-  await planner.advanceFromBacklog(sectionId);
-  redirect(`/etude/${sectionId}`);
+  await planner.advanceFromBacklog(ficheId);
+  redirect(`/etude/${ficheId}`);
 }

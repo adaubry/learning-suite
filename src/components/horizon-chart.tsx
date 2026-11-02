@@ -1,6 +1,6 @@
 import type { Horizon } from "@/core/planner/computeHorizon";
 
-// U11 HorizonChart (FUNCTIONS §6, TECH_MAPPING §4.2) : barres pures Tailwind,
+// U11 HorizonChart (TECH_MAPPING §4.2) : barres pures Tailwind,
 // zéro lib de charts. Trois chiffres (dette, J7, J30) + barres proportionnelles
 // par matière, échéances d'examens en liste (pas de vraie timeline ce bloc-ci —
 // la mise en forme des données vient de P8, la présentation reste minimale).

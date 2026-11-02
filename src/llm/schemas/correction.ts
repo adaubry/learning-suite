@@ -1,13 +1,10 @@
 import { z } from "zod";
 
-// L3 · correctBlurting — sortie (FUNCTIONS §2 L3, ARCHITECTURE §9 ligne 3+4,
-// prompts/correction_erreurs.v1.md). `point_index` référence le rang 1-based du
-// point de contrôle tel que numéroté dans le prompt (même convention que
-// `segments_couverts` en L2 — un LLM compte mal, la résolution vers le vrai point
-// se fait en code). `recidive_index` référence de la même façon le rang de
-// l'erreur active fournie en contexte — jamais un id brut à faire correspondre par
-// texte. Pas de champ verdict : calculé en code depuis `diff` (P10.computeVerdict,
-// DECISIONS.md bloc 5.1).
+// Sortie de correctBlurting (ARCHITECTURE.md v2 §7, prompts/correction_fiche.v1.md).
+// `point_index` = rang 1-based du point tel que numéroté dans le prompt ;
+// `recidive_index` = rang de l'erreur active fournie. Un LLM compte mal : la
+// résolution vers le vrai point / la vraie erreur se fait en code. Pas de verdict :
+// calculé en code (core/fiche/verdict).
 
 export const diffPointSchema = z.object({
   point_index: z.number().int().positive(),

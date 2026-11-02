@@ -7,7 +7,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import type { ErreurType } from "@/core/correction/verdict";
+import type { ErreurType } from "@/core/fiche/verdict";
 
 const typeLabel: Record<ErreurType, string> = {
   omission: "Omission",
@@ -25,9 +25,8 @@ const typeBadgeVariant: Record<ErreurType, "info" | "success" | "warning" | "err
 
 export interface NotebookEntry {
   id: string;
-  sectionId: string;
-  sectionTitre: string;
-  sessionId: string;
+  ficheId: string;
+  ficheTitre: string;
   type: ErreurType;
   description: string;
   statut: "active" | "resolue";
@@ -53,7 +52,7 @@ function filterHref(base: NotebookFilters, patch: Partial<NotebookFilters>, page
   return `/erreurs?${params.toString()}`;
 }
 
-// U24 ErrorNotebook (FUNCTIONS §6.2, USER_FLOW É5.1). Filtres en liens (query
+// U24 ErrorNotebook (USER_FLOW É5.1). Filtres en liens (query
 // params, aucun JS requis) ; édition en <details> natif (TECH_MAPPING §4 —
 // pas de composant client pour un simple repli/dépli) ; suppression via U8
 // ConfirmDialog (confirmation légère, pas de dépendants sur une ErrorEntry).
@@ -154,8 +153,8 @@ export function ErrorNotebook({
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant={typeBadgeVariant[e.type]} label={typeLabel[e.type]} />
                 {e.occurrences > 1 && <Badge variant="neutral" label={`récidive ×${e.occurrences}`} />}
-                <Link href={`/section/${e.sectionId}/rubrique`} className="text-sm underline">
-                  {e.sectionTitre}
+                <Link href={`/fiche/${e.ficheId}`} className="text-sm underline">
+                  {e.ficheTitre}
                 </Link>
                 <span className="text-xs text-secondary">{e.createdAt.toLocaleDateString("fr-FR")}</span>
               </div>
@@ -188,9 +187,6 @@ export function ErrorNotebook({
                   action={deleteAction.bind(null, e.id)}
                   onConfirm={() => lock(e.id)}
                 />
-                <Link href={`/session/${e.sessionId}`} className="text-sm text-secondary underline">
-                  Voir la session d&apos;origine
-                </Link>
               </div>
             </li>
           ))}

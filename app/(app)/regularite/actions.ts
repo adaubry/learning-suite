@@ -8,7 +8,7 @@ import * as statsService from "@/services/stats";
 import * as accountService from "@/services/account";
 import { deadlineInputSchema, deadlineUpdateInputSchema, type DeadlineInput, type DeadlineUpdateInput } from "@/services/deadline.schemas";
 
-// Adaptateurs minces S10/S11/S12 (FUNCTIONS §4) — écran Régularité + AlertBanner
+// Adaptateurs minces S10/S11/S12 — écran Régularité + AlertBanner
 // global (rendu par le layout (app)/, d'où la revalidation de tout le shell).
 // Arguments typés directement (pas de FormData) : les champs du formulaire
 // (DateInput/Selector/NumberInput Astryx) sont des composants contrôlés, sans

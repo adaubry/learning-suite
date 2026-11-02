@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1784556380659,
-      "tag": "0000_bumpy_iceman",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1784557076295,
-      "tag": "0001_study_cycle_requires_valid_guide",
+      "when": 1793624343307,
+      "tag": "0000_exotic_steel_serpent",
       "breakpoints": true
     }
   ]

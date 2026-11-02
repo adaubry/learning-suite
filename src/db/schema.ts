@@ -5,88 +5,34 @@ import {
   uuid,
   text,
   integer,
-  smallint,
   real,
   boolean,
   date,
   timestamp,
   jsonb,
-  check,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { user } from "./auth-schema";
 
-// ponytail: pas de table `User` domaine séparée — Better-Auth possède déjà sa
-// propre table `user` (générée, src/db/auth-schema.ts), on la référence
-// directement (mono-utilisateur, doctrine simplicité §1).
+// Modèle v2 (ARCHITECTURE.md §4). Better-Auth possède la table `user`
+// (src/db/auth-schema.ts), référencée directement — mono-utilisateur.
 export * from "./auth-schema";
 
-// --- Enums (ARCHITECTURE.md §8) ---
+// --- Enums ---
 
 export const subjectStatutEnum = pgEnum("subject_statut", ["active", "archivee"]);
-export const chapterStatutEnum = pgEnum("chapter_statut", ["actif", "archive"]);
-export const sectionStatutEnum = pgEnum("section_statut", [
-  "importee",
-  "a_trier",
-  "active",
-  "exclue",
-  "rubrique_a_valider",
-  "prete",
-  "validee",
-  "en_revision",
-  "archivee",
-]);
-export const correctionGuideStatutEnum = pgEnum("correction_guide_statut", [
-  "a_valider",
-  "valide",
-  "obsolete",
-]);
+export const ficheSetStatutEnum = pgEnum("fiche_set_statut", ["actif", "archive"]);
+export const ficheStatutEnum = pgEnum("fiche_statut", ["nouvelle", "en_revision", "archivee"]);
 export const studyCycleTypeEnum = pgEnum("study_cycle_type", ["etude", "revision"]);
-export const studyCycleEtatEnum = pgEnum("study_cycle_etat", [
-  "rubrique_a_valider",
-  "lecture",
-  "blurting",
-  "correction",
-  "feynman",
-  "bilan",
-  "clos",
-]);
-export const studySessionTypeEnum = pgEnum("study_session_type", [
-  "blurting",
-  "feynman",
-  "revision",
-]);
-export const verdictEnum = pgEnum("verdict", ["acquis", "insuffisant"]);
+export const studyCycleEtatEnum = pgEnum("study_cycle_etat", ["lecture", "blurting", "correction", "clos"]);
+export const verdictEnum = pgEnum("verdict", ["bon", "insuffisant"]);
 export const noteFsrsEnum = pgEnum("note_fsrs", ["again", "hard", "good", "easy"]);
-export const divulgationEnum = pgEnum("divulgation", ["controlee", "complete"]);
-export const errorEntryTypeEnum = pgEnum("error_entry_type", [
-  "omission",
-  "deformation",
-  "confusion",
-  "imprecision",
-]);
+export const errorEntryTypeEnum = pgEnum("error_entry_type", ["omission", "deformation", "confusion", "imprecision"]);
 export const errorEntryStatutEnum = pgEnum("error_entry_statut", ["active", "resolue"]);
 export const refileItemTypeEnum = pgEnum("refile_item_type", ["revision", "etude"]);
-export const auditEventTypeEnum = pgEnum("audit_event_type", [
-  "override_verdict",
-  "revelation_correction",
-  "report",
-  "acquittement_anomalie",
-  "validation_sur_insuffisant",
-]);
-export const promptLogAppelEnum = pgEnum("prompt_log_appel", [
-  "sectionnement",
-  "rubrique",
-  "correction_erreurs",
-  "feynman",
-  "transcription",
-]);
+export const promptLogAppelEnum = pgEnum("prompt_log_appel", ["correction_erreurs"]);
 export const promptLogStatutEnum = pgEnum("prompt_log_statut", ["ok", "retry", "echec"]);
-
-// --- Régularité (IMPLEMENT_SCHEDULE.md §3) ---
-
 export const deadlineTypeEnum = pgEnum("deadline_type", ["examen", "controle_continu", "autre"]);
-
 export const alertTypeEnum = pgEnum("alert_type", [
   "echeance_j7",
   "echeance_j3",
@@ -98,24 +44,22 @@ export const alertTypeEnum = pgEnum("alert_type", [
   "pic_charge",
 ]);
 
-// --- Tables (ARCHITECTURE.md §8) ---
+// --- Configuration ---
 
 export const plannerConfig = pgTable("planner_config", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => user.id),
   nouvellesParJour: integer("nouvelles_par_jour").notNull().default(3),
-  // Réglages P7 (Bloc 9.1, USER_FLOW P7) : TTS on/off — même table de config par
-  // utilisateur que nouvellesParJour, pas de nouvelle table pour un seul booléen.
-  ttsActive: boolean("tts_active").notNull().default(true),
-  // Régularité (IMPLEMENT_SCHEDULE.md §3) : lundi de la semaine 1 du S3/S4, pour
-  // les labels sXs3/sXs4 de l'heatmap.
+  // Régularité (IMPLEMENT_SCHEDULE.md §3) : lundi de la semaine 1 du S3/S4.
   debutS3: date("debut_s3"),
   debutS4: date("debut_s4"),
   gelsSerieRestants: integer("gels_serie_restants").notNull().default(2),
   heureAlerteSerie: text("heure_alerte_serie").notNull().default("20:00"),
   seuilDetteReports: integer("seuil_dette_reports").notNull().default(3),
 });
+
+// --- Contenu : matières → sets → fiches ---
 
 export const subject = pgTable("subject", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -127,67 +71,57 @@ export const subject = pgTable("subject", {
   ordre: integer("ordre").notNull(),
   dateExamen: date("date_examen"),
   statut: subjectStatutEnum("statut").notNull().default("active"),
-  methodologieTitres: text("methodologie_titres"),
-  // Durée du gel (Bloc 9.1 fix, USER_FLOW É6.4) : S9.unarchiveSubject en a besoin
-  // pour décaler les échéances FSRS des ReviewCards gelées le temps réel de l'archivage.
+  // Début du gel : le dégel décale `due` de la durée réelle de l'archivage.
   archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
-export const chapter = pgTable("chapter", {
+export const ficheSet = pgTable("fiche_set", {
   id: uuid("id").primaryKey().defaultRandom(),
   subjectId: uuid("subject_id")
     .notNull()
     .references(() => subject.id),
   titre: text("titre").notNull(),
+  // Source du dernier import, telle quelle (export Google Docs).
   markdown: text("markdown").notNull(),
-  version: integer("version").notNull().default(1),
-  contentHash: text("content_hash").notNull(),
-  maj: timestamp("maj", { withTimezone: true }).notNull().defaultNow(),
-  statut: chapterStatutEnum("statut").notNull().default("actif"),
-  // Même besoin que Subject.archivedAt ci-dessus, au niveau chapitre.
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  statut: ficheSetStatutEnum("statut").notNull().default("actif"),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
 });
 
-export const section = pgTable(
-  "section",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    chapterId: uuid("chapter_id")
-      .notNull()
-      .references(() => chapter.id),
-    chapterVersion: integer("chapter_version").notNull(),
-    titre: text("titre").notNull(),
-    ordre: integer("ordre").notNull(),
-    niveauSource: smallint("niveau_source").notNull(),
-    contenu: text("contenu").notNull(),
-    segmentsGras: jsonb("segments_gras"),
-    commentaires: jsonb("commentaires"),
-    importance: smallint("importance").notNull(),
-    statut: sectionStatutEnum("statut").notNull().default("importee"),
-    parentIds: uuid("parent_ids").array(),
-  },
-  (t) => [check("importance_range", sql`${t.importance} BETWEEN 1 AND 5`)],
-);
+export const fiche = pgTable("fiche", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  setId: uuid("set_id")
+    .notNull()
+    .references(() => ficheSet.id),
+  numero: integer("numero").notNull(),
+  titre: text("titre").notNull(),
+  // Corps de la fiche (après son titre 2), affiché tel quel ; les points de
+  // contrôle en sont dérivés à la volée (core/fiche/extractPoints).
+  contenu: text("contenu").notNull(),
+  contentHash: text("content_hash").notNull(),
+  statut: ficheStatutEnum("statut").notNull().default("nouvelle"),
+});
 
-export const correctionGuide = pgTable(
-  "correction_guide",
-  {
-    id: uuid("id").primaryKey().defaultRandom(),
-    sectionId: uuid("section_id")
-      .notNull()
-      .references(() => section.id),
-    chapterVersion: integer("chapter_version").notNull(),
-    contenu: jsonb("contenu").notNull(),
-    statut: correctionGuideStatutEnum("statut").notNull().default("a_valider"),
-    valideLe: timestamp("valide_le", { withTimezone: true }),
-  },
-  (t) => [
-    // un seul CorrectionGuide non-obsolète par section (ARCHITECTURE §8)
-    uniqueIndex("correction_guide_section_non_obsolete")
-      .on(t.sectionId)
-      .where(sql`${t.statut} <> 'obsolete'`),
-  ],
-);
+// --- Répétition espacée ---
+
+export const reviewCard = pgTable("review_card", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ficheId: uuid("fiche_id")
+    .notNull()
+    .unique()
+    .references(() => fiche.id),
+  due: date("due").notNull(),
+  stability: real("stability").notNull(),
+  difficulty: real("difficulty").notNull(),
+  reps: integer("reps").notNull().default(0),
+  lapses: integer("lapses").notNull().default(0),
+  lastReview: timestamp("last_review", { withTimezone: true }),
+  // Gel (archivage) : seul ReviewService y touche.
+  gelee: boolean("gelee").notNull().default(false),
+});
+
+// --- Sessions ---
 
 export const studyCycle = pgTable(
   "study_cycle",
@@ -196,47 +130,40 @@ export const studyCycle = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => user.id),
-    sectionId: uuid("section_id")
+    ficheId: uuid("fiche_id")
       .notNull()
-      .references(() => section.id),
+      .references(() => fiche.id),
+    // Label (badge, tri du planificateur) ; seul effet : une révision saute la lecture.
     type: studyCycleTypeEnum("type").notNull(),
-    etat: studyCycleEtatEnum("etat").notNull().default("rubrique_a_valider"),
-    // Bilan Feynman (L5, Bloc 7.2) : artefact de clôture UNIQUE par cycle, pas une
-    // tentative (study_session.type n'a pas de valeur "bilan") — un seul propriétaire,
-    // ici, plutôt que de le loger dans le JSONB `correction` d'un tour Feynman.
-    bilanFeynman: jsonb("bilan_feynman"),
+    etat: studyCycleEtatEnum("etat").notNull(),
+    // Auto-note posée à la clôture ; null si abandonné.
+    note: noteFsrsEnum("note"),
     closedAt: timestamp("closed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    // une seule session ouverte par utilisateur (S4, FUNCTIONS §7)
+    // une seule session ouverte par utilisateur (ARCHITECTURE §8)
     uniqueIndex("study_cycle_one_open_per_user")
       .on(t.userId)
       .where(sql`${t.closedAt} IS NULL`),
   ],
 );
 
-export const studySession = pgTable("study_session", {
+export const tentative = pgTable("tentative", {
   id: uuid("id").primaryKey().defaultRandom(),
   cycleId: uuid("cycle_id")
     .notNull()
     .references(() => studyCycle.id),
-  sectionId: uuid("section_id")
+  ficheId: uuid("fiche_id")
     .notNull()
-    .references(() => section.id),
-  guideId: uuid("guide_id")
-    .notNull()
-    .references(() => correctionGuide.id),
-  chapterVersion: integer("chapter_version").notNull(),
-  type: studySessionTypeEnum("type").notNull(),
-  tentative: integer("tentative").notNull(),
+    .references(() => fiche.id),
+  // Version de la fiche contre laquelle ce blurting a été corrigé.
+  ficheHash: text("fiche_hash").notNull(),
+  numero: integer("numero").notNull(),
   input: text("input").notNull(),
+  // Inséré sans correction (sauvegarde avant l'appel LLM), complété une fois.
   correction: jsonb("correction"),
-  verdictLlm: verdictEnum("verdict_llm"),
-  verdictFinal: verdictEnum("verdict_final"),
-  override: boolean("override").notNull().default(false),
-  noteFsrs: noteFsrsEnum("note_fsrs"),
-  divulgation: divulgationEnum("divulgation").notNull(),
+  verdict: verdictEnum("verdict"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -245,12 +172,12 @@ export const errorEntry = pgTable("error_entry", {
   subjectId: uuid("subject_id")
     .notNull()
     .references(() => subject.id),
-  sectionId: uuid("section_id")
+  ficheId: uuid("fiche_id")
     .notNull()
-    .references(() => section.id),
-  sessionId: uuid("session_id")
+    .references(() => fiche.id),
+  tentativeId: uuid("tentative_id")
     .notNull()
-    .references(() => studySession.id),
+    .references(() => tentative.id),
   type: errorEntryTypeEnum("type").notNull(),
   description: text("description").notNull(),
   statut: errorEntryStatutEnum("statut").notNull().default("active"),
@@ -258,26 +185,8 @@ export const errorEntry = pgTable("error_entry", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const reviewCard = pgTable("review_card", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  sectionId: uuid("section_id")
-    .notNull()
-    .unique()
-    .references(() => section.id),
-  due: date("due").notNull(),
-  stability: real("stability").notNull(),
-  difficulty: real("difficulty").notNull(),
-  reps: integer("reps").notNull().default(0),
-  lapses: integer("lapses").notNull().default(0),
-  lastReview: timestamp("last_review", { withTimezone: true }),
-  // gel (FUNCTIONS §7, ARCHITECTURE v0.6) : seul champ que S6.freeze/unfreeze
-  // possède — le futur S5 (Bloc 6.3) filtrera `gelee = false` avant P7.
-  gelee: boolean("gelee").notNull().default(false),
-});
-
-// ponytail: DeferralLog/RefileItem/AuditEvent référencent item_id/entite_id de
-// façon polymorphe (type discriminé par item_type/entite_type) — pas de FK
-// possible en SQL déclaratif sur une cible polymorphe, assumé.
+// --- Planificateur (mono-utilisateur : pas de user_id) ---
+// item_id référence une fiche (pas de FK : cible polymorphe historiquement, assumé).
 
 export const deferralLog = pgTable("deferral_log", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -285,11 +194,8 @@ export const deferralLog = pgTable("deferral_log", {
   itemType: refileItemTypeEnum("item_type").notNull(),
   itemId: uuid("item_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  // Distingue un report normal (slot du jour perdu SI la section est encore dans
-  // le vivier ce jour-là) d'une dette d'avance (Bloc 9.2 fix, USER_FLOW É2.0,
-  // S5.advanceFromBacklog) : le slot de la date visée est perdu inconditionnellement,
-  // même une fois la section étudiée et sortie du vivier. Sans ce champ, les deux
-  // se confondraient sous le même itemType "etude" et l'un casserait l'autre.
+  // Dette d'avance (« avancer une fiche de demain ») : slot de la date visée perdu
+  // inconditionnellement, à distinguer d'un report normal.
   avance: boolean("avance").notNull().default(false),
 });
 
@@ -301,28 +207,10 @@ export const refileItem = pgTable("refile_item", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// S5.reorder (FUNCTIONS §3, §7 « purge de l'ordre manuel ») : une permutation
-// datée de la file du jour — mono-utilisateur (ADR 6), même doctrine que
-// DeferralLog/RefileItem ci-dessus (pas de user_id, un seul utilisateur).
-// `order` : tableau ordonné de {kind, id} (QueueItem sans les champs dérivés).
+// Ordre manuel de la file d'un jour : tableau ordonné de clés d'items.
 export const queueOrder = pgTable("queue_order", {
   date: date("date").primaryKey(),
   order: jsonb("order").notNull(),
-});
-
-export const auditEvent = pgTable("audit_event", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  type: auditEventTypeEnum("type").notNull(),
-  entiteType: text("entite_type").notNull(),
-  entiteId: uuid("entite_id").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const promptConfig = pgTable("prompt_config", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => user.id),
-  methodologieTitresGlobale: text("methodologie_titres_globale"),
 });
 
 export const promptLog = pgTable("prompt_log", {
@@ -337,9 +225,8 @@ export const promptLog = pgTable("prompt_log", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// --- Échéances (IMPLEMENT_SCHEDULE.md §3) — mono-utilisateur (ADR 6), pas de
-// user_id sur deadline/alert/serie_gel, même doctrine que DeferralLog/RefileItem/
-// QueueOrder/AuditEvent.
+// --- Régularité (IMPLEMENT_SCHEDULE.md §3) — mono-utilisateur ---
+
 export const deadline = pgTable("deadline", {
   id: uuid("id").primaryKey().defaultRandom(),
   subjectId: uuid("subject_id").references(() => subject.id),
@@ -348,8 +235,7 @@ export const deadline = pgTable("deadline", {
   dueDate: date("due_date").notNull(),
   coefficient: real("coefficient"),
   dureeMin: integer("duree_min"),
-  // Récurrences DÉPLIÉES à la création (une ligne par occurrence, groupées par
-  // recurrenceGroupId) — pas de moteur de rrule (doctrine simplicité).
+  // Récurrences dépliées à la création (une ligne par occurrence).
   recurrenceGroupId: uuid("recurrence_group_id"),
   ackAt: timestamp("ack_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -368,8 +254,7 @@ export const alert = pgTable(
     snoozedUntil: date("snoozed_until"),
   },
   (t) => [
-    // Idempotence de generateAlerts (§5) : une alerte par (type, jour de génération,
-    // deadline) — coalesce sur un uuid nul pour les types sans deadline (serie/dette/charge).
+    // Idempotence de generateAlerts : une alerte par (type, jour, deadline).
     uniqueIndex("alert_dedupe").on(
       t.type,
       t.dateRef,

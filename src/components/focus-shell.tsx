@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-// U2 FocusShell (FUNCTIONS §6.1, ARCHITECTURE §10) — le sanctuaire : aucune
+// U2 FocusShell (ARCHITECTURE §10) — le sanctuaire : aucune
 // navigation rendue ici (garanti par composition, pas par CSS). Sortie = simple
 // lien : la sauvegarde est déjà faite côté serveur avant tout appel LLM (S4),
 // il n'y a rien de plus à faire en quittant.
@@ -11,9 +11,9 @@ export function FocusShell({
   wide,
 }: {
   children: React.ReactNode;
-  /** U25 LectureView uniquement : la marge de notes (AnnotatedCourse) a besoin
-   * de plus que max-w-2xl. Tous les autres écrans (blurting/correction/
-   * Feynman/bilan) restent sur la largeur de lecture par défaut. */
+  /** LectureView uniquement : les marges (sommaire, notes) d'AnnotatedCourse ont
+   * besoin de plus que max-w-2xl. Blurting et correction restent sur la largeur
+   * de lecture par défaut. */
   wide?: boolean;
 }) {
   return (

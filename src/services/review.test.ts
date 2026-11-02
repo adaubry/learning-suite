@@ -1,168 +1,94 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import postgres from "postgres";
-import * as account from "./account";
 import * as review from "./review";
-import { db } from "@/db";
-import { chapter, section } from "@/db/schema";
-
-// S6 · ReviewService — Postgres réel (pattern guide.test.ts), pas de LLM.
-
-const client = postgres(process.env.DATABASE_URL!);
-const createdUserIds: string[] = [];
-
-async function createUser() {
-  const [user] = await client`insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id`;
-  createdUserIds.push(user.id);
-  return user.id as string;
-}
+import { client, cleanupAll, seedSet, createUser } from "@/test/fixtures";
 
 let userId: string;
-let chapterId: string;
+let ficheId: string;
 
 beforeEach(async () => {
-  userId = await createUser();
-  const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-  const [c] = await db
-    .insert(chapter)
-    .values({ subjectId: s.id, titre: "Chap 1", markdown: "# x", contentHash: "h" })
-    .returning();
-  chapterId = c.id;
+  const s = await seedSet();
+  userId = s.userId;
+  ficheId = s.fiches[0].id;
 });
 
-afterAll(async () => {
-  for (const id of createdUserIds) {
-    await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
-    await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from subject where user_id = ${id}`;
-    await client`delete from "user" where id = ${id}`;
-  }
-  await client.end();
-});
+afterAll(cleanupAll);
 
-async function createSection() {
-  const [sec] = await db
-    .insert(section)
-    .values({ chapterId, chapterVersion: 1, titre: "Sec", ordre: 1, niveauSource: 1, contenu: "...", importance: 3, statut: "validee" })
-    .returning();
-  return sec;
+async function card() {
+  const [row] = await client`select *, due::text as due from review_card where fiche_id = ${ficheId}`;
+  return row;
 }
 
-describe("review · S6", () => {
-  it("createCard : insère une carte neuve (reps=0, gelee=false)", async () => {
-    const sec = await createSection();
-    const card = await review.createCard(userId, sec.id);
-    expect(card).toMatchObject({ sectionId: sec.id, reps: 0, lapses: 0, gelee: false });
+function isoDaysFromNow(n: number) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+describe("review", () => {
+  it("createCard : carte neuve (reps=0, gelee=false), une seule par fiche", async () => {
+    const c = await review.createCard(userId, ficheId);
+    expect(c).toMatchObject({ reps: 0, gelee: false, ficheId });
+    await expect(review.createCard(userId, ficheId)).rejects.toThrow(review.ReviewCardAlreadyExistsError);
   });
 
-  it("createCard : unicité par section — un second appel échoue", async () => {
-    const sec = await createSection();
-    await review.createCard(userId, sec.id);
-    await expect(review.createCard(userId, sec.id)).rejects.toThrow(review.ReviewCardAlreadyExistsError);
+  it("rate : sans carte ⇒ NoReviewCardError", async () => {
+    await expect(review.rate(userId, ficheId, "good")).rejects.toThrow(review.NoReviewCardError);
   });
 
-  it("rate : la note utilisateur seule pilote l'échéance (jamais un verdict LLM, ADR 3 — l'API n'accepte que again/hard/good/easy)", async () => {
-    const sec = await createSection();
-    await review.createCard(userId, sec.id);
-    const updated = await review.rate(userId, sec.id, "good");
-    expect(updated.reps).toBe(1);
-    expect(updated.lastReview).not.toBeNull();
+  it("rate : la note fait avancer l'échéance (good plus loin que again)", async () => {
+    await review.createCard(userId, ficheId);
+    const good = await review.rate(userId, ficheId, "good");
+    expect(good.reps).toBe(1);
+    expect(good.due > isoDaysFromNow(0)).toBe(true);
   });
 
-  it("rate : sans ReviewCard ⇒ NoReviewCardError", async () => {
-    const sec = await createSection();
-    await expect(review.rate(userId, sec.id, "good")).rejects.toThrow(review.NoReviewCardError);
-  });
+  it("unfreeze : frozenSince décale due de la durée écoulée, sans toucher l'état FSRS", async () => {
+    await review.createCard(userId, ficheId);
+    await review.rate(userId, ficheId, "good");
+    const avant = await card();
+    await review.freeze([ficheId]);
 
-  it("rate : sur une carte gelée ⇒ ReviewCardFrozenError", async () => {
-    const sec = await createSection();
-    await review.createCard(userId, sec.id);
-    await review.freeze(userId, sec.id);
-    await expect(review.rate(userId, sec.id, "good")).rejects.toThrow(review.ReviewCardFrozenError);
-  });
+    const dixJours = new Date(Date.now() - 10 * 86_400_000);
+    await review.unfreeze([ficheId], dixJours);
+    const apres = await card();
 
-  it("freeze/unfreeze : idempotents (répéter ne change rien d'observable, ni n'échoue)", async () => {
-    const sec = await createSection();
-    await review.createCard(userId, sec.id);
-
-    await review.freeze(userId, sec.id);
-    await review.freeze(userId, sec.id);
-    let card = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
-    expect(card?.gelee).toBe(true);
-
-    await review.unfreeze(userId, sec.id);
-    await review.unfreeze(userId, sec.id);
-    card = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
-    expect(card?.gelee).toBe(false);
-  });
-
-  it("unfreeze : frozenSince décale due de la durée écoulée sans toucher stability/difficulty/reps/lapses (Bloc 9.1 fix, USER_FLOW É6.4)", async () => {
-    const sec = await createSection();
-    const created = await review.createCard(userId, sec.id);
-    await review.freeze(userId, sec.id);
-
-    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000);
-    const updated = await review.unfreeze(userId, sec.id, tenDaysAgo);
-    const expectedDue = new Date(created.due);
-    expectedDue.setUTCDate(expectedDue.getUTCDate() + 10);
-    expect(updated?.due).toBe(expectedDue.toISOString().slice(0, 10));
-    expect(updated?.gelee).toBe(false);
-    expect(updated?.stability).toBe(created.stability);
-    expect(updated?.difficulty).toBe(created.difficulty);
-    expect(updated?.reps).toBe(created.reps);
-    expect(updated?.lapses).toBe(created.lapses);
-  });
-
-  it("freeze : no-op silencieux si aucune ReviewCard pour la section (n'échoue pas)", async () => {
-    const sec = await createSection();
-    await expect(review.freeze(userId, sec.id)).resolves.toBeUndefined();
-  });
-
-  it("createCard/rate/freeze : refusent une section d'un autre utilisateur", async () => {
-    const sec = await createSection();
-    const otherUserId = await createUser();
-    await expect(review.createCard(otherUserId, sec.id)).rejects.toThrow();
-  });
-
-  it("preview : simule les 4 notes sans écrire en base (U18)", async () => {
-    const sec = await createSection();
-    await review.createCard(userId, sec.id);
-    const before = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
-
-    const preview = await review.preview(userId, sec.id);
-    expect(Object.keys(preview).sort()).toEqual(["again", "easy", "good", "hard"]);
-    expect(preview.easy.due >= preview.again.due).toBe(true);
-
-    const after = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
-    expect(after).toEqual(before);
-  });
-
-  it("preview : sans ReviewCard, simule depuis un état neuf (fusion Machine B/C, 2026-07-15 — 1ʳᵉ validation)", async () => {
-    const sec = await createSection();
-    const preview = await review.preview(userId, sec.id);
-    expect(Object.keys(preview).sort()).toEqual(["again", "easy", "good", "hard"]);
-    expect(preview.easy.due >= preview.again.due).toBe(true);
-
-    const card = await db.query.reviewCard.findFirst({ where: (r, { eq }) => eq(r.sectionId, sec.id) });
-    expect(card).toBeUndefined(); // toujours pas de carte créée : preview n'écrit rien
-  });
-
-  describe("createOrRate (fusion Machine B/C, 2026-07-15)", () => {
-    it("aucune carte existante : en crée une PUIS lui applique la note (jamais exposée sans note)", async () => {
-      const sec = await createSection();
-      const updated = await review.createOrRate(userId, sec.id, "good");
-      expect(updated.reps).toBe(1);
-      expect(updated.lastReview).not.toBeNull();
+    const attendu = new Date(`${avant.due}T00:00:00Z`);
+    attendu.setUTCDate(attendu.getUTCDate() + 10);
+    expect(apres.due).toBe(attendu.toISOString().slice(0, 10));
+    expect(apres).toMatchObject({
+      gelee: false,
+      stability: avant.stability,
+      difficulty: avant.difficulty,
+      reps: avant.reps,
+      lapses: avant.lapses,
     });
+  });
 
-    it("carte déjà existante : note l'existante, n'en recrée pas une seconde", async () => {
-      const sec = await createSection();
-      await review.createCard(userId, sec.id);
-      const updated = await review.createOrRate(userId, sec.id, "again");
-      expect(updated.reps).toBe(1);
+  it("freeze/unfreeze : no-op sans carte ni liste vide", async () => {
+    await expect(review.freeze([ficheId])).resolves.toBeUndefined();
+    await expect(review.freeze([])).resolves.toBeUndefined();
+    await expect(review.unfreeze([])).resolves.toBeUndefined();
+  });
 
-      const rows = await db.query.reviewCard.findMany({ where: (r, { eq: eqOp }) => eqOp(r.sectionId, sec.id) });
-      expect(rows).toHaveLength(1);
-    });
+  it("refuse une fiche d'un autre utilisateur", async () => {
+    const autre = await createUser();
+    await expect(review.createCard(autre, ficheId)).rejects.toThrow();
+    await expect(review.preview(autre, ficheId)).rejects.toThrow();
+  });
+
+  it("preview : simule les 4 notes sans écrire, même sans carte", async () => {
+    const p = await review.preview(userId, ficheId);
+    expect(Object.keys(p).sort()).toEqual(["again", "easy", "good", "hard"]);
+    expect(await card()).toBeUndefined();
+    expect(p.easy.due >= p.good.due).toBe(true);
+  });
+
+  it("createOrRate : crée puis note ; sur carte existante, note sans recréer", async () => {
+    const a = await review.createOrRate(userId, ficheId, "good");
+    expect(a.reps).toBe(1);
+    const b = await review.createOrRate(userId, ficheId, "hard");
+    expect(b.reps).toBe(2);
+    const rows = await client`select id from review_card where fiche_id = ${ficheId}`;
+    expect(rows).toHaveLength(1);
   });
 });

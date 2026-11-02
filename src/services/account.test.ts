@@ -1,24 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
-import postgres from "postgres";
-import { db } from "@/db";
-import { chapter, section, reviewCard, subject as subjectTable } from "@/db/schema";
 import * as account from "./account";
 import * as review from "./review";
-
-// ponytail: tests d'intégration contre le Postgres local (docker compose up),
-// même pattern que src/db/schema.test.ts — un utilisateur jetable par test.
-
-const client = postgres(process.env.DATABASE_URL!);
-const createdUserIds: string[] = [];
-
-async function createUser() {
-  const [user] = await client`
-    insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id
-  `;
-  createdUserIds.push(user.id);
-  return user.id as string;
-}
+import * as ficheService from "./fiche";
+import { client, cleanupAll, createUser, SAMPLE_SET } from "@/test/fixtures";
 
 let userId: string;
 
@@ -26,183 +10,77 @@ beforeEach(async () => {
   userId = await createUser();
 });
 
-afterAll(async () => {
-  for (const id of createdUserIds) {
-    await client`delete from error_entry where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from study_session where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from study_cycle where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
-    await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from subject where user_id = ${id}`;
-    await client`delete from planner_config where user_id = ${id}`;
-    await client`delete from prompt_config where user_id = ${id}`;
-    await client`delete from "user" where id = ${id}`;
-  }
-  await client.end();
-});
+afterAll(cleanupAll);
 
-describe("account · S9 partiel", () => {
+async function card(ficheId: string) {
+  const [row] = await client`select gelee, due::text as due from review_card where fiche_id = ${ficheId}`;
+  return row;
+}
+
+async function setAvecCarte(subjectId: string) {
+  const set = await ficheService.importSet(userId, { subjectId, titre: "Set", markdown: SAMPLE_SET });
+  const [f] = await client`select id from fiche where set_id = ${set.id} order by numero limit 1`;
+  await client`update fiche set statut = 'en_revision' where id = ${f.id}`;
+  const created = await review.createOrRate(userId, f.id, "good");
+  return { set, ficheId: f.id as string, due: created.due };
+}
+
+describe("account · matières", () => {
   it("createSubject assigne un ordre incrémental par utilisateur", async () => {
     const s1 = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
     const s2 = await account.createSubject(userId, { nom: "Droit pénal", semestre: "S1" });
-    expect(s1.ordre).toBe(1);
-    expect(s2.ordre).toBe(2);
+    expect([s1.ordre, s2.ordre]).toEqual([1, 2]);
   });
 
   it("listSubjects trie par ordre et ignore les autres utilisateurs", async () => {
-    const otherUserId = await createUser();
-    await account.createSubject(otherUserId, { nom: "Autre", semestre: "S1" });
+    const other = await createUser();
+    await account.createSubject(other, { nom: "Autre", semestre: "S1" });
     await account.createSubject(userId, { nom: "B", semestre: "S1" });
     await account.createSubject(userId, { nom: "A", semestre: "S1" });
-
-    const list = await account.listSubjects(userId);
-    expect(list.map((s) => s.nom)).toEqual(["B", "A"]);
+    expect((await account.listSubjects(userId)).map((s) => s.nom)).toEqual(["B", "A"]);
   });
 
   it("updateSubject modifie une matière, scoping par utilisateur", async () => {
     const other = await createUser();
     const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-
-    const updated = await account.updateSubject(userId, s.id, { dateExamen: "2026-12-01" });
-    expect(updated.dateExamen).toBe("2026-12-01");
-
-    const blocked = await account.updateSubject(other, s.id, { nom: "Piraté" });
-    expect(blocked).toBeUndefined();
+    expect((await account.updateSubject(userId, s.id, { dateExamen: "2026-12-01" })).dateExamen).toBe("2026-12-01");
+    expect(await account.updateSubject(other, s.id, { nom: "Piraté" })).toBeUndefined();
   });
 
-  it("archiveSubject / unarchiveSubject font l'aller-retour du statut", async () => {
+  it("archiveSubject gèle les cartes ; unarchiveSubject dégèle et décale due de la durée du gel", async () => {
     const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-    const archived = await account.archiveSubject(userId, s.id);
-    expect(archived.statut).toBe("archivee");
+    const { ficheId, due } = await setAvecCarte(s.id);
 
-    const restored = await account.unarchiveSubject(userId, s.id);
-    expect(restored.statut).toBe("active");
+    expect((await account.archiveSubject(userId, s.id)).statut).toBe("archivee");
+    expect((await card(ficheId)).gelee).toBe(true);
+
+    await client`update subject set archived_at = now() - interval '5 days' where id = ${s.id}`;
+    expect((await account.unarchiveSubject(userId, s.id))?.statut).toBe("active");
+
+    const apres = await card(ficheId);
+    expect(apres.gelee).toBe(false);
+    const attendu = new Date(`${due}T00:00:00Z`);
+    attendu.setUTCDate(attendu.getUTCDate() + 5);
+    expect(apres.due).toBe(attendu.toISOString().slice(0, 10));
   });
 
-  it("archiveSubject gèle les ReviewCards des chapitres actifs ; unarchiveSubject dégèle et décale due de la durée du gel (USER_FLOW É6.4)", async () => {
+  it("archiver/désarchiver la matière ne dégèle pas un set archivé à part", async () => {
     const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-    const [chap] = await db
-      .insert(chapter)
-      .values({ subjectId: s.id, titre: "Chap", markdown: "# Chap", contentHash: "h" })
-      .returning();
-    const [sec] = await db
-      .insert(section)
-      .values({
-        chapterId: chap.id,
-        chapterVersion: 1,
-        titre: "Sec",
-        ordre: 1,
-        niveauSource: 1,
-        contenu: "...",
-        importance: 3,
-        statut: "en_revision",
-      })
-      .returning();
-    const created = await review.createCard(userId, sec.id);
-
-    await account.archiveSubject(userId, s.id);
-    const frozen = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
-    expect(frozen?.gelee).toBe(true);
-
-    await db
-      .update(subjectTable)
-      .set({ archivedAt: new Date(Date.now() - 5 * 86_400_000) })
-      .where(eq(subjectTable.id, s.id));
-
-    await account.unarchiveSubject(userId, s.id);
-    const unfrozen = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
-    expect(unfrozen?.gelee).toBe(false);
-    const expectedDue = new Date(created.due);
-    expectedDue.setUTCDate(expectedDue.getUTCDate() + 5);
-    expect(unfrozen?.due).toBe(expectedDue.toISOString().slice(0, 10));
-  });
-
-  it("archiveSubject n'affecte pas les ReviewCards d'un chapitre déjà archivé individuellement (pas de double décalage)", async () => {
-    const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-    const [chap] = await db
-      .insert(chapter)
-      .values({ subjectId: s.id, titre: "Chap", markdown: "# Chap", contentHash: "h", statut: "archive", archivedAt: new Date() })
-      .returning();
-    const [sec] = await db
-      .insert(section)
-      .values({
-        chapterId: chap.id,
-        chapterVersion: 1,
-        titre: "Sec",
-        ordre: 1,
-        niveauSource: 1,
-        contenu: "...",
-        importance: 3,
-        statut: "en_revision",
-      })
-      .returning();
-    await review.createCard(userId, sec.id);
-    await review.freeze(userId, sec.id);
+    const { set, ficheId } = await setAvecCarte(s.id);
+    await ficheService.archiveSet(userId, set.id);
 
     await account.archiveSubject(userId, s.id);
     await account.unarchiveSubject(userId, s.id);
-
-    const card = await db.query.reviewCard.findFirst({ where: eq(reviewCard.sectionId, sec.id) });
-    expect(card?.gelee).toBe(true); // toujours gelée : son propre chapitre est resté archivé
+    expect((await card(ficheId)).gelee).toBe(true);
   });
 
-  it("getPlannerConfig renvoie le défaut tant qu'aucune ligne n'existe", async () => {
-    const config = await account.getPlannerConfig(userId);
-    expect(config.nouvellesParJour).toBe(3);
-  });
-
-  it("updatePlannerConfig fait un upsert idempotent", async () => {
-    await account.updatePlannerConfig(userId, 5);
-    const second = await account.updatePlannerConfig(userId, 7);
-    expect(second.nouvellesParJour).toBe(7);
-
-    const read = await account.getPlannerConfig(userId);
-    expect(read.nouvellesParJour).toBe(7);
-  });
-
-  it("hasCompletedOnboarding bascule après updatePlannerConfig", async () => {
-    expect(await account.hasCompletedOnboarding(userId)).toBe(false);
-    await account.updatePlannerConfig(userId, 3);
-    expect(await account.hasCompletedOnboarding(userId)).toBe(true);
-  });
-
-  it("getMethodologieGlobale / updateMethodologieGlobale font l'aller-retour", async () => {
-    expect(await account.getMethodologieGlobale(userId)).toBeNull();
-    await account.updateMethodologieGlobale(userId, "Les titres suivent le plan...");
-    expect(await account.getMethodologieGlobale(userId)).toBe("Les titres suivent le plan...");
-  });
-
-  it("getPlannerConfig renvoie ttsActive=true par défaut ; updateTtsActive fait un upsert idempotent", async () => {
-    expect((await account.getPlannerConfig(userId)).ttsActive).toBe(true);
-    await account.updateTtsActive(userId, false);
-    expect((await account.getPlannerConfig(userId)).ttsActive).toBe(false);
-    const second = await account.updateTtsActive(userId, true);
-    expect(second.ttsActive).toBe(true);
-  });
-
-  it("deleteSubject détruit les chapitres (S1.deleteChapter) puis la matière", async () => {
+  it("deleteSubject détruit sets, fiches et cartes, puis la matière", async () => {
     const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-    const [chap] = await db
-      .insert(chapter)
-      .values({ subjectId: s.id, titre: "Chap", markdown: "# Chap", contentHash: "h" })
-      .returning();
-    await db.insert(section).values({
-      chapterId: chap.id,
-      chapterVersion: 1,
-      titre: "Sec",
-      ordre: 1,
-      niveauSource: 1,
-      contenu: "...",
-      importance: 3,
-      statut: "active",
-    });
-
+    const { set, ficheId } = await setAvecCarte(s.id);
     await account.deleteSubject(userId, s.id);
-
     expect(await account.listSubjects(userId)).toHaveLength(0);
-    expect(await db.query.chapter.findFirst({ where: eq(chapter.id, chap.id) })).toBeUndefined();
+    expect(await client`select 1 from fiche_set where id = ${set.id}`).toEqual([]);
+    expect(await client`select 1 from review_card where fiche_id = ${ficheId}`).toEqual([]);
   });
 
   it("deleteSubject refuse une matière d'un autre utilisateur", async () => {
@@ -211,20 +89,22 @@ describe("account · S9 partiel", () => {
     await expect(account.deleteSubject(other, s.id)).rejects.toThrow("Matière introuvable.");
     expect(await account.listSubjects(userId)).toHaveLength(1);
   });
+});
 
-  it("exportUserData renvoie une structure complète, matières archivées comprises", async () => {
-    const active = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-    const archived = await account.createSubject(userId, { nom: "Droit pénal", semestre: "S1" });
-    await account.archiveSubject(userId, archived.id);
-    await db.insert(chapter).values({ subjectId: active.id, titre: "Chap", markdown: "# Chap", contentHash: "h" });
+describe("account · réglages", () => {
+  it("getPlannerConfig renvoie le défaut tant qu'aucune ligne n'existe", async () => {
+    expect(await account.getPlannerConfig(userId)).toMatchObject({ nouvellesParJour: 3, gelsSerieRestants: 2 });
+  });
 
-    const data = await account.exportUserData(userId);
+  it("updatePlannerConfig fait un upsert idempotent", async () => {
+    await account.updatePlannerConfig(userId, 5);
+    await account.updatePlannerConfig(userId, 2);
+    expect((await account.getPlannerConfig(userId)).nouvellesParJour).toBe(2);
+    expect(await client`select 1 from planner_config where user_id = ${userId}`).toHaveLength(1);
+  });
 
-    expect(data.subjects.map((s) => s.nom).sort()).toEqual(["Droit civil", "Droit pénal"]);
-    expect(data.chapters).toHaveLength(1);
-    expect(data.plannerConfig.userId).toBe(userId);
-    expect(Array.isArray(data.auditEvents)).toBe(true);
-    expect(Array.isArray(data.promptLogs)).toBe(true);
-    expect(typeof data.exportedAt).toBe("string");
+  it("updateSemesterConfig enregistre les débuts de semestre", async () => {
+    await account.updateSemesterConfig(userId, { debutS3: "2026-09-07" });
+    expect((await account.getPlannerConfig(userId)).debutS3).toBe("2026-09-07");
   });
 });

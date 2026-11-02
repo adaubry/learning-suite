@@ -1,20 +1,19 @@
-import type { ControlPoint } from "@/llm/schemas/guide";
+import type { PointFiche } from "@/core/fiche/extractPoints";
 
-// L3 · ContextBuilder Correction (ARCHITECTURE §9 ligne 3+4) — fonction pure :
-// rubrique validée + blurting + erreurs actives DE LA SECTION (pas de la matière,
-// contrairement à L2 — détection de récidive sur la même section) + n° de
-// tentative. JAMAIS `section.contenu` : le canary vérifie qu'aucune clé du cours
-// ne fuit dans le contexte envoyé au modèle.
+// ContextBuilder de la correction (ARCHITECTURE.md v2 §7) — pur. Points de la
+// fiche (déjà dérivés en code, compléments hors cours exclus), blurting, n° de
+// tentative, erreurs actives de la fiche (détection de récidive). Ni ids, ni
+// statuts bruts : seulement ce que le prompt consomme.
 
 export interface CorrectionContextInput {
-  points: ControlPoint[];
+  points: PointFiche[];
   blurting: string;
   tentative: number;
   erreursActives: { id: string; type: string; description: string }[];
 }
 
 export interface CorrectionContext {
-  points: { intitule: string; attendu: string; piegeAssocie?: string | null }[];
+  points: { type: PointFiche["type"]; raisonnement: boolean; intitule: string; attendu: string }[];
   blurting: string;
   tentative: number;
   erreursActives: { type: string; description: string }[];
@@ -23,9 +22,10 @@ export interface CorrectionContext {
 export function buildCorrectionContext(input: CorrectionContextInput): CorrectionContext {
   return {
     points: input.points.map((p) => ({
+      type: p.type,
+      raisonnement: p.raisonnement,
       intitule: p.intitule,
       attendu: p.attendu,
-      piegeAssocie: p.piege_associe,
     })),
     blurting: input.blurting,
     tentative: input.tentative,

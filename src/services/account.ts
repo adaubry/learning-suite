@@ -2,21 +2,19 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   subject,
-  chapter,
-  section,
-  correctionGuide,
+  ficheSet,
+  fiche,
   reviewCard,
   studyCycle,
-  studySession,
+  tentative,
   errorEntry,
   plannerConfig,
-  promptConfig,
 } from "@/db/schema";
-import * as chapterService from "./chapter";
+import * as ficheService from "./fiche";
 import * as reviewService from "./review";
 
-// S9 · AccountService (FUNCTIONS §3) : CRUD matières, rythme, méthodologie globale,
-// suppression gardée (Bloc 9.1, réutilise S1.deleteChapter), export complet.
+// AccountService : matières (CRUD, archivage, suppression gardée), réglages du
+// planificateur, export complet.
 
 export async function listSubjects(userId: string) {
   return db.query.subject.findMany({
@@ -50,12 +48,7 @@ export async function createSubject(
 export async function updateSubject(
   userId: string,
   subjectId: string,
-  input: Partial<{
-    nom: string;
-    semestre: string;
-    dateExamen: string | null;
-    methodologieTitres: string | null;
-  }>,
+  input: Partial<{ nom: string; semestre: string; dateExamen: string | null }>,
 ) {
   const [updated] = await db
     .update(subject)
@@ -65,34 +58,13 @@ export async function updateSubject(
   return updated;
 }
 
-// Sections des chapitres ACTIFS de la matière (Bloc 9.1 fix, USER_FLOW É6.4) — un
-// chapitre déjà archivé individuellement garde son propre gel, non re-touché ici
-// (évite un double décalage de `due` quand matière et chapitre sont archivés/
-// désarchivés indépendamment).
-async function activeSectionIdsOf(subjectId: string) {
-  const chapters = await db.query.chapter.findMany({
-    where: and(eq(chapter.subjectId, subjectId), eq(chapter.statut, "actif")),
-    columns: { id: true },
-  });
-  if (chapters.length === 0) return [];
-  const sections = await db.query.section.findMany({
-    where: inArray(section.chapterId, chapters.map((c) => c.id)),
-    columns: { id: true },
-  });
-  return sections.map((s) => s.id);
-}
-
 export async function archiveSubject(userId: string, subjectId: string) {
   const [updated] = await db
     .update(subject)
     .set({ statut: "archivee", archivedAt: new Date() })
-    .where(and(eq(subject.id, subjectId), eq(subject.userId, userId)))
+    .where(and(eq(subject.id, subjectId), eq(subject.userId, userId), eq(subject.statut, "active")))
     .returning();
-  if (!updated) return updated;
-
-  for (const sectionId of await activeSectionIdsOf(subjectId)) {
-    await reviewService.freeze(userId, sectionId);
-  }
+  if (updated) await reviewService.freeze(await ficheService.ficheIdsOfActiveSets(subjectId));
   return updated;
 }
 
@@ -100,45 +72,33 @@ export async function unarchiveSubject(userId: string, subjectId: string) {
   const owned = await db.query.subject.findFirst({
     where: and(eq(subject.id, subjectId), eq(subject.userId, userId)),
   });
+  if (!owned || owned.statut === "active") return owned;
 
   const [updated] = await db
     .update(subject)
     .set({ statut: "active", archivedAt: null })
-    .where(and(eq(subject.id, subjectId), eq(subject.userId, userId)))
+    .where(eq(subject.id, subjectId))
     .returning();
-
-  for (const sectionId of await activeSectionIdsOf(subjectId)) {
-    await reviewService.unfreeze(userId, sectionId, owned?.archivedAt ?? null);
-  }
+  await reviewService.unfreeze(await ficheService.ficheIdsOfActiveSets(subjectId), owned.archivedAt);
   return updated;
 }
 
-// delete (FUNCTIONS §3 S9, USER_FLOW É6.4) : suppression gardée — détruit l'historique de
-// chaque chapitre de la matière via S1.deleteChapter (même cascade ordonnée, pas de logique
-// dupliquée), puis la matière elle-même.
+// Suppression gardée (double confirmation côté UI) : sets et historique compris.
 export async function deleteSubject(userId: string, subjectId: string) {
   const owned = await db.query.subject.findFirst({ where: eq(subject.id, subjectId) });
   if (!owned || owned.userId !== userId) throw new Error("Matière introuvable.");
 
-  const chapters = await db.query.chapter.findMany({
-    where: eq(chapter.subjectId, subjectId),
-    columns: { id: true },
-  });
-  for (const c of chapters) {
-    await chapterService.deleteChapter(userId, c.id);
-  }
+  const sets = await db.query.ficheSet.findMany({ where: eq(ficheSet.subjectId, subjectId), columns: { id: true } });
+  await ficheService.deleteSetsUnchecked(sets.map((s) => s.id));
   await db.delete(subject).where(eq(subject.id, subjectId));
 }
 
 export async function getPlannerConfig(userId: string) {
-  const row = await db.query.plannerConfig.findFirst({
-    where: eq(plannerConfig.userId, userId),
-  });
+  const row = await db.query.plannerConfig.findFirst({ where: eq(plannerConfig.userId, userId) });
   return (
     row ?? {
       userId,
       nouvellesParJour: 3,
-      ttsActive: true,
       debutS3: null,
       debutS4: null,
       gelsSerieRestants: 2,
@@ -148,8 +108,7 @@ export async function getPlannerConfig(userId: string) {
   );
 }
 
-// Régularité (IMPLEMENT_SCHEDULE.md §3) : debutS3/debutS4 configurés depuis
-// l'écran Régularité (empty state si debutS3 est null, §4).
+// Régularité (IMPLEMENT_SCHEDULE.md §3) : debutS3/debutS4 configurés depuis l'écran Régularité.
 export async function updateSemesterConfig(
   userId: string,
   input: Partial<{ debutS3: string | null; debutS4: string | null }>,
@@ -171,103 +130,38 @@ export async function updatePlannerConfig(userId: string, nouvellesParJour: numb
   return row;
 }
 
-// Réglages P7 (Bloc 9.1, USER_FLOW P7) : TTS on/off, persisté — FeynmanChat (Bloc 7.2) ne
-// portait qu'un `useState` local, jamais un vrai réglage de compte.
-export async function updateTtsActive(userId: string, ttsActive: boolean) {
-  const [row] = await db
-    .insert(plannerConfig)
-    .values({ userId, ttsActive })
-    .onConflictDoUpdate({ target: plannerConfig.userId, set: { ttsActive } })
-    .returning();
-  return row;
-}
-
-// dérivé de l'existence d'une ligne PlannerConfig — pas de colonne dédiée (DECISIONS.md)
-export async function hasCompletedOnboarding(userId: string) {
-  const row = await db.query.plannerConfig.findFirst({
-    where: eq(plannerConfig.userId, userId),
-  });
-  return row !== undefined;
-}
-
-export async function getMethodologieGlobale(userId: string) {
-  const row = await db.query.promptConfig.findFirst({
-    where: eq(promptConfig.userId, userId),
-  });
-  return row?.methodologieTitresGlobale ?? null;
-}
-
-export async function updateMethodologieGlobale(
-  userId: string,
-  methodologieTitresGlobale: string | null,
-) {
-  const [row] = await db
-    .insert(promptConfig)
-    .values({ userId, methodologieTitresGlobale })
-    .onConflictDoUpdate({
-      target: promptConfig.userId,
-      set: { methodologieTitresGlobale },
-    })
-    .returning();
-  return row;
-}
-
-// exportUserData (FUNCTIONS §3 S9 : « JSON complet, archives et journaux compris ») — inclut
-// les matières/chapitres archivés (aucun filtre de statut) et l'intégralité de auditEvent/
-// promptLog : ces deux tables n'ont pas de user_id (doctrine mono-utilisateur, ADR 6 — même
-// raison que DeferralLog/RefileItem/QueueOrder), il n'y a donc jamais qu'un seul utilisateur
-// dont ces journaux pourraient parler.
+// Export JSON complet, archives comprises. prompt_log n'a pas de user_id
+// (mono-utilisateur) : exporté en entier.
 export async function exportUserData(userId: string) {
   const subjects = await db.query.subject.findMany({ where: eq(subject.userId, userId) });
   const subjectIds = subjects.map((s) => s.id);
-  const chapters = subjectIds.length
-    ? await db.query.chapter.findMany({ where: inArray(chapter.subjectId, subjectIds) })
+  const sets = subjectIds.length
+    ? await db.query.ficheSet.findMany({ where: inArray(ficheSet.subjectId, subjectIds) })
     : [];
-  const chapterIds = chapters.map((c) => c.id);
-  const sections = chapterIds.length
-    ? await db.query.section.findMany({ where: inArray(section.chapterId, chapterIds) })
-    : [];
-  const sectionIds = sections.map((s) => s.id);
+  const setIds = sets.map((s) => s.id);
+  const fiches = setIds.length ? await db.query.fiche.findMany({ where: inArray(fiche.setId, setIds) }) : [];
+  const ficheIds = fiches.map((f) => f.id);
 
-  const [correctionGuides, reviewCards, studyCycles, studySessions, errorEntries, plannerCfg] =
-    await Promise.all([
-      sectionIds.length
-        ? db.query.correctionGuide.findMany({ where: inArray(correctionGuide.sectionId, sectionIds) })
-        : [],
-      sectionIds.length
-        ? db.query.reviewCard.findMany({ where: inArray(reviewCard.sectionId, sectionIds) })
-        : [],
-      sectionIds.length
-        ? db.query.studyCycle.findMany({ where: inArray(studyCycle.sectionId, sectionIds) })
-        : [],
-      sectionIds.length
-        ? db.query.studySession.findMany({ where: inArray(studySession.sectionId, sectionIds) })
-        : [],
-      sectionIds.length
-        ? db.query.errorEntry.findMany({ where: inArray(errorEntry.sectionId, sectionIds) })
-        : [],
-      getPlannerConfig(userId),
-    ]);
-
-  const [auditEvents, promptLogs, methodologieGlobale] = await Promise.all([
-    db.query.auditEvent.findMany(),
+  const [reviewCards, studyCycles, tentatives, errorEntries, plannerCfg, promptLogs] = await Promise.all([
+    ficheIds.length ? db.query.reviewCard.findMany({ where: inArray(reviewCard.ficheId, ficheIds) }) : [],
+    ficheIds.length ? db.query.studyCycle.findMany({ where: inArray(studyCycle.ficheId, ficheIds) }) : [],
+    ficheIds.length ? db.query.tentative.findMany({ where: inArray(tentative.ficheId, ficheIds) }) : [],
+    ficheIds.length ? db.query.errorEntry.findMany({ where: inArray(errorEntry.ficheId, ficheIds) }) : [],
+    getPlannerConfig(userId),
     db.query.promptLog.findMany(),
-    getMethodologieGlobale(userId),
   ]);
 
   return {
     exportedAt: new Date().toISOString(),
+    version: 2,
     plannerConfig: plannerCfg,
-    methodologieTitresGlobale: methodologieGlobale,
     subjects,
-    chapters,
-    sections,
-    correctionGuides,
+    ficheSets: sets,
+    fiches,
     reviewCards,
     studyCycles,
-    studySessions,
+    tentatives,
     errorEntries,
-    auditEvents,
     promptLogs,
   };
 }

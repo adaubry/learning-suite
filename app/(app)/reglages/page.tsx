@@ -3,8 +3,7 @@ import * as account from "@/services/account";
 import { resolveModel, ENV_KEY_BY_APPEL, type AppelLLM } from "@/llm/models";
 import { ReglagesForm } from "./reglages-ui";
 
-// P7 Réglages (USER_FLOW P7, Bloc 9.1) : compte/rythme, méthodologie globale, TTS, export,
-// zone technique (modèle par appel, lecture seule).
+// Réglages (USER_FLOW.md v2) : rythme, export, modèle LLM (lecture seule).
 
 function readModel(appel: AppelLLM): string {
   try {
@@ -16,10 +15,7 @@ function readModel(appel: AppelLLM): string {
 
 export default async function ReglagesPage() {
   const userId = await requireUserId();
-  const [config, methodologieGlobale] = await Promise.all([
-    account.getPlannerConfig(userId),
-    account.getMethodologieGlobale(userId),
-  ]);
+  const config = await account.getPlannerConfig(userId);
   const modeles = (Object.keys(ENV_KEY_BY_APPEL) as AppelLLM[]).map((appel) => ({
     appel,
     modele: readModel(appel),
@@ -30,8 +26,6 @@ export default async function ReglagesPage() {
       <h1 className="text-xl font-semibold">Réglages</h1>
       <ReglagesForm
         nouvellesParJour={config.nouvellesParJour}
-        ttsActive={config.ttsActive}
-        methodologieGlobale={methodologieGlobale}
         modeles={modeles}
       />
     </div>

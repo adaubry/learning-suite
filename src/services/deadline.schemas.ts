@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// Schémas partagés Server Actions ↔ formulaires (FUNCTIONS §4) — écran Régularité,
+// Schémas partagés Server Actions ↔ formulaires — écran Régularité,
 // formulaire DeadlineChecklist (IMPLEMENT_SCHEDULE.md §7).
 
 const optionalUuid = () =>

@@ -1,105 +1,45 @@
 import { afterAll, describe, expect, it } from "vitest";
-import postgres from "postgres";
-import { db } from "@/db";
-import { chapter, section, reviewCard, studyCycle, studySession, correctionGuide } from "@/db/schema";
-import * as account from "./account";
-import * as chapterService from "./chapter";
+import * as ficheService from "./fiche";
 import * as planner from "./planner";
+import * as review from "./review";
+import { client, cleanupAll, seedSet } from "@/test/fixtures";
 
-// @canary PLAN Phase 9 : archiver un chapitre l'exclut de la file du jour (S5, filtre
-// chapter.statut) et gèle ses ReviewCards (S6) ; désarchiver le fait réapparaître,
-// dégèle et décale `due` de la durée réelle du gel (USER_FLOW É6.4, DECISIONS.md
-// Bloc 9.1 fix — supersède la version précédente de ce canari : pur flip de statut
-// sans recalcul, jugé insuffisant). L'historique d'étude, lui, reste intact.
+// @canary : archiver un set l'exclut de la file du jour et gèle ses cartes ;
+// désarchiver le fait réapparaître, dégèle, ne recule jamais `due`, et laisse
+// l'état FSRS et l'historique intacts.
 
-const client = postgres(process.env.DATABASE_URL!);
-const createdUserIds: string[] = [];
+afterAll(cleanupAll);
 
-async function createUser() {
-  const [user] = await client`insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id`;
-  createdUserIds.push(user.id);
-  return user.id as string;
+async function card(ficheId: string) {
+  const [row] = await client`select *, due::text as due from review_card where fiche_id = ${ficheId}`;
+  return row;
 }
 
-afterAll(async () => {
-  for (const id of createdUserIds) {
-    await client`delete from study_session where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from study_cycle where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from review_card where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
-    await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from subject where user_id = ${id}`;
-    await client`delete from "user" where id = ${id}`;
-  }
-  await client.end();
-});
+describe("archivage d'un set (@canary)", () => {
+  it("archivé ⇒ exclu de la file ; désarchivé ⇒ réapparaît, état FSRS et historique intacts", async () => {
+    const { userId, set, fiches } = await seedSet();
+    const f = fiches[0].id;
+    await review.createOrRate(userId, f, "good");
+    await client`update fiche set statut = 'en_revision' where id = ${f}`;
+    const [cycle] = await client`insert into study_cycle (user_id, fiche_id, type, etat, note, closed_at) values (${userId}, ${f}, 'etude', 'clos', 'good', now()) returning id`;
+    await client`insert into tentative (cycle_id, fiche_id, fiche_hash, numero, input) values (${cycle.id}, ${f}, 'h', 1, 'Restitution')`;
+    const avant = await card(f);
+    const tentativesAvant = await client`select * from tentative where fiche_id = ${f}`;
 
-const TODAY = "2026-07-20";
+    const revisions = async () =>
+      (await planner.todayQueue(userId, avant.due)).filter((i) => i.kind === "revision");
+    expect(await revisions()).toHaveLength(1);
 
-describe("chapter · archiveChapter/unarchiveChapter @canary", () => {
-  it("archivé ⇒ exclu de la file du jour ; désarchivé ⇒ réapparaît, échéance et historique intacts", async () => {
-    const userId = await createUser();
-    const subject = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-    const [chap] = await db
-      .insert(chapter)
-      .values({ subjectId: subject.id, titre: "Chap", markdown: "# Chap", contentHash: "h" })
-      .returning();
-    const [sec] = await db
-      .insert(section)
-      .values({
-        chapterId: chap.id,
-        chapterVersion: 1,
-        titre: "Sec",
-        ordre: 1,
-        niveauSource: 1,
-        contenu: "...",
-        importance: 3,
-        statut: "en_revision",
-      })
-      .returning();
-    const [guide] = await db
-      .insert(correctionGuide)
-      .values({ sectionId: sec.id, chapterVersion: 1, contenu: [{ type: "critique", intitule: "x" }], statut: "valide" })
-      .returning();
-    const [cycle] = await db
-      .insert(studyCycle)
-      .values({ userId, sectionId: sec.id, type: "etude", etat: "clos", closedAt: new Date() })
-      .returning();
-    await db.insert(studySession).values({
-      cycleId: cycle.id,
-      sectionId: sec.id,
-      guideId: guide.id,
-      chapterVersion: 1,
-      type: "blurting",
-      tentative: 1,
-      input: "Restitution",
-      verdictFinal: "acquis",
-      divulgation: "controlee",
-    });
-    await db.insert(reviewCard).values({ sectionId: sec.id, due: TODAY, stability: 3, difficulty: 5, reps: 2, lapses: 1 });
+    await ficheService.archiveSet(userId, set.id);
+    expect(await planner.todayQueue(userId, avant.due)).toEqual([]);
 
-    const cardAvant = await db.query.reviewCard.findFirst({ where: (t, { eq }) => eq(t.sectionId, sec.id) });
-    const sessionAvant = await db.query.studySession.findFirst({ where: (t, { eq }) => eq(t.sectionId, sec.id) });
+    await ficheService.unarchiveSet(userId, set.id);
+    expect(await revisions()).toEqual([expect.objectContaining({ kind: "revision", ficheId: f })]);
 
-    expect(await planner.todayQueue(userId, TODAY)).toHaveLength(1);
-
-    await chapterService.archiveChapter(userId, chap.id);
-    expect(await planner.todayQueue(userId, TODAY)).toEqual([]);
-
-    await chapterService.unarchiveChapter(userId, chap.id);
-    const queueApres = await planner.todayQueue(userId, TODAY);
-    expect(queueApres).toHaveLength(1);
-    expect(queueApres[0]).toMatchObject({ kind: "revision", sectionId: sec.id });
-
-    const cardApres = await db.query.reviewCard.findFirst({ where: (t, { eq }) => eq(t.sectionId, sec.id) });
-    const sessionApres = await db.query.studySession.findFirst({ where: (t, { eq }) => eq(t.sectionId, sec.id) });
-    expect(cardApres?.gelee).toBe(false);
-    expect((cardApres?.due ?? "") >= (cardAvant?.due ?? "")).toBe(true); // jamais décalé en arrière
-    expect(cardApres?.stability).toBe(cardAvant?.stability);
-    expect(cardApres?.difficulty).toBe(cardAvant?.difficulty);
-    expect(cardApres?.reps).toBe(cardAvant?.reps);
-    expect(cardApres?.lapses).toBe(cardAvant?.lapses);
-    expect(sessionApres).toEqual(sessionAvant);
+    const apres = await card(f);
+    expect(apres.gelee).toBe(false);
+    expect(apres.due >= avant.due).toBe(true);
+    for (const k of ["stability", "difficulty", "reps", "lapses"]) expect(apres[k]).toBe(avant[k]);
+    expect(await client`select * from tentative where fiche_id = ${f}`).toEqual(tentativesAvant);
   });
 });

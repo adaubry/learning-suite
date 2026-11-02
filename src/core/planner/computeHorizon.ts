@@ -1,12 +1,12 @@
-// P8 · computeHorizon (FUNCTIONS §1, ARCHITECTURE §3) — pur, sans I/O.
+// P8 · computeHorizon (ARCHITECTURE.md v2 §3) — pur, sans I/O.
 // ReviewCards → charge de révision 7/30 jours (fenêtres [today, today+7[ et
 // [today, today+30[, today inclus), dette (due < today, exclue des deux
 // charges — bucket séparé), répartition par matière, échéances d'examens
-// futures superposées. Le backlog d'études (sans date d'échéance) ne figure
-// jamais ici (FUNCTIONS §1) : seul le type d'entrée (ReviewCard) le garantit.
+// futures superposées. Les nouvelles fiches (sans échéance) n'y figurent
+// jamais : seul le type d'entrée (ReviewCard) le garantit.
 
 export interface HorizonReviewCard {
-  sectionId: string;
+  ficheId: string;
   due: string; // ISO date
   subjectId: string;
 }

@@ -1,84 +1,69 @@
-import { redirect } from "next/navigation";
-import { after } from "next/server";
 import { inArray, eq } from "drizzle-orm";
 import { requireUserId } from "@/lib/auth";
 import { db } from "@/db";
-import { chapter, subject, section } from "@/db/schema";
-import { hasCompletedOnboarding, listSubjects } from "@/services/account";
+import { fiche, ficheSet, subject } from "@/db/schema";
+import { listSubjects } from "@/services/account";
 import * as planner from "@/services/planner";
-import * as guide from "@/services/guide";
 import { Button } from "@astryxdesign/core/Button";
-import { DailyQueue, type QueueSectionInfo } from "@/components/daily-queue";
+import { DailyQueue, type QueueFicheInfo } from "@/components/daily-queue";
 import { HorizonChart } from "@/components/horizon-chart";
-import { AttentionBadges } from "@/components/attention-badges";
 import { deferAction, reorderAction, advanceFromBacklogAction } from "./planner-actions";
 
-// É2.0 Accueil = Planificateur (ARCHITECTURE §3, USER_FLOW É2.0 ; PLAN Bloc 6.3)
-// — remplace l'entrée temporaire par le curriculum (Phase 5).
+// Accueil = la file du jour (ARCHITECTURE.md v2 §3, USER_FLOW.md v2).
 
 export default async function HomePage() {
   const userId = await requireUserId();
 
-  if (!(await hasCompletedOnboarding(userId))) {
-    redirect("/onboarding");
-  }
-
-  const [anyChapter] = await db
-    .select({ id: chapter.id })
-    .from(chapter)
-    .innerJoin(subject, eq(chapter.subjectId, subject.id))
+  const [anySet] = await db
+    .select({ id: ficheSet.id })
+    .from(ficheSet)
+    .innerJoin(subject, eq(ficheSet.subjectId, subject.id))
     .where(eq(subject.userId, userId))
     .limit(1);
 
-  if (!anyChapter) {
+  if (!anySet) {
     return (
       <div className="mx-auto flex max-w-xl flex-col items-center gap-6 py-16 text-center">
         <h1 className="text-2xl font-semibold">Bienvenue</h1>
         <ol className="flex flex-col gap-2 text-left text-secondary">
-          <li>1. Importer un chapitre depuis Google Docs</li>
-          <li>2. Trier ses sections par importance</li>
-          <li>3. Étudier — blurting puis Feynman</li>
+          <li>1. Exporter un set de fiches depuis Google Docs (Fichier → Télécharger → Markdown)</li>
+          <li>2. L&apos;importer ici</li>
+          <li>3. Chaque jour : blurting, correction, note — le planificateur s&apos;occupe du rythme</li>
         </ol>
-        <Button label="Importer un chapitre" href="/importer" />
+        <Button label="Importer un premier set de fiches" href="/importer" />
       </div>
     );
   }
 
-  const [queue, horizon, badges, subjects, nextDeadline, backlogCandidate] = await Promise.all([
+  const [queue, horizon, subjects, nextDeadline, backlogCandidate] = await Promise.all([
     planner.todayQueue(userId),
     planner.horizon(userId),
-    planner.attentionBadges(userId),
     listSubjects(userId),
     planner.nextDeadline(userId),
     planner.nextBacklogCandidate(userId),
   ]);
 
-  // S3.lazyScheduler comme « hook de S5 » (FUNCTIONS §3, PLAN Bloc 6.4) : la
-  // recomposition de la file du jour déclenche la pré-génération en tâche de
-  // fond — après()/non bloquant, ne retarde jamais le rendu de l'accueil.
-  // Appelé ici (pas dans le service S5 lui-même) : `after()` exige un contexte
-  // de requête Next, absent des tests Vitest qui appellent `todayQueue`
-  // directement (planner.test.ts).
-  after(() => {
-    guide.lazyScheduler(userId).catch(() => {});
-  });
-
-  const sectionIds = [...new Set(queue.map((item) => (item.kind === "re_file" ? item.itemId : item.sectionId)))];
-  const sectionRows = sectionIds.length
+  const ficheIds = [...new Set(queue.map((item) => (item.kind === "re_file" ? item.itemId : item.ficheId)))];
+  const rows = ficheIds.length
     ? await db
-        .select({ id: section.id, titre: section.titre, subjectNom: subject.nom })
-        .from(section)
-        .innerJoin(chapter, eq(section.chapterId, chapter.id))
-        .innerJoin(subject, eq(chapter.subjectId, subject.id))
-        .where(inArray(section.id, sectionIds))
+        .select({
+          id: fiche.id,
+          numero: fiche.numero,
+          titre: fiche.titre,
+          setTitre: ficheSet.titre,
+          subjectNom: subject.nom,
+        })
+        .from(fiche)
+        .innerJoin(ficheSet, eq(fiche.setId, ficheSet.id))
+        .innerJoin(subject, eq(ficheSet.subjectId, subject.id))
+        .where(inArray(fiche.id, ficheIds))
     : [];
-  const infoById = new Map<string, QueueSectionInfo>(sectionRows.map((r) => [r.id, { titre: r.titre, subjectNom: r.subjectNom }]));
+  const infoById = new Map<string, QueueFicheInfo>(rows.map(({ id, ...info }) => [id, info]));
   const subjectNomById = new Map(subjects.map((s) => [s.id, s.nom]));
   const keys = queue.map(planner.queueItemKey);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 py-6">
-      <AttentionBadges badges={badges} />
       <h1 className="text-xl font-semibold">Aujourd&apos;hui</h1>
       <DailyQueue
         queue={queue}

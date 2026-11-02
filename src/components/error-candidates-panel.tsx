@@ -1,27 +1,24 @@
 import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
-import type { MergedErrorCandidate } from "@/core/correction/verdict";
+import type { ErreurCandidate } from "@/core/fiche/verdict";
 
-const typeLabel: Record<MergedErrorCandidate["type"], string> = {
+const typeLabel: Record<ErreurCandidate["type"], string> = {
   omission: "Omission",
   deformation: "Déformation",
   confusion: "Confusion",
   imprecision: "Imprécision",
 };
 
-// U17 ErrorCandidatesPanel (FUNCTIONS §6.2, USER_FLOW É3.2, DECISIONS.md bloc
-// 5.3) : « Règle de commit » — supprimer / [Tout accepter] (édition du texte
-// laissée au carnet, S7.edit, post-commit — revu ponytail-review : dupliquer
-// cette mutation ici n'ajoutait rien). Ce qui n'est pas explicitement rejeté
-// est committé par le parent (CorrectionView) au moment de quitter l'écran, y
-// compris sans aucune action de l'utilisateur.
+// ErrorCandidatesPanel : erreurs proposées par la correction — rejeter / [Tout
+// accepter] (l'édition du texte se fait ensuite dans le carnet). Ce qui n'est pas
+// rejeté est enregistré par le parent quand on quitte l'écran de correction.
 export function ErrorCandidatesPanel({
   candidates,
   rejected,
   onChange,
   readOnly = false,
 }: {
-  candidates: MergedErrorCandidate[];
+  candidates: ErreurCandidate[];
   rejected: boolean[];
   onChange: (index: number, rejected: boolean) => void;
   /** Correction déjà résolue (ex. après révélation) : candidates déjà committées, aucune action possible. */

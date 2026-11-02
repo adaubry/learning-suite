@@ -1,106 +1,51 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
-import postgres from "postgres";
-import * as account from "./account";
 import * as errorService from "./error";
-import { db } from "@/db";
-import { chapter, section, errorEntry, studySession, studyCycle, correctionGuide } from "@/db/schema";
+import { client, cleanupAll, createUser, seedSet } from "@/test/fixtures";
 
-// ponytail: même pattern que account.test.ts — un utilisateur/matière jetables par test.
-
-const client = postgres(process.env.DATABASE_URL!);
-const createdUserIds: string[] = [];
-
-async function createUser() {
-  const [user] = await client`insert into "user" (name, email) values ('Test', gen_random_uuid()::text || '@example.com') returning id`;
-  createdUserIds.push(user.id);
-  return user.id as string;
-}
+// ErrorService — un utilisateur, un set et une tentative jetables par test.
 
 let userId: string;
 let subjectId: string;
-let sectionId: string;
-let sessionId: string;
+let ficheId: string;
+let otherFicheId: string;
+let tentativeId: string;
 let activeErrorId: string;
 
 beforeEach(async () => {
-  userId = await createUser();
-  const s = await account.createSubject(userId, { nom: "Droit civil", semestre: "S1" });
-  subjectId = s.id;
+  const s = await seedSet();
+  userId = s.userId;
+  subjectId = s.subject.id;
+  ficheId = s.fiches[0].id;
+  otherFicheId = s.fiches[1].id;
 
-  const [c] = await db
-    .insert(chapter)
-    .values({ subjectId, titre: "Chap", markdown: "# x", contentHash: "h" })
-    .returning();
-  const [sec] = await db
-    .insert(section)
-    .values({ chapterId: c.id, chapterVersion: 1, titre: "Sec", ordre: 1, niveauSource: 1, contenu: "...", importance: 3 })
-    .returning();
-  sectionId = sec.id;
-  const [guide] = await db
-    .insert(correctionGuide)
-    .values({ sectionId, chapterVersion: 1, contenu: {}, statut: "valide" })
-    .returning();
-  const [cycle] = await db.insert(studyCycle).values({ userId, sectionId, type: "etude" }).returning();
-  const [session] = await db
-    .insert(studySession)
-    .values({
-      cycleId: cycle.id,
-      sectionId,
-      guideId: guide.id,
-      chapterVersion: 1,
-      type: "blurting",
-      tentative: 1,
-      input: "x",
-      divulgation: "controlee",
-    })
-    .returning();
-  sessionId = session.id;
+  const [cycle] = await client`insert into study_cycle (user_id, fiche_id, type, etat) values (${userId}, ${ficheId}, 'etude', 'correction') returning id`;
+  const [t] = await client`insert into tentative (cycle_id, fiche_id, fiche_hash, numero, input) values (${cycle.id}, ${ficheId}, 'h', 1, 'x') returning id`;
+  tentativeId = t.id;
 
-  const [activeError] = await db
-    .insert(errorEntry)
-    .values({ subjectId, sectionId, sessionId, type: "omission", description: "active", statut: "active" })
-    .returning();
-  activeErrorId = activeError.id;
-  await db
-    .insert(errorEntry)
-    .values({ subjectId, sectionId, sessionId, type: "omission", description: "resolue", statut: "resolue" });
+  const [active] = await client`insert into error_entry (subject_id, fiche_id, tentative_id, type, description, statut) values (${subjectId}, ${ficheId}, ${tentativeId}, 'omission', 'active', 'active') returning id`;
+  activeErrorId = active.id;
+  await client`insert into error_entry (subject_id, fiche_id, tentative_id, type, description, statut) values (${subjectId}, ${ficheId}, ${tentativeId}, 'omission', 'resolue', 'resolue')`;
 });
 
-afterAll(async () => {
-  for (const id of createdUserIds) {
-    await client`delete from error_entry where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from study_session where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from study_cycle where user_id = ${id}`;
-    await client`delete from correction_guide where section_id in (select id from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id})))`;
-    await client`delete from section where chapter_id in (select id from chapter where subject_id in (select id from subject where user_id = ${id}))`;
-    await client`delete from chapter where subject_id in (select id from subject where user_id = ${id})`;
-    await client`delete from subject where user_id = ${id}`;
-    await client`delete from "user" where id = ${id}`;
-  }
-  await client.end();
-});
+afterAll(cleanupAll);
 
 async function setCorrection(erreursCandidates: unknown) {
-  await db
-    .update(studySession)
-    .set({ correction: { diff: [], erreursCandidates } })
-    .where(eq(studySession.id, sessionId));
+  await client`update tentative set correction = ${client.json({ points: [], erreursCandidates } as never)} where id = ${tentativeId}`;
 }
 
-describe("error · S7", () => {
-  it("activeFor ne renvoie que les erreurs actives de la matière", async () => {
-    const rows = await errorService.activeFor(subjectId);
-    expect(rows).toHaveLength(1);
-    expect(rows[0].description).toBe("active");
+describe("error", () => {
+  it("activeForFiche ne renvoie que les erreurs actives de la fiche", async () => {
+    const rows = await errorService.activeForFiche(ficheId);
+    expect(rows.map((r) => r.description)).toEqual(["active"]);
+    expect(await errorService.activeForFiche(otherFicheId)).toEqual([]);
   });
 
   describe("commitCandidates", () => {
     it("crée une nouvelle ErrorEntry pour une candidate sans récidive", async () => {
       await setCorrection([{ type: "confusion", description: "nouvelle erreur", idErreurExistante: null }]);
-      await errorService.commitCandidates(userId, sessionId, []);
+      await errorService.commitCandidates(userId, tentativeId, []);
 
-      const rows = await errorService.list(userId, { sectionId, type: "confusion" });
+      const rows = await errorService.list(userId, { ficheId, type: "confusion" });
       expect(rows).toHaveLength(1);
       expect(rows[0].description).toBe("nouvelle erreur");
       expect(rows[0].occurrences).toBe(1);
@@ -108,9 +53,9 @@ describe("error · S7", () => {
 
     it("incrémente occurrences au lieu de dupliquer sur récidive (idErreurExistante)", async () => {
       await setCorrection([{ type: "omission", description: "revu", idErreurExistante: activeErrorId }]);
-      await errorService.commitCandidates(userId, sessionId, []);
+      await errorService.commitCandidates(userId, tentativeId, []);
 
-      const rows = await errorService.list(userId, { sectionId, statut: "active" });
+      const rows = await errorService.list(userId, { ficheId, statut: "active" });
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe(activeErrorId);
       expect(rows[0].occurrences).toBe(2);
@@ -118,9 +63,9 @@ describe("error · S7", () => {
 
     it("index rejeté (rejectedIndexes) ⇒ candidate non committée", async () => {
       await setCorrection([{ type: "confusion", description: "à rejeter", idErreurExistante: null }]);
-      await errorService.commitCandidates(userId, sessionId, [0]);
+      await errorService.commitCandidates(userId, tentativeId, [0]);
 
-      const rows = await errorService.list(userId, { sectionId, type: "confusion" });
+      const rows = await errorService.list(userId, { ficheId, type: "confusion" });
       expect(rows).toHaveLength(0);
     });
 
@@ -129,18 +74,18 @@ describe("error · S7", () => {
         { type: "confusion", description: "gardée", idErreurExistante: null },
         { type: "imprecision", description: "rejetée", idErreurExistante: null },
       ]);
-      await errorService.commitCandidates(userId, sessionId, [1]);
+      await errorService.commitCandidates(userId, tentativeId, [1]);
 
-      const rows = await errorService.list(userId, { sectionId });
+      const rows = await errorService.list(userId, { ficheId });
       const descriptions = rows.map((r) => r.description);
       expect(descriptions).toContain("gardée");
       expect(descriptions).not.toContain("rejetée");
     });
 
-    it("refuse une session qui n'appartient pas à l'utilisateur", async () => {
+    it("refuse une tentative qui n'appartient pas à l'utilisateur", async () => {
       const otherUserId = await createUser();
       await setCorrection([{ type: "confusion", description: "x", idErreurExistante: null }]);
-      await expect(errorService.commitCandidates(otherUserId, sessionId, [])).rejects.toThrow();
+      await expect(errorService.commitCandidates(otherUserId, tentativeId, [])).rejects.toThrow();
     });
   });
 
@@ -171,15 +116,7 @@ describe("error · S7", () => {
     });
 
     it("list respecte limit/offset (pagination du carnet)", async () => {
-      const [c] = await db
-        .insert(chapter)
-        .values({ subjectId, titre: "Chap2", markdown: "# x", contentHash: "h2" })
-        .returning();
-      const [sec2] = await db
-        .insert(section)
-        .values({ chapterId: c.id, chapterVersion: 1, titre: "Sec2", ordre: 1, niveauSource: 1, contenu: "...", importance: 3 })
-        .returning();
-      await db.insert(errorEntry).values({ subjectId, sectionId: sec2.id, sessionId, type: "omission", description: "e2" });
+      await client`insert into error_entry (subject_id, fiche_id, tentative_id, type, description) values (${subjectId}, ${otherFicheId}, ${tentativeId}, 'omission', 'e2')`;
 
       const all = await errorService.list(userId, {});
       expect(all.length).toBeGreaterThanOrEqual(2);
@@ -198,7 +135,7 @@ describe("error · S7", () => {
 
     it("deleteEntry supprime la ligne", async () => {
       await errorService.deleteEntry(userId, activeErrorId);
-      const rows = await errorService.list(userId, { sectionId });
+      const rows = await errorService.list(userId, { ficheId });
       expect(rows.find((r) => r.id === activeErrorId)).toBeUndefined();
     });
 

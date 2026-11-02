@@ -12,51 +12,52 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Le projet en une phrase
 
-Webapp d'apprentissage du droit pour un étudiant : import de cours (Markdown depuis Google Docs), sectionnement assisté par LLM, cycles d'étude blurting → Feynman corrigés contre des rubriques validées par l'utilisateur, carnet d'erreurs, et planification par répétition espacée (FSRS) — le Planificateur étant l'organe central.
+Webapp de révision du droit pour un étudiant (v2) : import de sets de fiches (Markdown exporté de Google Docs), sessions blurting → correction LLM contre les points de la fiche → auto-note, carnet d'erreurs, et planification par répétition espacée (FSRS) — le Planificateur étant l'organe central.
 
 ## 1. Hiérarchie des sources de vérité
 
 Les documents de `src/docs/` gouvernent le code, jamais l'inverse :
 
-1. **FORMAT.md** — convention des cours (3 constructions : Titres 1–3, gras = important, italique = commentaire étudiant)
-2. **ARCHITECTURE.md** — machines à états, modèle de données, ADR
-3. **USER_FLOW.md** — écrans, transitions, états vides/erreur
-4. **FUNCTIONS.md** — briques P (cœurs purs) / S (services) / L (LLM) / U (UI), registre des invariants (§7)
-5. **TECH_MAPPING.md** — délégations : natif > librairies listées > maison
-6. **DECISIONS.md** — arbitrages en cours de route (actif). *PLAN.md est clos* (historique de construction du MVP, Phase 9 close, Phase 10 volontairement abandonnée — voir DECISIONS.md) : il ne gouverne plus les sessions ni l'ordre de travail.
+1. **FORMAT.md** — format des fiches (titre 2 = fiche, thèse, étiquettes en gras, tableaux)
+2. **ARCHITECTURE.md** — cycle unique, planificateur, modèle de données, registre des invariants (§8)
+3. **USER_FLOW.md** — écrans, états vides/erreur
+4. **TECH_MAPPING.md** — délégations : natif > librairies listées > maison
+5. **DECISIONS.md** — arbitrages en cours de route (journal v2 ; le journal v1 est dans l'historique git)
+
+Specs de composants encore en vigueur : CHESS.md / CHESS2.md (puzzle distracteur), IMPLEMENT_SCHEDULE.md (écran Régularité).
 
 **Règle absolue** : toute contradiction entre une demande, le code existant et un document doit être **signalée avant d'agir** — jamais résolue silencieusement. Si l'implémentation exige de dévier d'un document, la déviation se décide avec l'humain et se consigne (DECISIONS.md + version du document concerné).
 
 ## 2. Interdictions fermes (violations = travail rejeté)
 
-1. **Aucune dépendance hors de TECH_MAPPING §6.** Une lib manquante se propose à l'humain, elle ne s'installe pas. Ne jamais réécrire ce qui est délégué (parseur Markdown, drag & drop, dialogues, charts) ni remplacer une délégation (remark, Tiptap, shadcn, jsdiff, ts-fsrs, zod).
+1. **Aucune dépendance hors de TECH_MAPPING.** Une lib manquante se propose à l'humain, elle ne s'installe pas. Ne jamais réécrire ce qui est délégué (parseur Markdown, dialogues, FSRS) ni remplacer une délégation (remark, Astryx, ts-fsrs, zod).
 2. **Aucune logique métier dans une Server Action.** Gabarit strict : auth → validation zod → appel d'UN service → retour. Tout dépassement descend dans `src/services/`.
-3. **Aucun appel OpenRouter hors de `src/llm/client.ts` (L0).** Clé API strictement serveur. Toute sortie LLM validée par un schéma zod de `src/llm/schemas/`.
+3. **Aucun appel OpenRouter hors de `src/llm/client.ts` (L0).** Clé API strictement serveur. Toute sortie LLM validée par un schéma zod de `src/llm/schemas/`. Un seul appel LLM en v2 (la correction) : en ajouter un se décide avec l'humain.
 4. **Aucun prompt inline.** Les prompts vivent dans `/prompts/*.vN.md`, versionnés ; toute modification s'accompagne d'une entrée dans PROMPTS_CHANGELOG.md et d'un passage des evals.
 5. **Ne jamais modifier un test tagué `@canary`** ni assouplir une assertion pour « faire passer » — un canari rouge invalide la modification, pas le test. Le déplacement/renommage d'un canari requiert une autorisation humaine explicite.
-6. **Ne jamais réimplémenter un invariant.** Chaque invariant a UN propriétaire (FUNCTIONS §7) : session unique ouverte → SessionService ; rubrique valide requise → GuideService + contrainte DB ; gel des ReviewCards → ReviewService ; divulgation toujours complète en étude et révision (P10/`presentCorrection` supprimée — REVAMP.md v0.3, DECISIONS.md 2026-07-15, plus aucun contenu masqué à protéger) ; journalisation → AuditService.
-7. **Hors périmètre v1, refus par défaut** (ARCHITECTURE §12) : multi-utilisateur, génération de cas pratiques, audio temps réel, mobile natif, stats avancées, import PDF. Le proposer = scope creep.
+6. **Ne jamais réimplémenter un invariant.** Chaque invariant a UN propriétaire (ARCHITECTURE §8) : session unique ouverte, sauvegarde avant LLM, ≤ 2 blurtings, note Again/Hard après relecture → SessionService ; note FSRS de l'utilisateur, gel des cartes → ReviewService ; historique FSRS conservé au ré-import → FicheService.
+7. **Hors périmètre, refus par défaut** (ARCHITECTURE §10) : génération de fiches dans l'app, dialogue oral / Feynman, multi-utilisateur, mobile natif, import PDF. Le proposer = scope creep.
 
 ## 3. Architecture — rappels opposables
 
 - **Quatre couches, dépendances à sens unique** : `components/ → server actions → services/ → core/ + llm/ + db/`.
-- `src/core/` est **pur** (aucune I/O) : parser (règles sur AST remark), planner, appariement (P4 — la fonction la plus dangereuse du projet, couverture de tests maximale), diff, fsrs, divulgation. Tests unitaires exhaustifs obligatoires.
-- Les machines à états (A/B/C) sont **codées en dur** ; aucun LLM ne décide d'une transition — il produit des propositions, l'utilisateur dispose.
-- Le mode focus est un **layout de route** `(focus)/` : jamais de navigation rendue dans ces écrans ; `BlurtingEditor` ne reçoit jamais le contenu du chapitre en props.
-- Markdown = **stockage/échange** ; l'édition passe par Tiptap limité aux 3 constructions (round-trip testé `@canary`).
+- `src/core/` est **pur** (aucune I/O) : parseur de fiches et points de contrôle (`core/fiche`), appariement au ré-import, verdict, planner, fsrs. Tests unitaires exhaustifs obligatoires.
+- Le cycle de session est **codé en dur** ; aucun LLM ne décide d'une transition — le verdict met un bouton en avant, l'utilisateur choisit.
+- Le mode focus est un **layout de route** `(focus)/` : jamais de navigation rendue dans ces écrans ; `BlurtingEditor` ne reçoit jamais le contenu de la fiche en props.
+- Les fiches ne s'éditent pas dans l'app : elles se modifient dans leur document source puis se ré-importent.
 
 ## 4. Conventions
 
 - TypeScript strict ; unions discriminées pour les états ; pas de `any` non justifié.
-- Vocabulaire du domaine en français dans les types et la DB (`Section`, `rubrique`, `blurting`…) — cohérent avec les documents ; code utilitaire en anglais si plus naturel.
-- Un commit par tâche/fonctionnalité cohérente, préfixe conventionnel `type: message` (`feat`, `fix`, `docs`, `chore`, `refactor`), une ligne, à l'impératif, IDs FUNCTIONS touchés entre crochets si pertinent (`[S4, U15]`). Pas d'outillage (commitlint/husky) — la convention se respecte, elle ne se fait pas policer par un hook.
+- Vocabulaire du domaine en français dans les types et la DB (`fiche`, `tentative`, `blurting`…) — cohérent avec les documents ; code utilitaire en anglais si plus naturel.
+- Un commit par tâche/fonctionnalité cohérente, préfixe conventionnel `type: message` (`feat`, `fix`, `docs`, `chore`, `refactor`), une ligne, à l'impératif. Pas d'outillage (commitlint/husky) — la convention se respecte, elle ne se fait pas policer par un hook.
 - `npm run check` (typecheck + lint + tests) DOIT être vert avant de déclarer une tâche terminée ; `npm run test:canary` vert en permanence ; `npm run evals` après toute modification de prompt.
 
 ## 5. Definition of done d'une tâche
 
 1. Fonctions implémentées **une par une**, chacune avec ses tests avant la suivante.
-2. `npm run check` et `test:canary` verts ; nouveaux canaris posés si la tâche touche un invariant critique (FUNCTIONS §7).
-3. Aucun écran livré sans état vide ET état d'erreur LLM (relance + voie de secours — USER_FLOW règle 7).
+2. `npm run check` et `test:canary` verts ; nouveaux canaris posés si la tâche touche un invariant critique (ARCHITECTURE §8).
+3. Aucun écran livré sans état vide ET état d'erreur LLM (relance sans re-saisie).
 4. Écarts, doutes et arbitrages listés explicitement à l'humain ; DECISIONS.md mis à jour si arbitrage.
 
 ## 6. En cas d'incertitude

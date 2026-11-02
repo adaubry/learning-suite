@@ -7,7 +7,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 
-// U8 ConfirmDialog (FUNCTIONS §6.1, TECH_MAPPING §U8) — variante LÉGÈRE (confirmation simple,
+// U8 ConfirmDialog (TECH_MAPPING §U8) — variante LÉGÈRE (confirmation simple,
 // un clic).
 export function ConfirmDialog({
   trigger,

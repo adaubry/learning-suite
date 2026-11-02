@@ -19,12 +19,12 @@ import { AlertBanner } from "./alert-banner";
 import { ToastAlerts } from "./toast-alerts";
 import { SerieEnPerilTimer } from "./serie-en-peril-timer";
 
-// U1 AppShell minimal (FUNCTIONS §6.1) — navigation permanente de USER_FLOW.
-// Migré vers Astryx (DECISIONS.md 2026-07-13) : premier écran/surface converti.
+// AppShell — navigation permanente (USER_FLOW.md v2).
 
 const NAV_ITEMS = [
   { href: "/", label: "Aujourd'hui", enabled: true },
-  { href: "/curriculum", label: "Curriculum", enabled: true },
+  { href: "/curriculum", label: "Fiches", enabled: true },
+  { href: "/importer", label: "Importer", enabled: true },
   { href: "/regularite", label: "Régularité", enabled: true },
   { href: "/erreurs", label: "Erreurs", enabled: true },
   { href: "/reglages", label: "Réglages", enabled: true },
@@ -58,9 +58,7 @@ export function AppShell({
   gelsSerieRestants?: number;
 }) {
   const pathname = usePathname();
-  // Fusion Machine B/C (2026-07-15) : un seul écran désormais, quel que soit
-  // `openCycle.type` (label cosmétique — étude/révision partagent la même route).
-  const resumeHref = openCycle ? `/etude/${openCycle.sectionId}` : null;
+  const resumeHref = openCycle ? `/etude/${openCycle.ficheId}` : null;
   const hasBanner = Boolean(openCycle && resumeHref) || Boolean(bannerAlert);
 
   return (
@@ -73,7 +71,7 @@ export function AppShell({
               <Banner
                 status="info"
                 title="Session en cours"
-                description={`${openCycle.sectionTitre} — reprends-la ou abandonne-la avant d'en commencer une autre.`}
+                description={`${openCycle.ficheTitre} — reprends-la ou abandonne-la avant d'en commencer une autre.`}
                 endContent={
                   <Link
                     href={resumeHref}

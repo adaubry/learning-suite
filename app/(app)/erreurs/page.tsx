@@ -1,18 +1,17 @@
 import { inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { section } from "@/db/schema";
+import { fiche } from "@/db/schema";
 import { requireUserId } from "@/lib/auth";
 import { listSubjects } from "@/services/account";
 import * as errorService from "@/services/error";
 import { ErrorNotebook, type NotebookFilters } from "@/components/error-notebook";
-import type { ErreurType } from "@/core/correction/verdict";
+import type { ErreurType } from "@/core/fiche/verdict";
 import { resolveErrorAction, reopenErrorAction, editErrorAction, deleteErrorAction } from "./actions";
 
 const ERREUR_TYPES = ["omission", "deformation", "confusion", "imprecision"] as const;
 const PAGE_SIZE = 20;
 
-// P5 É5.1 — U24 ErrorNotebook (FUNCTIONS §6.2). Filtres portés par les query
-// params (liens, aucun JS requis).
+// Carnet d'erreurs (USER_FLOW.md v2). Filtres portés par les query params.
 export default async function ErreursPage({
   searchParams,
 }: {
@@ -40,11 +39,14 @@ export default async function ErreursPage({
   const hasNextPage = page1Errors.length > PAGE_SIZE;
   const errors = page1Errors.slice(0, PAGE_SIZE);
 
-  const sectionIds = [...new Set(errors.map((e) => e.sectionId))];
-  const sections = sectionIds.length
-    ? await db.query.section.findMany({ where: inArray(section.id, sectionIds), columns: { id: true, titre: true } })
+  const ficheIds = [...new Set(errors.map((e) => e.ficheId))];
+  const fiches = ficheIds.length
+    ? await db.query.fiche.findMany({
+        where: inArray(fiche.id, ficheIds),
+        columns: { id: true, numero: true, titre: true },
+      })
     : [];
-  const sectionTitreById = new Map(sections.map((s) => [s.id, s.titre]));
+  const ficheTitreById = new Map(fiches.map((f) => [f.id, `${f.numero}. ${f.titre}`]));
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
@@ -53,7 +55,7 @@ export default async function ErreursPage({
         subjects={subjects}
         filters={filters}
         isUnfiltered={isUnfiltered && page === 1 && errors.length === 0}
-        entries={errors.map((e) => ({ ...e, sectionTitre: sectionTitreById.get(e.sectionId) ?? "Section supprimée" }))}
+        entries={errors.map((e) => ({ ...e, ficheTitre: ficheTitreById.get(e.ficheId) ?? "Fiche supprimée" }))}
         page={page}
         hasNextPage={hasNextPage}
         resolveAction={resolveErrorAction}

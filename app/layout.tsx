@@ -20,8 +20,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// EB Garamond : réservée à l'affichage en lecture seule du texte de cours
-// (LectureView/U25, vue chapitre de ChapterEditorScreen) — mappée sur
+// EB Garamond : réservée à l'affichage des fiches (LectureView, page fiche) — mappée sur
 // l'utilitaire Tailwind `font-serif` dans globals.css.
 const ebGaramond = EB_Garamond({
   variable: "--font-eb-garamond",
@@ -30,7 +29,7 @@ const ebGaramond = EB_Garamond({
 
 export const metadata: Metadata = {
   title: "Learning Suite",
-  description: "Apprentissage du droit : blurting, Feynman, révision espacée.",
+  description: "Révision de fiches de droit : blurting, correction, répétition espacée.",
 };
 
 export default function RootLayout({

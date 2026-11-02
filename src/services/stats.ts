@@ -1,15 +1,15 @@
 import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  studySession,
+  tentative,
   studyCycle,
   serieGel,
   deadline,
   deferralLog,
   refileItem,
   reviewCard,
-  section,
-  chapter,
+  fiche,
+  ficheSet,
   subject,
   plannerConfig,
 } from "@/db/schema";
@@ -19,18 +19,18 @@ import { todayIso, addDays } from "@/lib/utils";
 
 // S11 · StatsService (IMPLEMENT_SCHEDULE.md §4) — logique dérivée de l'écran
 // Régularité : rien n'est stocké en plus, tout se recalcule à la lecture depuis
-// study_session/serie_gel/deferral_log/refile_item/review_card. Possède aussi
+// tentative/serie_gel/deferral_log/refile_item/review_card. Possède aussi
 // l'écriture du gel de série (mutation adjacente au calcul qu'elle protège).
 
 // Jours distincts avec >= 1 session terminée — tout l'historique (la meilleure
 // série en a besoin, §4).
 async function allSessionDates(userId: string): Promise<string[]> {
   const rows = await db
-    .select({ jour: sql<string>`(${studySession.createdAt})::date` })
-    .from(studySession)
-    .innerJoin(studyCycle, eq(studySession.cycleId, studyCycle.id))
+    .select({ jour: sql<string>`(${tentative.createdAt})::date` })
+    .from(tentative)
+    .innerJoin(studyCycle, eq(tentative.cycleId, studyCycle.id))
     .where(eq(studyCycle.userId, userId))
-    .groupBy(sql`(${studySession.createdAt})::date`);
+    .groupBy(sql`(${tentative.createdAt})::date`);
   return rows.map((r) => r.jour);
 }
 
@@ -51,17 +51,17 @@ export async function sessionCountsByDay(
   to: string,
 ): Promise<Record<string, number>> {
   const rows = await db
-    .select({ jour: sql<string>`(${studySession.createdAt})::date`, n: sql<number>`count(*)::int` })
-    .from(studySession)
-    .innerJoin(studyCycle, eq(studySession.cycleId, studyCycle.id))
+    .select({ jour: sql<string>`(${tentative.createdAt})::date`, n: sql<number>`count(*)::int` })
+    .from(tentative)
+    .innerJoin(studyCycle, eq(tentative.cycleId, studyCycle.id))
     .where(
       and(
         eq(studyCycle.userId, userId),
-        gte(sql`(${studySession.createdAt})::date`, from),
-        lte(sql`(${studySession.createdAt})::date`, to),
+        gte(sql`(${tentative.createdAt})::date`, from),
+        lte(sql`(${tentative.createdAt})::date`, to),
       ),
     )
-    .groupBy(sql`(${studySession.createdAt})::date`);
+    .groupBy(sql`(${tentative.createdAt})::date`);
   return Object.fromEntries(rows.map((r) => [r.jour, r.n]));
 }
 
@@ -114,14 +114,14 @@ export async function chargeParJour(
   const rows = await db
     .select({ jour: reviewCard.due, n: sql<number>`count(*)::int` })
     .from(reviewCard)
-    .innerJoin(section, eq(reviewCard.sectionId, section.id))
-    .innerJoin(chapter, eq(section.chapterId, chapter.id))
-    .innerJoin(subject, eq(chapter.subjectId, subject.id))
+    .innerJoin(fiche, eq(reviewCard.ficheId, fiche.id))
+    .innerJoin(ficheSet, eq(fiche.setId, ficheSet.id))
+    .innerJoin(subject, eq(ficheSet.subjectId, subject.id))
     .where(
       and(
         eq(subject.userId, userId),
         eq(subject.statut, "active"),
-        eq(chapter.statut, "actif"),
+        eq(ficheSet.statut, "actif"),
         eq(reviewCard.gelee, false),
         gte(reviewCard.due, from),
         lte(reviewCard.due, to),

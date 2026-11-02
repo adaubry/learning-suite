@@ -4,8 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { MarkdownViewer } from "@/components/markdown-viewer";
-import { parseChapter } from "@/core/parser/parseChapter";
-import type { TitleNode } from "@/core/parser/types";
+import { parseMarkdown, nodeText } from "@/core/fiche/markdown";
 import { cn } from "@/lib/utils";
 
 type Note = { id: number; top: number; text: string };
@@ -16,9 +15,8 @@ let nextId = 0;
 // uniquement, `xl` et plus) : à gauche une table des matières flottante, à
 // droite des notes libres.
 //
-// - Sommaire (gauche) : arbre des titres via P1 `parseChapter` (même pipeline
-//   remark que U3 MarkdownViewer, donc mêmes offsets `start` que
-//   `data-md-start`) aplati en liste ordonnée, dans un panneau distinct
+// - Sommaire (gauche) : titres de la fiche (même parseur que MarkdownViewer,
+//   donc mêmes offsets `start` que `data-md-start`), dans un panneau distinct
 //   (bordure + fond paper, conforme à la règle outline-not-shadow de
 //   DESIGN.md — jamais de shadow). `position: sticky; top: 50%` — contraire
 //   des notes : il ne fait PAS partie du flux de la page, il reste centré
@@ -36,8 +34,13 @@ let nextId = 0;
 //
 // Rien de tout ça n'est persisté, ni envoyé au serveur ni à aucun service.
 
-function flattenTitles(nodes: TitleNode[]): TitleNode[] {
-  return nodes.flatMap((n) => [n, ...flattenTitles(n.children)]);
+type Heading = { start: number; level: number; text: string };
+
+// Titres top-level de la fiche, avec les mêmes offsets que `data-md-start` (même parseur).
+function headingsOf(markdown: string): Heading[] {
+  return parseMarkdown(markdown).children.flatMap((n) =>
+    n.type === "heading" ? [{ start: n.position!.start.offset!, level: n.depth, text: nodeText(n) }] : [],
+  );
 }
 
 export function AnnotatedCourse({
@@ -49,10 +52,7 @@ export function AnnotatedCourse({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [notes, setNotes] = useState<Note[]>([]);
-  const headings = useMemo(
-    () => flattenTitles(parseChapter(markdown).titleTree),
-    [markdown],
-  );
+  const headings = useMemo(() => headingsOf(markdown), [markdown]);
 
   function scrollToHeading(start: number) {
     containerRef.current
@@ -101,12 +101,12 @@ export function AnnotatedCourse({
     // LectureView/EtudePage) ; les deux cases latérales étant symétriques, le
     // cours reste centré. 40rem = 42rem (max-w-2xl, largeur de lecture des
     // autres écrans) moins `px-4` : même largeur de texte que blurting/
-    // correction/Feynman, pour une lecture visuellement cohérente.
+    // correction, pour une lecture visuellement cohérente.
     <div className="xl:flex xl:justify-center xl:gap-8">
       <div className="hidden xl:block xl:w-56 xl:shrink-0">
         {headings.length > 0 && (
           <nav
-            aria-label="Sommaire du cours"
+            aria-label="Sommaire de la fiche"
             className="sticky top-1/4 flex max-h-[70vh] w-full -translate-y-1/2 -translate-x-1/3 flex-col gap-2 overflow-y-auto bg-surface p-4 "
           >
             <p className="border-b border-border pb-2 text-sm font-semibold text-primary">
@@ -118,7 +118,7 @@ export function AnnotatedCourse({
                 type="button"
                 title={h.text}
                 onClick={() => scrollToHeading(h.start)}
-                style={{ paddingLeft: `${0.5 + (h.level - 1) * 0.75}rem` }}
+                style={{ paddingLeft: `${0.5 + Math.max(0, h.level - 3) * 0.75}rem` }}
                 className="truncate py-1.5 pr-2 text-left text-sm text-primary hover:bg-muted focus-visible:bg-muted"
               >
                 {h.text}

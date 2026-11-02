@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { login } from "./login";
 
 function addDays(n: number): string {
   const d = new Date();
@@ -16,31 +17,7 @@ test("échéance examen coef>=2 à J-3 : bannière persistante, cocher la fait d
   const email = `e2e-regularite-${Date.now()}@example.com`;
   const libelle = `Test J-3 ${Date.now()}`;
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill(email);
-  await page.getByRole("button", { name: /recevoir un lien/i }).dispatchEvent("click");
-  await expect(page.getByText(/lien envoyé/i)).toBeVisible();
-
-  let verifyUrl = "";
-  await expect(async () => {
-    const res = await request.get(`/api/dev/magic-link?email=${encodeURIComponent(email)}`);
-    const body = await res.json();
-    expect(body.url).toBeTruthy();
-    verifyUrl = body.url;
-  }).toPass();
-  await page.goto(verifyUrl);
-
-  await page.getByLabel("Nom").fill("Droit civil");
-  await page.getByLabel("Semestre").fill("S1");
-  await page.getByRole("button", { name: "Ajouter une matière" }).dispatchEvent("click");
-  await page.getByRole("link", { name: "Suivant" }).dispatchEvent("click");
-  await expect(page).toHaveURL(/\/onboarding\?step=2$/);
-  await page.getByRole("link", { name: /passer/i }).dispatchEvent("click");
-  await expect(page).toHaveURL(/\/onboarding\?step=3$/);
-  await page.getByRole("link", { name: "Passer" }).dispatchEvent("click");
-  await expect(page).toHaveURL(/\/onboarding\?step=4$/);
-  await page.getByRole("button", { name: "Terminer" }).dispatchEvent("click");
-  await expect(page).toHaveURL(/\/$/);
+  await login(page, request, email);
 
   await page.goto("/regularite");
   await page.getByRole("button", { name: "Ajouter" }).dispatchEvent("click");
